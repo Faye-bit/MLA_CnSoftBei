@@ -9,8 +9,6 @@ import {
   DashboardOutlined,
   BookOutlined,
   SearchOutlined,
-  FileTextOutlined,
-  UploadOutlined,
 } from '@ant-design/icons'
 import type { MenuProps } from 'antd'
 

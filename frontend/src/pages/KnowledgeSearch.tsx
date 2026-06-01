@@ -15,7 +15,6 @@ import {
   Spin,
   Empty,
   Space,
-  Descriptions,
   message,
 } from 'antd'
 import { SearchOutlined, FileTextOutlined, StarOutlined } from '@ant-design/icons'
@@ -171,7 +170,7 @@ export default function KnowledgeSearch() {
               {item.metadata && Object.keys(item.metadata).length > 0 && (
                 <div style={{ fontSize: 12, color: '#8c8c8c' }}>
                   <Space size={12}>
-                    {item.metadata.file_type && <span>类型: {item.metadata.file_type as string}</span>}
+                    {item.metadata.file_type ? <span>类型: {String(item.metadata.file_type)}</span> : null}
                   </Space>
                 </div>
               )}

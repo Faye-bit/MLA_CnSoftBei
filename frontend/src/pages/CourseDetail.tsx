@@ -9,16 +9,13 @@ import {
   Typography,
   Button,
   Spin,
-  Tree,
   Card,
-  Descriptions,
   Space,
   Modal,
   Form,
   Input,
   Select,
   message,
-  Tabs,
   Table,
   Popconfirm,
   Tag,
@@ -125,13 +122,6 @@ export default function CourseDetailPage() {
     return <div>课程不存在</div>
   }
 
-  /** 构建 Ant Design Tree 数据结构 */
-  const treeData = chapters.map((ch) => ({
-    title: ch.title,
-    key: ch.id,
-    children: [],
-  }))
-
   /** 章节表格列定义 */
   const chapterColumns = [
     { title: '排序', dataIndex: 'order_index', key: 'order_index', width: 60 },
@@ -196,10 +186,10 @@ export default function CourseDetailPage() {
         </div>
         <Space>
           <Button icon={<UploadOutlined />} onClick={() => navigate(`/courses/${id}/upload`)}>
-            上传资料
+            上传文档
           </Button>
           <Button icon={<FileTextOutlined />} onClick={() => navigate(`/courses/${id}/documents`)}>
-            查看文档
+            文档列表
           </Button>
           <Button icon={<SearchOutlined />} onClick={() => navigate('/knowledge')}>
             知识检索

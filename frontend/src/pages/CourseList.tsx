@@ -80,17 +80,6 @@ export default function CourseList() {
     }
   }
 
-  /** 获取解析状态对应的颜色 */
-  function getStatusColor(status: string): string {
-    const map: Record<string, string> = {
-      done: 'green',
-      processing: 'blue',
-      pending: 'orange',
-      failed: 'red',
-    }
-    return map[status] || 'default'
-  }
-
   return (
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>

@@ -5,9 +5,8 @@
 
 import { useState } from 'react'
 import { useParams } from 'react-router-dom'
-import { Typography, Card, Alert, Space } from 'antd'
+import { Typography, Card } from 'antd'
 import FileUpload from '../components/common/FileUpload'
-import type { DocumentUploadResponse } from '../types'
 
 const { Title, Text } = Typography
 
@@ -42,16 +41,8 @@ export default function DocumentUpload() {
   return (
     <div>
       <Title level={3} style={{ marginBottom: 24 }}>
-        上传课程资料
+        上传课程文档
       </Title>
-
-      <Alert
-        message="支持的文件格式"
-        description="PDF、DOCX、PPTX、Markdown (.md)、纯文本 (.txt)。单文件最大 50MB。上传后将自动进行文本解析、切片和向量化处理。"
-        type="info"
-        showIcon
-        style={{ marginBottom: 24 }}
-      />
 
       {/* 上传区域 */}
       <Card style={{ marginBottom: 24 }}>

@@ -188,7 +188,7 @@ export default function DocumentList() {
           },
           showTotal: (t) => `共 ${t} 份文档`,
         }}
-        locale={{ emptyText: '暂无文档，请前往上传页面添加课程资料' }}
+        locale={{ emptyText: '暂无文档，请前往上传页面添加课程文档' }}
       />
 
       {/* 文档详情抽屉 */}

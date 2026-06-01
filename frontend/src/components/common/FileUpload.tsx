@@ -4,14 +4,23 @@
  * 用于课程资料的批量上传场景
  */
 
-import { Upload, message } from 'antd'
+import { Upload, message, Tag, Space } from 'antd'
 import { InboxOutlined } from '@ant-design/icons'
 import type { UploadProps } from 'antd'
 
 const { Dragger } = Upload
 
-/** 支持的文件类型 */
+/** 支持的文件类型及对应颜色 */
 const ACCEPTED_TYPES = '.pdf,.docx,.pptx,.md,.txt'
+
+/** 格式列表，供标签展示 */
+const FORMAT_LIST = [
+  { ext: 'PDF', color: 'red' },
+  { ext: 'DOCX', color: 'blue' },
+  { ext: 'PPTX', color: 'orange' },
+  { ext: 'Markdown', color: 'purple' },
+  { ext: 'TXT', color: 'default' },
+]
 
 interface FileUploadProps {
   /** 上传接口地址 */
@@ -79,8 +88,17 @@ export default function FileUpload({ action, onSuccess, onError }: FileUploadPro
       </p>
       <p className="ant-upload-text">点击或拖拽文件到此区域上传</p>
       <p className="ant-upload-hint">
-        支持 PDF、DOCX、PPTX、Markdown、TXT 格式的课程资料
+        单文件最大 50MB，上传后自动解析并向量化
       </p>
+      <div style={{ marginTop: 12 }}>
+        <Space size={4} wrap>
+          {FORMAT_LIST.map((f) => (
+            <Tag key={f.ext} color={f.color} style={{ fontSize: 13, padding: '2px 10px' }}>
+              {f.ext}
+            </Tag>
+          ))}
+        </Space>
+      </div>
     </Dragger>
   )
 }
