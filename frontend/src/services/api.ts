@@ -150,3 +150,24 @@ export async function searchKnowledge(data: RetrievalRequest) {
   const res = await api.post<ApiResponse<RetrievalResponse>>('/retrieval/search', data)
   return res.data.data!
 }
+
+// ==================== 配置 API ====================
+
+/** 配置项 */
+export interface ConfigItem {
+  key: string
+  label: string
+  value: string
+  default_value: string
+}
+
+/** 获取当前配置 */
+export async function getApiConfig(): Promise<{ items: ConfigItem[] }> {
+  const res = await api.get<ApiResponse<{ items: ConfigItem[] }>>('/config/')
+  return res.data.data!
+}
+
+/** 更新配置 */
+export async function updateApiConfig(configs: Record<string, string>) {
+  await api.put('/config/', configs)
+}

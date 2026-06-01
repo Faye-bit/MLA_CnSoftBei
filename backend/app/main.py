@@ -22,6 +22,12 @@ async def lifespan(app: FastAPI):
     logger.info(f"{settings.app_name} v{settings.app_version} 启动中...")
     await init_db()
     logger.info("数据库表初始化完成")
+    # 从数据库加载用户自定义配置到内存缓存
+    from app.core.database import async_session_factory
+    from app.services.config_service import load_config_from_db
+    async with async_session_factory() as session:
+        await load_config_from_db(session)
+    logger.info("运行时配置加载完成")
     yield
     await close_db()
     logger.info(f"{settings.app_name} 已关闭")

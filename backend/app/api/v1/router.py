@@ -7,6 +7,7 @@ from fastapi import APIRouter
 from app.api.v1.courses import router as courses_router
 from app.api.v1.documents import router as documents_router
 from app.api.v1.retrieval import router as retrieval_router
+from app.api.v1.config import router as config_router
 
 # 创建 v1 版本聚合路由
 api_v1_router = APIRouter(prefix="/api/v1")
@@ -15,3 +16,4 @@ api_v1_router = APIRouter(prefix="/api/v1")
 api_v1_router.include_router(courses_router)
 api_v1_router.include_router(documents_router)
 api_v1_router.include_router(retrieval_router)
+api_v1_router.include_router(config_router)

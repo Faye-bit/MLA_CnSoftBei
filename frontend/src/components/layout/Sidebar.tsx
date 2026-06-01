@@ -9,6 +9,7 @@ import {
   DashboardOutlined,
   BookOutlined,
   SearchOutlined,
+  SettingOutlined,
 } from '@ant-design/icons'
 import type { MenuProps } from 'antd'
 
@@ -39,6 +40,11 @@ const menuItems: MenuItem[] = [
         label: '知识检索',
       },
     ],
+  },
+  {
+    key: '/settings',
+    icon: <SettingOutlined />,
+    label: '系统设置',
   },
 ]
 

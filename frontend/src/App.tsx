@@ -11,6 +11,7 @@ import CourseDetailPage from './pages/CourseDetail'
 import DocumentList from './pages/DocumentList'
 import DocumentUpload from './pages/DocumentUpload'
 import KnowledgeSearch from './pages/KnowledgeSearch'
+import Settings from './pages/Settings'
 
 export default function App() {
   return (
@@ -23,6 +24,7 @@ export default function App() {
         <Route path="/courses/:id/documents" element={<DocumentList />} />
         <Route path="/courses/:id/upload" element={<DocumentUpload />} />
         <Route path="/knowledge" element={<KnowledgeSearch />} />
+        <Route path="/settings" element={<Settings />} />
       </Route>
     </Routes>
   )
