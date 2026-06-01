@@ -104,6 +104,7 @@ async def process_document(
 ):
     """
     文档处理流水线: 解析 → 切片 → 嵌入 → 存储
+    解析和切片是必需的, 嵌入失败不影响切片保存
     在文档上传后调用, 同步执行所有步骤
     :param document_id: 文档 ID
     :param course_id: 课程 ID
@@ -128,7 +129,7 @@ async def process_document(
         # 2. 解析文档
         text = parse_file(file_path, file_type)
         if not text or not text.strip():
-            raise ValueError("文档解析结果为空")
+            raise ValueError("文档解析失败: 文档内容为空或无法提取文本")
 
         # 3. 文本切片
         splitter = RecursiveTextSplitter(
@@ -138,20 +139,16 @@ async def process_document(
         chunks = splitter.split_text(text)
 
         if not chunks:
-            raise ValueError("文本切片结果为空")
+            raise ValueError("文本切片失败: 切片结果为空")
 
-        # 4. 批量生成嵌入向量
-        embeddings = await embedder.embed_texts(chunks)
-
-        # 5. 写入数据库 (DocumentChunk)
+        # 4. 写入数据库 (DocumentChunk) — 切片先保存, 嵌入失败也不丢数据
         chunk_records: list[DocumentChunk] = []
         chunk_ids: list[uuid.UUID] = []
         chunk_metadatas: list[dict] = []
 
-        for idx, (chunk_text, embedding) in enumerate(zip(chunks, embeddings)):
+        for idx, chunk_text in enumerate(chunks):
             chunk_id = uuid.uuid4()
 
-            # 构建元数据
             metadata = {
                 "document_id": str(document_id),
                 "course_id": str(course_id),
@@ -171,25 +168,47 @@ async def process_document(
             chunk_metadatas.append(metadata)
 
         db.add_all(chunk_records)
-
-        # 6. 写入 Chroma 向量数据库
-        vector_store.add_chunks(
-            course_id=course_id,
-            chunk_ids=chunk_ids,
-            embeddings=embeddings,
-            contents=chunks,
-            metadatas=chunk_metadatas,
-        )
-
-        # 7. 更新文档状态
-        doc.parse_status = "done"
         doc.chunk_count = len(chunks)
+        logger.info(f"文档解析+切片完成: {document_id}, 切片数={len(chunks)}")
+
+        # 5. 生成嵌入向量并写入 Chroma (此步骤可能因 API Key 问题而失败)
+        try:
+            embeddings = await embedder.embed_texts(chunks)
+
+            vector_store.add_chunks(
+                course_id=course_id,
+                chunk_ids=chunk_ids,
+                embeddings=embeddings,
+                contents=chunks,
+                metadatas=chunk_metadatas,
+            )
+
+            # 全部成功
+            doc.parse_status = "done"
+            logger.info(f"文档处理流水线全部完成: {document_id}")
+
+        except Exception as embed_err:
+            error_msg = str(embed_err)
+            # 检查是否为 API Key 问题, 给出明确的错误提示
+            if "api" in error_msg.lower() or "key" in error_msg.lower() or "auth" in error_msg.lower() or "connection" in error_msg.lower():
+                doc.parse_status = "chunked"
+                doc.error_message = (
+                    f"文本已解析为 {len(chunks)} 个切片, "
+                    f"但向量化失败: {error_msg}。"
+                    f"请检查 backend/.env 中 EMBEDDING_API_KEY 是否正确配置。"
+                )
+            else:
+                doc.parse_status = "chunked"
+                doc.error_message = (
+                    f"文本已解析为 {len(chunks)} 个切片, 但向量化失败: {error_msg}"
+                )
+            logger.warning(f"向量化失败但切片已保存: {document_id}, 原因={error_msg}")
+
         await db.commit()
 
-        logger.info(f"文档处理流水线完成: {document_id}, 切片数={len(chunks)}")
-
     except Exception as e:
-        logger.error(f"文档处理失败: {document_id}, 错误={e}")
+        error_msg = str(e)
+        logger.error(f"文档处理失败: {document_id}, 错误={error_msg}")
         doc.parse_status = "failed"
-        doc.error_message = str(e)
+        doc.error_message = error_msg
         await db.commit()

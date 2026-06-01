@@ -74,7 +74,7 @@ export interface Document {
   file_type: string
   file_size: number
   file_path: string
-  parse_status: 'pending' | 'processing' | 'done' | 'failed'
+  parse_status: 'pending' | 'processing' | 'done' | 'failed' | 'chunked'
   chunk_count: number
   error_message: string | null
   created_at: string

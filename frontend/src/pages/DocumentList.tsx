@@ -27,6 +27,7 @@ const statusMap: Record<string, { label: string; color: string }> = {
   processing: { label: '解析中', color: 'processing' },
   done: { label: '已完成', color: 'success' },
   failed: { label: '失败', color: 'error' },
+  chunked: { label: '待向量化', color: 'warning' },
 }
 
 /** 文件大小格式化 */
