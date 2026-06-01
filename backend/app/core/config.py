@@ -11,6 +11,7 @@ class Settings(BaseSettings):
     """
     全局应用配置
     所有配置项均可通过环境变量或 .env 文件覆盖
+    LLM 和 Embedding 拆分为独立配置, 可分别接入不同服务商
     """
 
     # 应用基础配置
@@ -29,9 +30,16 @@ class Settings(BaseSettings):
     # Chroma 向量数据库持久化目录
     chroma_persist_dir: str = "./chroma_data"
 
-    # OpenAI API 配置
-    openai_api_key: str = "sk-your-api-key-here"
-    openai_api_base: str = "https://api.openai.com/v1"
+    # ============ LLM 大语言模型配置 ============
+    # 用于对话、资源生成、画像抽取等 (Phase 2+)
+    llm_api_key: str = "sk-your-llm-key-here"
+    llm_api_base: str = "https://api.deepseek.com"
+    llm_model: str = "deepseek-chat"
+
+    # ============ Embedding 嵌入模型配置 ============
+    # 用于知识库向量化和语义检索 (Phase 1 即需要)
+    embedding_api_key: str = "sk-your-embedding-key-here"
+    embedding_api_base: str = "https://api.openai.com/v1"
     embedding_model: str = "text-embedding-3-small"
 
     # 文件上传配置
