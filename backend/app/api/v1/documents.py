@@ -146,6 +146,35 @@ async def list_documents(
     return ApiResponse(data=paginated)
 
 
+@router.get("/knowledge-points", response_model=ApiResponse[list], summary="获取课程所有知识点(供关联选择)")
+async def get_course_knowledge_points(
+    course_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    获取课程下所有知识点 (含章节信息), 用于切片关联时的下拉选择
+    """
+    from app.models.course import KnowledgePoint, Chapter
+    stmt = (
+        select(KnowledgePoint, Chapter.title)
+        .join(Chapter, KnowledgePoint.chapter_id == Chapter.id)
+        .where(Chapter.course_id == course_id)
+        .order_by(Chapter.order_index)
+    )
+    result = await db.execute(stmt)
+    rows = result.all()
+    items = [
+        {
+            "knowledge_point_id": str(kp.id),
+            "title": kp.title,
+            "chapter_title": chapter_title,
+            "chapter_id": str(kp.chapter_id),
+        }
+        for kp, chapter_title in rows
+    ]
+    return ApiResponse(data=items)
+
+
 @router.get("/{document_id}", response_model=ApiResponse[DocumentDetailResponse], summary="文档详情")
 async def get_document(
     course_id: uuid.UUID,
@@ -178,6 +207,32 @@ async def get_document(
         updated_at=document.updated_at,
     )
     return ApiResponse(data=detail)
+
+
+@router.put("/chunks/{chunk_id}/link", response_model=ApiResponse, summary="关联切片到知识点")
+async def link_chunk_to_kp(
+    course_id: uuid.UUID,
+    chunk_id: uuid.UUID,
+    knowledge_point_id: uuid.UUID = Query(..., description="知识点 ID"),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    将文档切片关联到指定知识点
+    关联后检索结果可展示结构化来源 (章节/知识点)
+    """
+    chunk = await db.get(DocumentChunk, chunk_id)
+    if not chunk:
+        raise HTTPException(status_code=404, detail="切片不存在")
+
+    # 校验知识点存在
+    from app.models.course import KnowledgePoint
+    kp = await db.get(KnowledgePoint, knowledge_point_id)
+    if not kp:
+        raise HTTPException(status_code=404, detail="知识点不存在")
+
+    chunk.knowledge_point_id = knowledge_point_id
+    await db.commit()
+    return ApiResponse(message="切片已关联到知识点")
 
 
 @router.delete("/{document_id}", response_model=ApiResponse, summary="删除文档")

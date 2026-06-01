@@ -143,6 +143,24 @@ export async function deleteDocument(courseId: string, documentId: string) {
   await api.delete(`/courses/${courseId}/documents/${documentId}`)
 }
 
+/** 获取课程下所有知识点 (供切片关联选择) */
+export async function getCourseKnowledgePoints(courseId: string) {
+  const res = await api.get<ApiResponse<Array<{
+    knowledge_point_id: string
+    title: string
+    chapter_title: string
+    chapter_id: string
+  }>>>(`/courses/${courseId}/documents/knowledge-points`)
+  return res.data.data!
+}
+
+/** 关联切片到知识点 */
+export async function linkChunkToKp(courseId: string, chunkId: string, knowledgePointId: string) {
+  await api.put(`/courses/${courseId}/documents/chunks/${chunkId}/link`, null, {
+    params: { knowledge_point_id: knowledgePointId },
+  })
+}
+
 // ==================== 检索 API ====================
 
 /** RAG 语义检索 */

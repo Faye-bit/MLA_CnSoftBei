@@ -19,8 +19,7 @@ import {
   Table,
   Popconfirm,
   Tag,
-  Row,
-  Col,
+  Steps,
 } from 'antd'
 import {
   PlusOutlined,
@@ -28,6 +27,7 @@ import {
   FileTextOutlined,
   UploadOutlined,
   SearchOutlined,
+  CheckCircleOutlined,
 } from '@ant-design/icons'
 import {
   getCourseDetail,
@@ -197,24 +197,55 @@ export default function CourseDetailPage() {
         </Space>
       </div>
 
+      {/* 工作流步骤引导 */}
+      <Card size="small" style={{ marginBottom: 16 }}>
+        <Steps
+          size="small"
+          current={
+            course.chapter_count === 0 ? 0
+            : course.document_count === 0 ? 1
+            : 2
+          }
+          items={[
+            {
+              title: '创建章节与知识点',
+              description: '构建课程知识结构',
+              icon: course.chapter_count > 0 ? <CheckCircleOutlined style={{ color: '#52c41a' }} /> : undefined,
+              status: course.chapter_count > 0 ? 'finish' : 'process',
+            },
+            {
+              title: '上传课程文档',
+              description: '上传讲义/课件/教材',
+              status: course.chapter_count > 0 ? (course.document_count > 0 ? 'finish' : 'process') : 'wait',
+            },
+            {
+              title: '关联文档到知识点',
+              description: '在文档列表中将切片绑定到知识点',
+              status: course.document_count > 0 ? 'process' : 'wait',
+            },
+            {
+              title: '开始知识检索',
+              description: '基于知识库的智能问答',
+              status: 'wait',
+            },
+          ]}
+        />
+      </Card>
+
       {/* 课程统计 */}
-      <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
-        <Col xs={24}>
-          <Card size="small">
-            <Space size={24}>
-              <span>
-                <strong>{course.chapter_count}</strong> 个章节
-              </span>
-              <span>
-                <strong>{course.document_count}</strong> 份文档
-              </span>
-              <span>
-                创建时间: {new Date(course.created_at).toLocaleDateString('zh-CN')}
-              </span>
-            </Space>
-          </Card>
-        </Col>
-      </Row>
+      <Card size="small" style={{ marginBottom: 24 }}>
+        <Space size={24}>
+          <span>
+            <strong>{course.chapter_count}</strong> 个章节
+          </span>
+          <span>
+            <strong>{course.document_count}</strong> 份文档
+          </span>
+          <span>
+            创建时间: {new Date(course.created_at).toLocaleDateString('zh-CN')}
+          </span>
+        </Space>
+      </Card>
 
       {/* 章节列表 */}
       <Card
