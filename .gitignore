@@ -30,3 +30,5 @@ frontend/dist/
 # Docker
 pgdata/
 .playwright-mcp/
+OS_PDF/
+backend/.vite/
