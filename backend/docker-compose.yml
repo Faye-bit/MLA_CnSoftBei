@@ -1,0 +1,29 @@
+# MLA 多学助手 - 开发环境基础设施
+# 启动: docker-compose up -d
+# 停止: docker-compose down -v
+
+services:
+  # PostgreSQL 数据库 (内置 pgvector 向量扩展)
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: mla-postgres
+    environment:
+      POSTGRES_USER: mla
+      POSTGRES_PASSWORD: mla123
+      POSTGRES_DB: mla_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    restart: unless-stopped
+
+  # Redis 缓存 (后续 Celery 任务队列复用)
+  redis:
+    image: redis:7-alpine
+    container_name: mla-redis
+    ports:
+      - "6379:6379"
+    restart: unless-stopped
+
+volumes:
+  pgdata:

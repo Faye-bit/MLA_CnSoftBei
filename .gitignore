@@ -1,0 +1,31 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+.venv/
+venv/
+
+# Environment
+.env
+backend/.env
+
+# Uploads & Data
+backend/uploads/*
+backend/chroma_data/*
+!backend/uploads/.gitkeep
+!backend/chroma_data/.gitkeep
+
+# Node
+node_modules/
+frontend/dist/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+
+# Docker
+pgdata/

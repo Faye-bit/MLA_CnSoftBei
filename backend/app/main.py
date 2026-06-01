@@ -1,0 +1,66 @@
+"""
+MLA (Multiple Learning Agent) 多学助手 - FastAPI 应用入口
+启动: uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+"""
+
+from contextlib import asynccontextmanager
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from app.core.config import settings
+from app.core.database import init_db, close_db
+from app.api.v1.router import api_v1_router
+from loguru import logger
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """
+    FastAPI 应用生命周期管理
+    启动时: 初始化数据库表
+    关闭时: 释放数据库连接
+    """
+    logger.info(f"{settings.app_name} v{settings.app_version} 启动中...")
+    await init_db()
+    logger.info("数据库表初始化完成")
+    yield
+    await close_db()
+    logger.info(f"{settings.app_name} 已关闭")
+
+
+app = FastAPI(
+    title=f"{settings.app_name} - 多学助手",
+    description="面向高校专业课程的个性化学习资源生成与智能辅导平台",
+    version=settings.app_version,
+    lifespan=lifespan,
+    docs_url="/docs",
+    redoc_url="/redoc",
+)
+
+# CORS 跨域配置 (开发阶段允许所有来源)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# 注册 v1 API 路由
+app.include_router(api_v1_router)
+
+
+@app.get("/", tags=["系统"])
+async def root():
+    """ 根路径: 返回系统基本信息 """
+    return {
+        "name": settings.app_name,
+        "version": settings.app_version,
+        "docs": "/docs",
+        "status": "running",
+    }
+
+
+@app.get("/health", tags=["系统"])
+async def health_check():
+    """ 健康检查接口 """
+    return {"status": "healthy"}

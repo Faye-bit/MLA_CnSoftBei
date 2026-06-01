@@ -1,0 +1,36 @@
+# FastAPI 核心
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+
+# 数据库
+sqlalchemy[asyncio]==2.0.36
+asyncpg==0.30.0
+alembic==1.14.0
+
+# 数据校验
+pydantic==2.10.3
+pydantic-settings==2.7.0
+
+# 文件上传
+python-multipart==0.0.18
+aiofiles==24.1.0
+
+# 文档解析
+PyMuPDF==1.25.1
+python-docx==1.1.2
+python-pptx==1.0.2
+unstructured==0.16.11
+
+# 向量数据库
+chromadb==0.5.23
+
+# AI / Embedding
+openai==1.57.0
+
+# 缓存与任务队列
+redis==5.2.1
+celery==5.4.0
+
+# 工具
+httpx==0.28.1
+loguru==0.7.3
