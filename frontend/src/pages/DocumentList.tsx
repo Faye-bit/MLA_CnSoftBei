@@ -5,12 +5,21 @@
 
 import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
-import { Table, Tag, Typography, Popconfirm, message, Space, Button, Drawer, Select, Alert } from 'antd'
-import { DeleteOutlined, EyeOutlined, LinkOutlined } from '@ant-design/icons'
-import { getDocuments, deleteDocument, getDocumentDetail, getCourseKnowledgePoints, linkChunkToKp } from '../services/api'
-import type { Document, DocumentDetail } from '../types'
+import { Table, Tag, Typography, Popconfirm, message, Space, Button, Drawer, Select, Alert, Modal, List, Checkbox } from 'antd'
+import { DeleteOutlined, EyeOutlined, LinkOutlined, ThunderboltOutlined, PlusOutlined } from '@ant-design/icons'
+import { getDocuments, deleteDocument, getDocumentDetail, getCourseKnowledgePoints, linkChunkToKp, extractKP, createExtractedKP, getChapters } from '../services/api'
+import type { Document, DocumentDetail, Chapter } from '../types'
 
 const { Title, Text } = Typography
+
+/** 提取的知识点预览类型 */
+interface ExtractedKP {
+  title: string
+  description: string
+  difficulty: string
+  chunk_ids: string[]
+  selected: boolean
+}
 
 /** 文件类型对应的颜色 */
 const typeColorMap: Record<string, string> = {
@@ -60,6 +69,15 @@ export default function DocumentList() {
   // 知识点关联
   const [kpOptions, setKpOptions] = useState<KpOption[]>([])
   const [linkingChunks, setLinkingChunks] = useState<Set<string>>(new Set())
+
+  // 自动提取知识点
+  const [extractModalOpen, setExtractModalOpen] = useState(false)
+  const [extractChapterId, setExtractChapterId] = useState<string | undefined>()
+  const [chapters, setChapters] = useState<Chapter[]>([])
+  const [extracting, setExtracting] = useState(false)
+  const [extractedKPs, setExtractedKPs] = useState<ExtractedKP[]>([])
+  const [creating, setCreating] = useState(false)
+  const [currentExtractDocId, setCurrentExtractDocId] = useState<string | null>(null)
 
   /** 加载文档列表 */
   async function loadDocuments(p = 1) {
@@ -132,6 +150,71 @@ export default function DocumentList() {
         next.delete(chunkId)
         return next
       })
+    }
+  }
+
+  /** 打开自动提取模态框, 同时加载章节列表 */
+  async function handleOpenExtract(docId: string) {
+    if (!id) return
+    setCurrentExtractDocId(docId)
+    setExtractModalOpen(true)
+    setExtractedKPs([])
+    setExtractChapterId(undefined)
+    try {
+      const data = await getChapters(id)
+      setChapters(data)
+    } catch {
+      message.error('加载章节列表失败')
+    }
+  }
+
+  /** 执行 LLM 提取知识点 */
+  async function handleExtract() {
+    if (!id || !currentExtractDocId || !extractChapterId) {
+      message.warning('请先选择目标章节')
+      return
+    }
+    setExtracting(true)
+    try {
+      const data = await extractKP(id, currentExtractDocId, extractChapterId)
+      const kps = (data.kp_list || []).map((kp) => ({
+        ...kp,
+        selected: true,
+      }))
+      setExtractedKPs(kps)
+      if (kps.length === 0) {
+        message.info('LLM 未从文档中识别到新知识点')
+      } else {
+        message.success(`提取到 ${kps.length} 个知识点, 请确认后创建`)
+      }
+    } catch (err) {
+      message.error('提取失败: ' + (err as Error).message)
+    } finally {
+      setExtracting(false)
+    }
+  }
+
+  /** 批量创建确认的知识点 */
+  async function handleCreateKPs() {
+    if (!id || !currentExtractDocId || !extractChapterId) return
+    const selected = extractedKPs.filter((kp) => kp.selected)
+    if (selected.length === 0) {
+      message.warning('请至少选择一个知识点')
+      return
+    }
+    setCreating(true)
+    try {
+      await createExtractedKP(id, currentExtractDocId, extractChapterId, selected)
+      message.success(`已创建 ${selected.length} 个知识点并关联切片`)
+      setExtractModalOpen(false)
+      // 刷新文档详情和知识点列表
+      if (currentExtractDocId) {
+        handleViewDetail(currentExtractDocId)
+      }
+    } catch (err) {
+      message.error('创建失败: ' + (err as Error).message)
+    } finally {
+      setCreating(false)
     }
   }
 
@@ -283,12 +366,27 @@ export default function DocumentList() {
             {kpOptions.length === 0 && (
               <Alert
                 message="尚未创建知识点"
-                description="请先在课程详情页创建章节和知识点，然后回到这里将切片与知识点关联。"
+                description="请先在课程详情页创建章节和知识点，或者使用下方的「自动提取」功能让 AI 帮你从文档中提取知识点。"
                 type="warning"
                 showIcon
                 style={{ marginBottom: 16 }}
               />
             )}
+
+            {/* 自动提取知识点按钮 */}
+            <div style={{ marginBottom: 16 }}>
+              <Button
+                type="primary"
+                ghost
+                icon={<ThunderboltOutlined />}
+                onClick={() => handleOpenExtract(selectedDoc.id)}
+              >
+                AI 自动提取知识点
+              </Button>
+              <Text type="secondary" style={{ marginLeft: 8, fontSize: 12 }}>
+                LLM 阅读文档切片, 自动识别知识点并关联
+              </Text>
+            </div>
 
             <Title level={5}>
               文本切片 ({selectedDoc.chunks.length})
@@ -367,6 +465,104 @@ export default function DocumentList() {
           </div>
         )}
       </Drawer>
+
+      {/* 自动提取知识点模态框 */}
+      <Modal
+        title="AI 自动提取知识点"
+        open={extractModalOpen}
+        onCancel={() => setExtractModalOpen(false)}
+        width={640}
+        footer={null}
+      >
+        {/* 步骤1: 选择章节 + 开始提取 */}
+        <div style={{ marginBottom: 16 }}>
+          <Text strong>目标章节：</Text>
+          <Select
+            placeholder="选择知识点所属章节"
+            value={extractChapterId}
+            onChange={setExtractChapterId}
+            style={{ minWidth: 280, marginLeft: 8 }}
+            options={chapters.map((ch) => ({
+              label: ch.title,
+              value: ch.id,
+            }))}
+          />
+          <Button
+            type="primary"
+            icon={<ThunderboltOutlined />}
+            onClick={handleExtract}
+            loading={extracting}
+            disabled={!extractChapterId}
+            style={{ marginLeft: 12 }}
+          >
+            开始提取
+          </Button>
+        </div>
+
+        {/* 步骤2: 预览结果 */}
+        {extracting && (
+          <div style={{ textAlign: 'center', padding: 40 }}>
+            <Text type="secondary">正在调用 LLM 分析文档内容, 请稍候...</Text>
+          </div>
+        )}
+
+        {extractedKPs.length > 0 && (
+          <>
+            <Alert
+              message={`提取到 ${extractedKPs.length} 个知识点, 请确认后创建 (可取消不需要的)`}
+              type="success"
+              showIcon
+              style={{ marginBottom: 12 }}
+            />
+            <List
+              dataSource={extractedKPs}
+              renderItem={(item, index) => (
+                <List.Item
+                  style={{ padding: '8px 0' }}
+                >
+                  <div style={{ width: '100%' }}>
+                    <Checkbox
+                      checked={item.selected}
+                      onChange={(e) => {
+                        const updated = [...extractedKPs]
+                        updated[index] = { ...item, selected: e.target.checked }
+                        setExtractedKPs(updated)
+                      }}
+                    >
+                      <Text strong>{item.title}</Text>
+                      <Tag
+                        color={item.difficulty === 'easy' ? 'green' : item.difficulty === 'medium' ? 'blue' : 'red'}
+                        style={{ marginLeft: 8 }}
+                      >
+                        {item.difficulty === 'easy' ? '简单' : item.difficulty === 'medium' ? '中等' : '困难'}
+                      </Tag>
+                      {item.chunk_ids.length > 0 && (
+                        <Tag>{item.chunk_ids.length} 个关联切片</Tag>
+                      )}
+                    </Checkbox>
+                    <div style={{ marginLeft: 28, color: '#8c8c8c', fontSize: 13, marginTop: 2 }}>
+                      {item.description || '暂无描述'}
+                    </div>
+                  </div>
+                </List.Item>
+              )}
+            />
+            <div style={{ marginTop: 16, textAlign: 'right' }}>
+              <Button onClick={() => setExtractModalOpen(false)} style={{ marginRight: 8 }}>
+                取消
+              </Button>
+              <Button
+                type="primary"
+                icon={<PlusOutlined />}
+                onClick={handleCreateKPs}
+                loading={creating}
+              >
+                创建选中的知识点
+              </Button>
+            </div>
+          </>
+        )}
+      </Modal>
     </div>
   )
 }

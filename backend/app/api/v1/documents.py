@@ -25,6 +25,7 @@ from app.schemas.document import (
 )
 from app.services.document_parser import detect_file_type
 from app.services.retriever import process_document
+from app.services.kp_extractor import extract_knowledge_points, batch_create_knowledge_points
 
 router = APIRouter(prefix="/courses/{course_id}/documents", tags=["文档管理"])
 
@@ -268,3 +269,63 @@ async def delete_document(
     await db.delete(document)
     await db.commit()
     return ApiResponse(message="文档已删除, 关联切片和向量数据已清理")
+
+
+@router.post("/{document_id}/extract-kp", response_model=ApiResponse[dict], summary="从文档自动提取知识点")
+async def extract_kp_from_document(
+    course_id: uuid.UUID,
+    document_id: uuid.UUID,
+    chapter_id: uuid.UUID = Query(..., description="目标章节 ID, 提取的知识点将创建到此章节下"),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    LLM 读取文档切片内容, 自动识别并提取结构化知识点
+    提取结果包含知识点名称、描述、难度和关联的切片列表
+    前端可展示预览让用户确认后再批量创建
+    """
+    # 确认文档存在且属于该课程
+    document = await db.get(Document, document_id)
+    if not document or document.course_id != course_id:
+        raise HTTPException(status_code=404, detail="文档不存在")
+    if document.chunk_count == 0:
+        raise HTTPException(status_code=400, detail="文档尚未完成解析, 无切片可用")
+
+    try:
+        kp_list = await extract_knowledge_points(
+            document_id=document_id,
+            chapter_id=chapter_id,
+            db=db,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except RuntimeError as e:
+        raise HTTPException(status_code=502, detail=str(e))
+
+    return ApiResponse(
+        data={"kp_list": kp_list, "chapter_id": str(chapter_id)},
+        message=f"提取完成, 共识别 {len(kp_list)} 个知识点",
+    )
+
+
+@router.post("/{document_id}/create-kp", response_model=ApiResponse[dict], summary="批量创建提取的知识点")
+async def create_extracted_kp(
+    course_id: uuid.UUID,
+    document_id: uuid.UUID,
+    body: dict,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    将用户确认后的知识点批量写入数据库, 并自动关联切片
+    Body: {"chapter_id": "uuid", "kp_list": [{title, description, difficulty, chunk_ids}]}
+    """
+    chapter_id = uuid.UUID(body["chapter_id"])
+    kp_list = body.get("kp_list", [])
+
+    if not kp_list:
+        raise HTTPException(status_code=400, detail="知识点列表为空")
+
+    created = await batch_create_knowledge_points(chapter_id, kp_list, db)
+    return ApiResponse(
+        data={"created_count": len(created)},
+        message=f"成功创建 {len(created)} 个知识点并关联切片",
+    )

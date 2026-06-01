@@ -161,6 +161,31 @@ export async function linkChunkToKp(courseId: string, chunkId: string, knowledge
   })
 }
 
+/** 从文档自动提取知识点 */
+export async function extractKP(courseId: string, documentId: string, chapterId: string) {
+  const res = await api.post<ApiResponse<{
+    kp_list: Array<{ title: string; description: string; difficulty: string; chunk_ids: string[] }>
+    chapter_id: string
+  }>>(`/courses/${courseId}/documents/${documentId}/extract-kp`, null, {
+    params: { chapter_id: chapterId },
+  })
+  return res.data.data!
+}
+
+/** 批量创建提取的知识点 */
+export async function createExtractedKP(
+  courseId: string,
+  documentId: string,
+  chapterId: string,
+  kpList: Array<{ title: string; description: string; difficulty: string; chunk_ids: string[] }>,
+) {
+  const res = await api.post<ApiResponse<{ created_count: number }>>(
+    `/courses/${courseId}/documents/${documentId}/create-kp`,
+    { chapter_id: chapterId, kp_list: kpList },
+  )
+  return res.data.data!
+}
+
 // ==================== 检索 API ====================
 
 /** RAG 语义检索 */
