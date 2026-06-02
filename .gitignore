@@ -32,3 +32,4 @@ pgdata/
 .playwright-mcp/
 OS_PDF/
 backend/.vite/
+Sessions/

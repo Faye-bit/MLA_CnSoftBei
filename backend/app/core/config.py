@@ -18,14 +18,9 @@ class Settings(BaseSettings):
     app_name: str = "MLA"
     app_version: str = "0.1.0"
     debug: bool = True
-    secret_key: str = "change-me-to-a-random-secret-key"
 
-    # 数据库连接 (异步 + 同步)
+    # 数据库连接 (异步)
     database_url: str = "postgresql+asyncpg://mla:mla123@localhost:5432/mla_db"
-    database_url_sync: str = "postgresql://mla:mla123@localhost:5432/mla_db"
-
-    # Redis 连接
-    redis_url: str = "redis://localhost:6379/0"
 
     # Chroma 向量数据库持久化目录
     chroma_persist_dir: str = "./chroma_data"
