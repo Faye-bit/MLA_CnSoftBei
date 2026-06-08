@@ -7,6 +7,7 @@
 import { Upload, message, Tag, Space } from 'antd'
 import { InboxOutlined } from '@ant-design/icons'
 import type { UploadProps } from 'antd'
+import { useAuthStore } from '../../store'
 
 const { Dragger } = Upload
 
@@ -32,21 +33,28 @@ interface FileUploadProps {
 }
 
 export default function FileUpload({ action, onSuccess, onError }: FileUploadProps) {
+  const token = useAuthStore((s) => s.token)
+
   const uploadProps: UploadProps = {
     name: 'file',
     multiple: false,
     accept: ACCEPTED_TYPES,
     action,
     showUploadList: true,
-    // 覆盖默认的上传行为, 使用 axios
+    // 覆盖默认的上传行为, 手动发 fetch 并附 JWT Token
     customRequest: async (options) => {
       const { file, onSuccess: uploadSuccess, onError: uploadError } = options
       const formData = new FormData()
       formData.append('file', file as File)
 
       try {
+        const headers: Record<string, string> = {}
+        if (token) {
+          headers['Authorization'] = `Bearer ${token}`
+        }
         const response = await fetch(action, {
           method: 'POST',
+          headers,
           body: formData,
         })
         const result = await response.json()

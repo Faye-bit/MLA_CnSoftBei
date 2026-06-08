@@ -16,6 +16,7 @@ from app.core.database import get_db
 from app.core.config import settings
 from app.models.course import Course
 from app.models.document import Document, DocumentChunk
+from app.models.user import User
 from app.schemas.common import PaginatedResponse, ApiResponse
 from app.schemas.document import (
     DocumentResponse,
@@ -26,8 +27,19 @@ from app.schemas.document import (
 from app.services.document_parser import detect_file_type
 from app.services.retriever import process_document
 from app.services.kp_extractor import extract_knowledge_points, batch_create_knowledge_points
+from app.api.deps import get_current_user
 
 router = APIRouter(prefix="/courses/{course_id}/documents", tags=["文档管理"])
+
+
+async def _verify_course_owner(
+    course_id: uuid.UUID, user: User, db: AsyncSession,
+) -> Course:
+    """ 验证课程存在且属于当前用户, 否则返回 404 """
+    course = await db.get(Course, course_id)
+    if not course or course.created_by != user.id:
+        raise HTTPException(status_code=404, detail="课程不存在")
+    return course
 
 
 @router.post("/upload", response_model=ApiResponse[DocumentUploadResponse], summary="上传文档")
@@ -35,16 +47,12 @@ async def upload_document(
     course_id: uuid.UUID,
     file: UploadFile = File(..., description="课程资料文件 (PDF/DOCX/PPTX/MD/TXT)"),
     db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
     """
-    上传课程资料文件并触发异步解析流水线
-    支持格式: PDF, DOCX, PPTX, Markdown, TXT
-    最大文件大小由 MAX_UPLOAD_SIZE_MB 配置控制
+    上传课程资料文件并触发解析流水线, 仅课程所有者可操作
     """
-    # 1. 确认课程存在
-    course = await db.get(Course, course_id)
-    if not course:
-        raise HTTPException(status_code=404, detail="课程不存在")
+    await _verify_course_owner(course_id, current_user, db)
 
     # 2. 校验文件名
     if not file.filename:
@@ -116,12 +124,10 @@ async def list_documents(
     page: int = Query(default=1, ge=1, description="页码"),
     page_size: int = Query(default=20, ge=1, le=100, description="每页数量"),
     db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
-    """ 分页查询课程下的文档列表, 显示解析状态 """
-    # 确认课程存在
-    course = await db.get(Course, course_id)
-    if not course:
-        raise HTTPException(status_code=404, detail="课程不存在")
+    """ 分页查询课程文档列表, 仅课程所有者可访问 """
+    await _verify_course_owner(course_id, current_user, db)
 
     # 查询总数
     count_query = select(func.count(Document.id)).where(Document.course_id == course_id)
@@ -151,7 +157,9 @@ async def list_documents(
 async def get_course_knowledge_points(
     course_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
+    await _verify_course_owner(course_id, current_user, db)
     """
     获取课程下所有知识点 (含章节信息), 用于切片关联时的下拉选择
     """
@@ -181,8 +189,10 @@ async def get_document(
     course_id: uuid.UUID,
     document_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
-    """ 获取文档详情, 包含切片列表 """
+    """ 获取文档详情, 仅课程所有者可访问 """
+    await _verify_course_owner(course_id, current_user, db)
     stmt = (
         select(Document)
         .where(Document.id == document_id, Document.course_id == course_id)
@@ -216,7 +226,9 @@ async def link_chunk_to_kp(
     chunk_id: uuid.UUID,
     knowledge_point_id: uuid.UUID = Query(..., description="知识点 ID"),
     db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
+    await _verify_course_owner(course_id, current_user, db)
     """
     将文档切片关联到指定知识点
     关联后检索结果可展示结构化来源 (章节/知识点)
@@ -241,7 +253,9 @@ async def delete_document(
     course_id: uuid.UUID,
     document_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
+    await _verify_course_owner(course_id, current_user, db)
     """
     删除文档及其关联的切片和向量数据
     同时清理本地存储文件
@@ -275,9 +289,11 @@ async def delete_document(
 async def extract_kp_from_document(
     course_id: uuid.UUID,
     document_id: uuid.UUID,
-    chapter_id: uuid.UUID = Query(..., description="目标章节 ID, 提取的知识点将创建到此章节下"),
+    chapter_id: uuid.UUID = Query(..., description="目标章节 ID"),
     db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
+    await _verify_course_owner(course_id, current_user, db)
     """
     LLM 读取文档切片内容, 自动识别并提取结构化知识点
     提取结果包含知识点名称、描述、难度和关联的切片列表
@@ -313,7 +329,9 @@ async def create_extracted_kp(
     document_id: uuid.UUID,
     body: dict,
     db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
+    await _verify_course_owner(course_id, current_user, db)
     """
     将用户确认后的知识点批量写入数据库, 并自动关联切片
     Body: {"chapter_id": "uuid", "kp_list": [{title, description, difficulty, chunk_ids}]}
