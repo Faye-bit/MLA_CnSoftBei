@@ -24,7 +24,7 @@ EXTRACT_SYSTEM_PROMPT = """你是一个专业的课程知识图谱构建助手�
    - difficulty: 难度 (easy/medium/hard)
 2. 只提取片段中明确涉及的知识点, 不要编造
 3. 如果片段不包含明确的知识点, 返回空列表
-4. 每个片段最多提取3个知识点
+4. 请自行判断应提取多少个知识点, 不要遗漏任何明确涉及的知识点
 
 输出格式: 严格的JSON数组, 不要包含任何解释文字
 [{"title": "知识点名", "description": "一句话描述", "difficulty": "easy|medium|hard"}]"""
@@ -34,7 +34,7 @@ async def extract_knowledge_points(
     document_id: uuid.UUID,
     chapter_id: uuid.UUID,
     db: AsyncSession,
-    max_chunks: int = 15,
+    max_chunks: int = 50,
 ) -> list[dict]:
     """
     从文档切片中自动提取知识点
@@ -80,8 +80,8 @@ async def extract_knowledge_points(
     chunks_text = ""
     chunk_map: dict[int, uuid.UUID] = {}  # 文本编号 → 切片ID
     for i, chunk in enumerate(chunks):
-        # 每条切片截取前800字符, 控制上下文长度
-        snippet = chunk.content[:800].replace("\n", " ")
+        # 拼接切片内容 (不截断, LLM 自行判断知识点)
+        snippet = chunk.content.replace("\n", " ")
         chunks_text += f"[片段{i+1}] {snippet}\n\n"
         chunk_map[i + 1] = chunk.id
 

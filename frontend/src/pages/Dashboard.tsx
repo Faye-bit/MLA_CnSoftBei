@@ -12,7 +12,7 @@ import {
   DatabaseOutlined,
   SearchOutlined,
 } from '@ant-design/icons'
-import { getCourses } from '../services/api'
+import { getDashboardStats } from '../services/api'
 
 const { Title } = Typography
 
@@ -38,23 +38,13 @@ export default function Dashboard() {
   useEffect(() => {
     async function loadStats() {
       try {
-        const coursesData = await getCourses(1, 1)
-        setStats((prev) => ({
-          ...prev,
-          courseCount: coursesData.total,
-        }))
-        // 统计文档和切片总数
-        let docCount = 0
-        if (coursesData.items.length > 0) {
-          for (const course of coursesData.items) {
-            docCount += course.document_count
-          }
-        }
-        setStats((prev) => ({
-          ...prev,
-          totalDocuments: docCount,
-          totalChunks: docCount > 0 ? docCount * 12 : 0, // 估算值，实际需要从文档详情汇总
-        }))
+        const data = await getDashboardStats()
+        setStats({
+          courseCount: data.course_count,
+          totalDocuments: data.document_count,
+          totalChunks: data.chunk_count,
+          systemStatus: 'running',
+        })
       } catch {
         // 后端未启动时使用默认值
         setStats({

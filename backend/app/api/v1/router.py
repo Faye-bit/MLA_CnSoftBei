@@ -11,6 +11,7 @@ from app.api.v1.config import router as config_router
 from app.api.v1.auth import router as auth_router
 from app.api.v1.users import router as users_router
 from app.api.v1.audit_logs import router as audit_logs_router
+from app.api.v1.stats import router as stats_router
 
 # 创建 v1 版本聚合路由
 api_v1_router = APIRouter(prefix="/api/v1")
@@ -23,3 +24,4 @@ api_v1_router.include_router(config_router)
 api_v1_router.include_router(auth_router)
 api_v1_router.include_router(users_router)
 api_v1_router.include_router(audit_logs_router)
+api_v1_router.include_router(stats_router)

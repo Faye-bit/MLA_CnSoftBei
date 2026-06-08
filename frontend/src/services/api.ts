@@ -101,6 +101,12 @@ export async function deleteCourse(courseId: string) {
   await api.delete(`/courses/${courseId}`)
 }
 
+/** 获取仪表盘统计数据 (课程/文档/切片总数) */
+export async function getDashboardStats() {
+  const res = await api.get<ApiResponse<{ course_count: number; document_count: number; chunk_count: number }>>('/stats/')
+  return res.data.data!
+}
+
 // ==================== 章节 API ====================
 
 /** 获取章节列表 */
