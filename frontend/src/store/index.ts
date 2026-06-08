@@ -17,6 +17,8 @@ interface AppState {
   setCurrentCourseId: (courseId: string | null) => void
 }
 
+export { useAuthStore } from './auth'
+
 export const useAppStore = create<AppState>((set) => ({
   sidebarCollapsed: false,
   toggleSidebar: () => set((state) => ({ sidebarCollapsed: !state.sidebarCollapsed })),

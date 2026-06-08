@@ -157,3 +157,107 @@ export interface KnowledgePointCreate {
   prerequisite_kp_id?: string
   difficulty?: 'easy' | 'medium' | 'hard'
 }
+
+// ==================== 认证相关 ====================
+
+/** 发送验证码请求 */
+export interface SendCodeRequest {
+  email: string
+  purpose: 'register' | 'reset_password'
+}
+
+/** 登录请求 */
+export interface LoginRequest {
+  email: string
+  password: string
+}
+
+/** 注册请求 */
+export interface RegisterRequest {
+  email: string
+  username: string
+  password: string
+  full_name?: string
+  school?: string
+  major?: string
+  grade?: string
+  education_level?: string
+  role: 'student' | 'teacher'
+  verification_code: string
+}
+
+/** 重置密码请求 */
+export interface ResetPasswordRequest {
+  email: string
+  verification_code: string
+  new_password: string
+}
+
+/** JWT Token 响应 */
+export interface TokenResponse {
+  access_token: string
+  token_type: string
+  user: UserInfo
+}
+
+// ==================== 用户相关 ====================
+
+/** 用户信息 */
+export interface UserInfo {
+  id: string
+  username: string
+  email: string
+  full_name: string | null
+  nickname: string | null
+  avatar: string | null
+  school: string | null
+  major: string | null
+  grade: string | null
+  education_level: string | null
+  role: 'student' | 'teacher' | 'admin'
+  email_verified: boolean
+  created_at: string | null
+  updated_at: string | null
+}
+
+/** 个人资料更新请求 */
+export interface UserProfileUpdate {
+  full_name?: string
+  nickname?: string
+  school?: string
+  major?: string
+  grade?: string
+  education_level?: string
+}
+
+/** 管理员更新用户请求 */
+export interface UserAdminUpdate {
+  full_name?: string
+  nickname?: string
+  school?: string
+  major?: string
+  grade?: string
+  education_level?: string
+  role?: 'student' | 'teacher' | 'admin'
+  email_verified?: boolean
+}
+
+/** 头像上传响应 */
+export interface AvatarUploadResponse {
+  avatar_url: string
+  message: string
+}
+
+// ==================== 审计日志 ====================
+
+/** 操作日志 */
+export interface AuditLog {
+  id: string
+  user_id: string | null
+  user_email: string | null
+  action: string
+  ip_address: string | null
+  user_agent: string | null
+  details: Record<string, unknown> | null
+  created_at: string | null
+}

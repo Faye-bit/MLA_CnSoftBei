@@ -19,7 +19,7 @@ aiofiles==24.1.0
 PyMuPDF==1.25.1
 python-docx==1.1.2
 python-pptx==1.0.2
-unstructured==0.16.11
+unstructured>=0.16.19
 
 # 向量数据库
 chromadb==0.5.23
@@ -30,6 +30,14 @@ openai==1.57.0
 # 缓存与任务队列
 redis==5.2.1
 celery==5.4.0
+
+# 认证与安全
+passlib[bcrypt]==1.7.4
+python-jose[cryptography]==3.3.0
+
+# 邮箱
+aiosmtplib==3.0.2
+email-validator==2.2.0
 
 # 工具
 httpx==0.28.1

@@ -45,6 +45,23 @@ class Settings(BaseSettings):
     chunk_size: int = 512
     chunk_overlap: int = 50
 
+    # ============ JWT 认证配置 ============
+    jwt_secret: str = "change-me-to-a-random-secret-in-production"
+    jwt_algorithm: str = "HS256"
+    jwt_expire_minutes: int = 60
+
+    # ============ 邮箱 SMTP 配置 (QQ邮箱) ============
+    smtp_host: str = "smtp.qq.com"
+    smtp_port: int = 587
+    smtp_user: str = "744585348@qq.com"
+    smtp_password: str = ""
+    smtp_from: str = "744585348@qq.com"
+    smtp_from_name: str = "MLA 多学助手"
+
+    # ============ 验证码配置 ============
+    verification_code_expire_minutes: int = 5
+    verification_code_cooldown_seconds: int = 60
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",

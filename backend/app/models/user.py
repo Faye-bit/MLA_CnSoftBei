@@ -4,8 +4,9 @@
 """
 
 import uuid
+from typing import Optional
 from datetime import datetime
-from sqlalchemy import String, DateTime, func
+from sqlalchemy import String, DateTime, Boolean, func
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 from app.core.database import Base
@@ -66,6 +67,21 @@ class User(Base):
     # 角色: student / teacher / admin
     role: Mapped[str] = mapped_column(
         String(20), nullable=False, default="student"
+    )
+
+    # 头像 URL: 上传到 uploads/avatars/ 后的相对路径
+    avatar: Mapped[Optional[str]] = mapped_column(
+        String(500), nullable=True
+    )
+
+    # 昵称: 显示名称, 默认使用 username
+    nickname: Mapped[Optional[str]] = mapped_column(
+        String(50), nullable=True
+    )
+
+    # 邮箱是否已验证 (通过验证码注册后为 True)
+    email_verified: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default="false"
     )
 
     # 创建时间

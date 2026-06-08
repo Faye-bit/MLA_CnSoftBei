@@ -4,8 +4,10 @@ MLA (Multiple Learning Agent) 多学助手 - FastAPI 应用入口
 """
 
 from contextlib import asynccontextmanager
+from pathlib import Path
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from app.core.config import settings
 from app.core.database import init_db, close_db
 from app.api.v1.router import api_v1_router
@@ -50,6 +52,11 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# 挂载头像静态文件目录
+avatars_dir = Path(settings.upload_dir) / "avatars"
+avatars_dir.mkdir(parents=True, exist_ok=True)
+app.mount("/uploads/avatars", StaticFiles(directory=str(avatars_dir)), name="avatars")
 
 # 注册 v1 API 路由
 app.include_router(api_v1_router)

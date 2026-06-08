@@ -4,6 +4,7 @@
  */
 
 import axios, { AxiosError } from 'axios'
+import { useAuthStore } from '../store'
 import type {
   ApiResponse,
   PaginatedResponse,
@@ -19,6 +20,16 @@ import type {
   CourseCreate,
   ChapterCreate,
   KnowledgePointCreate,
+  SendCodeRequest,
+  LoginRequest,
+  RegisterRequest,
+  ResetPasswordRequest,
+  TokenResponse,
+  UserInfo,
+  UserProfileUpdate,
+  UserAdminUpdate,
+  AvatarUploadResponse,
+  AuditLog,
 } from '../types'
 
 // 创建 axios 实例, 配置基础 URL 和超时
@@ -28,7 +39,19 @@ const api = axios.create({
   headers: { 'Content-Type': 'application/json' },
 })
 
-// 响应拦截器: 统一提取 data 字段
+// 请求拦截器: 自动附加 JWT Token 到 Authorization Header
+api.interceptors.request.use(
+  (config) => {
+    const token = useAuthStore.getState().token
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`
+    }
+    return config
+  },
+  (error) => Promise.reject(error)
+)
+
+// 响应拦截器: 统一处理 ApiResponse 和 401 Token 过期
 api.interceptors.response.use(
   (response) => {
     const body = response.data as ApiResponse<unknown>
@@ -38,8 +61,16 @@ api.interceptors.response.use(
     return response
   },
   (error: AxiosError<{ detail?: string }>) => {
-    const message = error.response?.data?.detail || error.message || '网络错误'
-    return Promise.reject(new Error(message))
+    if (error.response?.status === 401) {
+      // Token 过期才跳转登录页; 登录接口本身返回 401 时不跳转, 让页面显示错误提示
+      const wasAuthenticated = useAuthStore.getState().isAuthenticated
+      useAuthStore.getState().logout()
+      if (wasAuthenticated) {
+        window.location.href = '/login'
+      }
+    }
+    const msg = error.response?.data?.detail || error.message || '网络错误'
+    return Promise.reject(new Error(msg))
   }
 )
 
@@ -213,4 +244,111 @@ export async function getApiConfig(): Promise<{ items: ConfigItem[] }> {
 /** 更新配置 */
 export async function updateApiConfig(configs: Record<string, string>) {
   await api.put('/config/', configs)
+}
+
+// ==================== 认证 API ====================
+
+/** 发送邮箱验证码 */
+export async function sendVerificationCode(data: SendCodeRequest) {
+  await api.post<ApiResponse<null>>('/auth/send-code', data)
+}
+
+/** 用户注册 */
+export async function register(data: RegisterRequest) {
+  const res = await api.post<ApiResponse<UserInfo>>('/auth/register', data)
+  return res.data.data!
+}
+
+/** 用户登录 */
+export async function login(data: LoginRequest) {
+  const res = await api.post<ApiResponse<TokenResponse>>('/auth/login', data)
+  return res.data.data!
+}
+
+/** 重置密码 */
+export async function resetPassword(data: ResetPasswordRequest) {
+  await api.post<ApiResponse<null>>('/auth/reset-password', data)
+}
+
+/** 退出登录 (调用后端记录日志) */
+export async function logout() {
+  try {
+    await api.post<ApiResponse<null>>('/auth/logout')
+  } catch {
+    // 即使后端调用失败, 也继续执行前端清理
+  }
+}
+
+// ==================== 用户 API ====================
+
+/** 获取当前用户信息 */
+export async function getCurrentUser() {
+  const res = await api.get<ApiResponse<UserInfo>>('/users/me')
+  return res.data.data!
+}
+
+/** 更新个人资料 */
+export async function updateProfile(data: UserProfileUpdate) {
+  const res = await api.put<ApiResponse<UserInfo>>('/users/me', data)
+  return res.data.data!
+}
+
+/** 上传头像 */
+export async function uploadAvatar(file: File) {
+  const formData = new FormData()
+  formData.append('file', file)
+  const res = await api.post<ApiResponse<AvatarUploadResponse>>(
+    '/users/me/avatar',
+    formData,
+    { headers: { 'Content-Type': 'multipart/form-data' } }
+  )
+  return res.data.data!
+}
+
+/** 获取头像完整 URL */
+export function getAvatarUrl(avatarPath: string | null | undefined): string | null {
+  if (!avatarPath) return null
+  if (avatarPath.startsWith('http')) return avatarPath
+  return `http://localhost:8000${avatarPath}`
+}
+
+// ==================== 管理员 API ====================
+
+/** 获取用户列表 (管理员) */
+export async function getUsers(page = 1, pageSize = 20, keyword?: string) {
+  const params: Record<string, string | number> = { page, page_size: pageSize }
+  if (keyword) params.keyword = keyword
+  const res = await api.get<ApiResponse<PaginatedResponse<UserInfo>>>('/users/', { params })
+  return res.data.data!
+}
+
+/** 获取用户详情 (管理员) */
+export async function getUserById(userId: string) {
+  const res = await api.get<ApiResponse<UserInfo>>(`/users/${userId}`)
+  return res.data.data!
+}
+
+/** 管理员更新用户 */
+export async function adminUpdateUser(userId: string, data: UserAdminUpdate) {
+  const res = await api.put<ApiResponse<UserInfo>>(`/users/${userId}`, data)
+  return res.data.data!
+}
+
+/** 管理员删除用户 */
+export async function adminDeleteUser(userId: string) {
+  await api.delete<ApiResponse<null>>(`/users/${userId}`)
+}
+
+/** 获取操作日志 (管理员) */
+export async function getAuditLogs(
+  page = 1,
+  pageSize = 20,
+  action?: string,
+  userId?: string
+) {
+  const params: Record<string, string | number> = { page, page_size: pageSize }
+  if (action) params.action = action
+  if (userId) params.user_id = userId
+  const res = await api.get<ApiResponse<PaginatedResponse<AuditLog>>>('/audit-logs/', { params })
+  return res.data.data!
 }
