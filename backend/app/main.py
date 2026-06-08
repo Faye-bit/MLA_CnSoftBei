@@ -45,9 +45,16 @@ app = FastAPI(
 )
 
 # CORS 跨域配置 (开发阶段允许所有来源)
+# 注意: allow_credentials=True 时不能使用 allow_origins=["*"],
+# 必须明确指定允许的来源，否则浏览器会拦截跨域请求。
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=[
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+        "http://localhost:3000",
+        "http://localhost:4173",
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

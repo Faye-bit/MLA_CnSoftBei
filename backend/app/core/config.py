@@ -52,7 +52,7 @@ class Settings(BaseSettings):
 
     # ============ 邮箱 SMTP 配置 (QQ邮箱) ============
     smtp_host: str = "smtp.qq.com"
-    smtp_port: int = 587
+    smtp_port: int = 465
     smtp_user: str = "744585348@qq.com"
     smtp_password: str = ""
     smtp_from: str = "744585348@qq.com"
