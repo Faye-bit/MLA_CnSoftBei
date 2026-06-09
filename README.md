@@ -165,6 +165,18 @@ npm run dev
 
 访问 `http://localhost:5173` 打开前端界面。
 
+### 7. 关闭项目
+
+| 服务          | 关闭方式                               |
+|-------------|------------------------------------|
+| 后端（unicorn） | 终端按`Ctrl+C`                        |
+| 前端（Vite）    | 终端按`Ctrl+C`                        |
+| PostgreSQL  | `brew services stop postgresql@17` |
+| Redis       | `brew services stop redis`          |
+
+前端和后端是前台进程，直接 Ctrl+C 就停了。
+PostgreSQL 和 Redis 是后台服务，即使关掉终端也不会停，需要用 `brew services stop` 或 `brew services stop --all` 一次性停掉所有后台服务。
+
 ---
 
 ## Phase 1 完成清单

@@ -33,3 +33,11 @@ pgdata/
 OS_PDF/
 backend/.vite/
 Sessions/
+
+# vibeCoding
+.claude
+Claude.md
+
+# script
+start.sh
+stop.sh
