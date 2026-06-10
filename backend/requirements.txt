@@ -32,7 +32,8 @@ redis==5.2.1
 celery==5.4.0
 
 # 认证与安全
-passlib[bcrypt]==1.7.4
+passlib==1.7.4
+bcrypt==4.2.1
 python-jose[cryptography]==3.3.0
 
 # 邮箱

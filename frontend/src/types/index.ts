@@ -110,30 +110,51 @@ export interface DocumentUploadResponse {
 
 // ==================== 检索相关 ====================
 
-/** 检索请求 */
+/** 检索请求 (Phase 2 增强) */
 export interface RetrievalRequest {
   query: string
   course_id: string
   top_k?: number
+  /** 是否启用 LLM 增强处理 (提取观点、关键词、去重合并) */
+  enhance?: boolean
+  /** 相似度阈值 (0.0-1.0), 低于此分数的结果被隐藏, 默认 0.0 不过滤 */
+  similarity_threshold?: number
 }
 
-/** 单条检索结果 */
+/** 单条检索结果 (Phase 2 扩展: 章节/知识点关联 + LLM 增强) */
 export interface RetrievalResultItem {
   chunk_id: string
   document_id: string
   document_filename: string
+  /** 切片文本内容 (增强模式下已清洗) */
   content: string
   score: number
   chunk_index: number
   metadata: Record<string, unknown> | null
+  // Phase 2: 来源结构化上下文
+  chapter_title: string | null
+  chapter_id: string | null
+  knowledge_point_title: string | null
+  knowledge_point_id: string | null
+  // Phase 2: LLM 增强结果
+  /** AI 提取的核心观点 (一句话摘要) */
+  enhanced_summary: string | null
+  /** AI 提取的关键词列表 */
+  keywords: string[]
+  /** 查询关键词高亮位置 [{keyword, positions: [[start,end],...]}] */
+  highlights: Array<{ keyword: string; positions: Array<[number, number]> }>
 }
 
-/** 检索响应 */
+/** 检索响应 (Phase 2 扩展) */
 export interface RetrievalResponse {
   query: string
   course_id: string
   results: RetrievalResultItem[]
   total: number
+  /** 是否使用了 LLM 增强 */
+  enhanced: boolean
+  /** AI 自动去重合并的结果数 */
+  deduplicated_count: number
 }
 
 // ==================== 创建/更新请求类型 ====================
