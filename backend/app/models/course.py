@@ -116,6 +116,11 @@ class Chapter(Base):
         "KnowledgePoint", back_populates="chapter", cascade="all, delete-orphan"
     )
 
+    # 关联关系: 章节下的文档
+    documents: Mapped[List["Document"]] = relationship(
+        "Document", back_populates="chapter"
+    )
+
     def __repr__(self) -> str:
         return f"<Chapter(id={self.id}, title={self.title})>"
 
@@ -162,6 +167,11 @@ class KnowledgePoint(Base):
         String(20), nullable=False, default="medium"
     )
 
+    # 来源类型: 标记知识点是手动创建还是 LLM 自动提取
+    source_type: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="manual"
+    )  # "manual" | "auto"
+
     # 创建时间
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
@@ -175,6 +185,13 @@ class KnowledgePoint(Base):
     # 关联关系: 前置依赖知识点
     prerequisite_kp: Mapped[Optional["KnowledgePoint"]] = relationship(
         "KnowledgePoint", remote_side=[id], backref="dependent_kps"
+    )
+
+    # 关联关系: 知识点关联的页面 (多对多)
+    pages: Mapped[List["DocumentPage"]] = relationship(
+        "DocumentPage",
+        secondary="page_knowledge_points",
+        back_populates="knowledge_points",
     )
 
     def __repr__(self) -> str:

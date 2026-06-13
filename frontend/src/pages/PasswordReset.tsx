@@ -5,7 +5,7 @@
 
 import { useState, useCallback, useRef, useEffect } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { Form, Input, Button, Card, message, Typography, Divider, Steps } from 'antd'
+import { Form, Input, Button, Card, message, Typography, Divider } from 'antd'
 import { MailOutlined, LockOutlined, SafetyCertificateOutlined } from '@ant-design/icons'
 import { sendVerificationCode, resetPassword as resetPasswordApi } from '../services/api'
 

@@ -70,15 +70,31 @@ export interface KnowledgePoint {
 export interface Document {
   id: string
   course_id: string
+  chapter_id: string | null
   filename: string
   file_type: string
   file_size: number
   file_path: string
   parse_status: 'pending' | 'processing' | 'done' | 'failed' | 'chunked'
   chunk_count: number
+  page_count: number
+  kp_count: number
   error_message: string | null
   created_at: string
   updated_at: string
+}
+
+/** 文档页面 (PDF/PPTX 页面级索引) */
+export interface DocumentPage {
+  id: string
+  page_number: number
+  image_url: string
+  summary: string | null
+  /** LLM 提取的知识点原始数据 */
+  extracted_kps: Array<{ title: string; description: string; difficulty: 'easy' | 'medium' | 'hard' }>
+  /** 已关联的正式知识点 ID 列表 */
+  linked_kp_ids: string[]
+  created_at: string
 }
 
 /** 文档切片 */
@@ -93,9 +109,12 @@ export interface DocumentChunk {
   created_at: string
 }
 
-/** 文档详情 (含切片列表) */
+/** 文档详情 (根据 file_type 返回 pages 或 chunks) */
 export interface DocumentDetail extends Document {
   chunks: DocumentChunk[]
+  pages: DocumentPage[]
+  page_count: number
+  kp_count: number
 }
 
 /** 文档上传响应 */
@@ -145,7 +164,21 @@ export interface RetrievalResultItem {
   highlights: Array<{ keyword: string; positions: Array<[number, number]> }>
 }
 
-/** 检索响应 (Phase 2 扩展) */
+/** 页面级检索结果 (Phase 3: PDF/PPTX 文档) */
+export interface PageRetrievalResult {
+  result_type: 'page'
+  page_id: string
+  document_id: string
+  document_name: string
+  page_number: number
+  image_url: string
+  summary: string | null
+  score: number
+  /** 关联的知识点列表 */
+  knowledge_points: Array<{ id: string; title: string; description: string | null; difficulty: string }>
+}
+
+/** 检索响应 (Phase 3 扩展: 支持 page 和 chunk 两种结果类型) */
 export interface RetrievalResponse {
   query: string
   course_id: string
@@ -155,6 +188,9 @@ export interface RetrievalResponse {
   enhanced: boolean
   /** AI 自动去重合并的结果数 */
   deduplicated_count: number
+  // Phase 3: 页面级检索结果
+  page_results: PageRetrievalResult[]
+  page_total: number
 }
 
 // ==================== 创建/更新请求类型 ====================
@@ -281,4 +317,106 @@ export interface AuditLog {
   user_agent: string | null
   details: Record<string, unknown> | null
   created_at: string | null
+}
+
+// ==================== 对话相关 ====================
+
+/** 对话会话 */
+export interface Conversation {
+  id: string
+  user_id: string
+  course_id: string | null
+  title: string
+  conversation_type: 'chat' | 'profile_collection'
+  profile_collection_stage: string | null
+  message_count: number
+  created_at: string | null
+  updated_at: string | null
+}
+
+/** 对话详情 (含消息列表) */
+export interface ConversationDetail extends Conversation {
+  messages: Message[]
+}
+
+/** 消息 */
+export interface Message {
+  id: string
+  conversation_id: string
+  role: 'user' | 'assistant' | 'system'
+  content: string
+  sources: ChatSource[] | null
+  message_metadata: Record<string, unknown> | null
+  created_at: string | null
+}
+
+/** 知识库引用来源 */
+export interface ChatSource {
+  chunk_id: string
+  document_id: string
+  document_filename: string
+  content: string
+  score: number
+  chunk_index: number
+  /** 结果类型: "page" (PDF/PPTX 页面) 或 undefined (文本切片) */
+  result_type?: 'page'
+  /** 页码 (仅 page 类型) */
+  page_number?: number
+}
+
+/** 创建对话请求 */
+export interface ConversationCreate {
+  course_id?: string
+  title?: string
+  conversation_type?: 'chat' | 'profile_collection'
+}
+
+/** 发送消息请求 */
+export interface SendMessageRequest {
+  content: string
+  course_id?: string | null
+}
+
+// ==================== 学生画像相关 (描述式) ====================
+
+/** 完整画像数据 (6 个维度, 每个为自然语言描述文本) */
+export interface ProfileData {
+  academic_background: string
+  knowledge_basis: string
+  learning_goals: string
+  learning_preferences: string
+  weak_areas: string
+  interests: string
+  [key: string]: string
+}
+
+/** 学生画像 */
+export interface StudentProfile {
+  id: string
+  user_id: string
+  profile_data: ProfileData
+  missing_fields: string[]
+  summary: string | null
+  memories: string[]
+  version: number
+  created_at: string | null
+  updated_at: string | null
+}
+
+/** 画像更新请求 */
+export interface ProfileUpdateRequest {
+  profile_data?: Partial<ProfileData>
+  summary?: string
+}
+
+/** 画像提取请求 */
+export interface ProfileExtractionRequest {
+  conversation_id: string
+}
+
+/** 画像版本 */
+export interface ProfileVersion {
+  version: number
+  created_at: string | null
+  summary: string | null
 }

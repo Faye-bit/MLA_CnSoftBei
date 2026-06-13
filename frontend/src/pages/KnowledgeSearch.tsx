@@ -1,11 +1,9 @@
 /**
- * 知识检索页 (RAG) — Phase 2 增强版
+ * 知识检索页 (RAG) — Phase 3 增强版
  * 基于课程知识库的语义搜索, 支持选择课程、输入查询、展示来源引用
  *
- * Phase 2 新增功能:
- * - AI 增强模式开关: 启用后 LLM 二次加工, 提取核心观点和关键词
- * - 相似度阈值滑块: 隐藏低于阈值的结果, 减少噪音
- * - 增强结果卡片: 面包屑导航、关键词高亮、AI 摘要、去重提示
+ * Phase 3: 同时展示页面级检索结果 (PDF/PPTX 页面图片卡片)
+ * Phase 2: AI 增强模式开关、相似度阈值滑块、增强结果卡片
  */
 
 import { useState, useEffect } from 'react'
@@ -24,14 +22,15 @@ import {
   Space,
   Tooltip,
   Alert,
+  Image,
   message,
 } from 'antd'
-import { SearchOutlined, BulbOutlined, FilterOutlined } from '@ant-design/icons'
-import { getCourses, searchKnowledge } from '../services/api'
-import type { Course, RetrievalResultItem } from '../types'
+import { SearchOutlined, BulbOutlined, FilterOutlined, FileImageOutlined } from '@ant-design/icons'
+import { getCourses, searchKnowledge, getPageImageUrl } from '../services/api'
+import type { Course, RetrievalResultItem, PageRetrievalResult } from '../types'
 import EnhancedResultCard from '../components/common/EnhancedResultCard'
 
-const { Title, Text } = Typography
+const { Title, Text, Paragraph } = Typography
 
 export default function KnowledgeSearch() {
   // ==================== 状态管理 ====================
@@ -48,6 +47,9 @@ export default function KnowledgeSearch() {
   const [results, setResults] = useState<RetrievalResultItem[]>([])
   /** 是否已执行过检索 */
   const [hasSearched, setHasSearched] = useState(false)
+
+  // Phase 3: 页面级检索结果
+  const [pageResults, setPageResults] = useState<PageRetrievalResult[]>([])
 
   // Phase 2 新增状态
   /** 是否启用 AI 增强模式 */
@@ -98,11 +100,13 @@ export default function KnowledgeSearch() {
         similarity_threshold: similarityThreshold,
       })
       setResults(data?.results || [])
+      setPageResults(data?.page_results || [])
       setIsEnhanced(data?.enhanced || false)
       setDeduplicatedCount(data?.deduplicated_count || 0)
     } catch (err) {
       message.error('检索失败: ' + (err as Error).message)
       setResults([])
+      setPageResults([])
     } finally {
       setSearching(false)
     }
@@ -248,7 +252,7 @@ export default function KnowledgeSearch() {
         <div style={{ textAlign: 'center', padding: 60 }}>
           <Spin size="large" tip={enhanceMode ? 'AI 正在分析检索结果...' : '正在检索...'} />
         </div>
-      ) : hasSearched && results.length === 0 ? (
+      ) : hasSearched && results.length === 0 && pageResults.length === 0 ? (
         <Empty
           description={
             similarityThreshold > 0
@@ -258,17 +262,90 @@ export default function KnowledgeSearch() {
           style={{ padding: 60 }}
         />
       ) : (
-        <List
-          dataSource={results}
-          renderItem={(item) => (
-            <EnhancedResultCard
-              key={item.chunk_id}
-              item={item}
-              query={query}
-              isEnhanced={isEnhanced}
-            />
+        <>
+          {/* 页面级检索结果 (PDF/PPTX 文档) */}
+          {pageResults.length > 0 && (
+            <div style={{ marginBottom: 16 }}>
+              <Title level={5}>
+                <FileImageOutlined style={{ marginRight: 8 }} />
+                页面结果 ({pageResults.length})
+              </Title>
+              <List
+                dataSource={pageResults}
+                renderItem={(item) => (
+                  <Card
+                    hoverable
+                    size="small"
+                    style={{ marginBottom: 12 }}
+                    onClick={() => {
+                      window.open(item.image_url, '_blank')
+                    }}
+                  >
+                    <div style={{ display: 'flex', gap: 16 }}>
+                      {/* 页面缩略图 */}
+                      <div style={{ width: 160, minHeight: 120, flexShrink: 0, borderRadius: 4, overflow: 'hidden', background: '#f5f5f5', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        <Image
+                          src={item.image_url}
+                          alt={`第 ${item.page_number} 页`}
+                          style={{ width: '100%', objectFit: 'cover' }}
+                          preview={false}
+                          fallback="data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTYwIiBoZWlnaHQ9IjEyMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiBmaWxsPSIjZjVmNWY1Ii8+PHRleHQgeD0iNTAlIiB5PSI1MCUiIGRvbWluYW50LWJhc2VsaW5lPSJtaWRkbGUiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGZpbGw9IiNjY2MiIGZvbnQtc2l6ZT0iMTQiPuWbvueJh+WKoOi9veWksei0pTwvdGV4dD48L3N2Zz4="
+                        />
+                      </div>
+
+                      {/* 页面信息 */}
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <Space size={4} style={{ marginBottom: 4 }}>
+                          <Tag color="blue">📄 第 {item.page_number} 页</Tag>
+                          <Tag color="green" style={{ fontSize: 12 }}>
+                            🎯 {(item.score * 100).toFixed(0)}%
+                          </Tag>
+                        </Space>
+                        <Text style={{ fontSize: 12, color: '#8c8c8c', display: 'block', marginBottom: 4 }}>
+                          📄 {item.document_name}
+                        </Text>
+                        {item.summary && (
+                          <Paragraph ellipsis={{ rows: 2 }} style={{ marginBottom: 4, fontSize: 13 }}>
+                            📝 {item.summary}
+                          </Paragraph>
+                        )}
+                        {item.knowledge_points.length > 0 && (
+                          <Space size={4} wrap>
+                            {item.knowledge_points.map((kp, idx) => (
+                              <Tag key={idx} color="purple" style={{ fontSize: 11 }}>
+                                {kp.title}
+                              </Tag>
+                            ))}
+                          </Space>
+                        )}
+                      </div>
+                    </div>
+                  </Card>
+                )}
+              />
+            </div>
           )}
-        />
+
+          {/* 切片级检索结果 (DOCX/MD/TXT 文档) */}
+          {results.length > 0 && (
+            <div>
+              {pageResults.length > 0 && (
+                <Title level={5} style={{ marginTop: 8 }}>文本结果 ({results.length})</Title>
+              )}
+              <List
+                dataSource={results}
+                renderItem={(item) => (
+                  <EnhancedResultCard
+                    key={item.chunk_id}
+                    item={item}
+                    query={query}
+                    isEnhanced={isEnhanced}
+                  />
+                )}
+              />
+            </div>
+          )}
+        </>
       )}
     </div>
   )

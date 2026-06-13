@@ -54,8 +54,27 @@ class RetrievalResultItem(BaseModel):
     )
 
 
+class PageRetrievalResultItem(BaseModel):
+    """ 页面检索结果 (Phase 3: 用于 PDF/PPTX 文档的页面级检索) """
+    result_type: str = Field(default="page", description="结果类型: page")
+
+    page_id: uuid.UUID = Field(..., description="页面 ID")
+    document_id: uuid.UUID = Field(..., description="来源文档 ID")
+    document_name: str = Field(..., description="来源文件名")
+    page_number: int = Field(..., description="页码 (从 1 开始)")
+    image_url: str = Field(..., description="页面图片访问 URL")
+    summary: Optional[str] = Field(default=None, description="LLM 生成的页面摘要")
+    score: float = Field(..., description="相似度分数 (0.0-1.0)")
+
+    # 页面关联的知识点
+    knowledge_points: list[dict] = Field(
+        default_factory=list,
+        description="关联的知识点列表 [{id, title, description, difficulty}, ...]"
+    )
+
+
 class RetrievalResponse(BaseModel):
-    """ RAG 检索响应 (Phase 2 扩展版本) """
+    """ RAG 检索响应 (Phase 3 扩展: 支持 page 和 chunk 两种结果类型) """
     query: str = Field(..., description="原始查询文本")
     course_id: uuid.UUID = Field(..., description="检索课程 ID")
     results: list[RetrievalResultItem] = Field(default_factory=list, description="检索结果列表")
@@ -64,3 +83,10 @@ class RetrievalResponse(BaseModel):
     # Phase 2 新增
     enhanced: bool = Field(default=False, description="是否使用了 LLM 增强处理")
     deduplicated_count: int = Field(default=0, description="被 AI 自动去重合并的结果数量")
+
+    # Phase 3 新增: 页面级检索结果
+    page_results: list[PageRetrievalResultItem] = Field(
+        default_factory=list,
+        description="页面级检索结果 (PDF/PPTX 文档)"
+    )
+    page_total: int = Field(default=0, description="页面级检索结果数量")

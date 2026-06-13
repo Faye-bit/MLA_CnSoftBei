@@ -20,6 +20,9 @@ CONFIG_KEYS = [
     "embedding_api_key",
     "embedding_api_base",
     "embedding_model",
+    "doc_parser_api_key",
+    "doc_parser_api_base",
+    "doc_parser_model",
 ]
 
 # 各配置项的标签 (前端展示用)
@@ -30,6 +33,9 @@ CONFIG_LABELS: dict[str, str] = {
     "embedding_api_key": "Embedding API Key",
     "embedding_api_base": "Embedding API 地址",
     "embedding_model": "Embedding 模型名称",
+    "doc_parser_api_key": "文档解析 API Key",
+    "doc_parser_api_base": "文档解析 API 地址",
+    "doc_parser_model": "文档解析 模型名称",
 }
 
 # .env 静态默认值 (启动时加载, 不会变)
@@ -40,6 +46,9 @@ ENV_DEFAULTS: dict[str, str] = {
     "embedding_api_key": settings.embedding_api_key,
     "embedding_api_base": settings.embedding_api_base,
     "embedding_model": settings.embedding_model,
+    "doc_parser_api_key": settings.doc_parser_api_key,
+    "doc_parser_api_base": settings.doc_parser_api_base,
+    "doc_parser_model": settings.doc_parser_model,
 }
 
 # 内存缓存: 用户通过前端修改后立即更新

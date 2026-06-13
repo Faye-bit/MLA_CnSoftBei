@@ -17,12 +17,12 @@ export default function AppLayout() {
   const { token } = theme.useToken()
 
   return (
-    <Layout style={{ minHeight: '100vh' }}>
+    <Layout style={{ height: '100vh', overflow: 'hidden' }}>
       {/* 侧边栏 */}
       <Sidebar collapsed={collapsed} />
 
       {/* 主内容区域 */}
-      <Layout>
+      <Layout style={{ height: '100vh', overflow: 'hidden' }}>
         {/* 顶栏 */}
         <Header
           style={{
@@ -31,6 +31,7 @@ export default function AppLayout() {
             display: 'flex',
             alignItems: 'center',
             borderBottom: `1px solid ${token.colorBorderSecondary}`,
+            flexShrink: 0,
           }}
         >
           <Button
@@ -52,7 +53,7 @@ export default function AppLayout() {
             padding: 24,
             background: token.colorBgContainer,
             borderRadius: token.borderRadiusLG,
-            minHeight: 280,
+            flex: 1,
             overflow: 'auto',
           }}
         >

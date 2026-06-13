@@ -19,6 +19,8 @@ class DocumentResponse(BaseModel):
     file_path: str
     parse_status: str
     chunk_count: int
+    page_count: int = 0
+    kp_count: int = 0
     error_message: Optional[str]
     created_at: datetime
     updated_at: datetime
@@ -53,3 +55,35 @@ class DocumentUploadResponse(BaseModel):
     file_size: int = Field(..., description="文件大小 (字节)")
     parse_status: str = Field(..., description="解析状态")
     message: str = Field(default="文件上传成功，正在解析中...", description="提示信息")
+
+
+class DocumentPageResponse(BaseModel):
+    """ 文档页面响应 (用于 PDF/PPTX 文档的页面级展示) """
+    id: uuid.UUID = Field(..., description="页面 ID")
+    page_number: int = Field(..., description="页码 (从 1 开始)")
+    image_url: str = Field(..., description="页面图片访问 URL")
+    summary: Optional[str] = Field(default=None, description="LLM 生成的页面内容摘要")
+    extracted_kps: list[dict] = Field(
+        default_factory=list,
+        description="LLM 提取的知识点原始数据 [{title, description, difficulty}, ...]"
+    )
+    linked_kp_ids: list[str] = Field(
+        default_factory=list,
+        description="已关联的正式知识点 ID 列表"
+    )
+    created_at: datetime = Field(..., description="创建时间")
+
+    model_config = {"from_attributes": True}
+
+
+class PageKnowledgePointLinkRequest(BaseModel):
+    """ 页面关联知识点请求 """
+    knowledge_point_ids: list[uuid.UUID] = Field(
+        ..., min_length=1, description="要关联的知识点 ID 列表"
+    )
+
+
+class DocumentDetailResponse(DocumentResponse):
+    """ 文档详情响应 (根据 file_type 返回 pages 或 chunks) """
+    chunks: list[DocumentChunkResponse] = Field(default_factory=list, description="切片列表 (DOCX/MD/TXT)")
+    pages: list[DocumentPageResponse] = Field(default_factory=list, description="页面列表 (PDF/PPTX)")

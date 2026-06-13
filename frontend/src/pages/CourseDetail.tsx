@@ -1,6 +1,7 @@
 /**
  * 课程详情页
  * 展示课程的章节树、知识点列表, 支持章节和知识点的 CRUD
+ * Phase 3: 文档上传绑定到章节, 移除手动添加知识点按钮 (由 AI 自动提取)
  */
 
 import { useEffect, useState } from 'react'
@@ -20,6 +21,8 @@ import {
   Popconfirm,
   Tag,
   Steps,
+  Upload,
+  Alert,
 } from 'antd'
 import {
   PlusOutlined,
@@ -28,6 +31,7 @@ import {
   UploadOutlined,
   SearchOutlined,
   CheckCircleOutlined,
+  InboxOutlined,
 } from '@ant-design/icons'
 import {
   getCourseDetail,
@@ -35,12 +39,14 @@ import {
   createChapter,
   deleteChapter,
   getKnowledgePoints,
-  createKnowledgePoint,
   deleteKnowledgePoint,
+  uploadDocument,
 } from '../services/api'
+import { useAuthStore } from '../store'
 import type { CourseDetail, Chapter, KnowledgePoint } from '../types'
 
-const { Title } = Typography
+const { Title, Text } = Typography
+const { Dragger } = Upload
 
 export default function CourseDetailPage() {
   const { id } = useParams<{ id: string }>()
@@ -51,10 +57,11 @@ export default function CourseDetailPage() {
 
   // 弹框状态
   const [chapterModalOpen, setChapterModalOpen] = useState(false)
-  const [kpModalOpen, setKpModalOpen] = useState(false)
-  const [selectedChapterId, setSelectedChapterId] = useState<string | null>(null)
+  const [uploadModalOpen, setUploadModalOpen] = useState(false)
+  const [uploadingChapterId, setUploadingChapterId] = useState<string | null>(null)
+  const [uploadingChapterTitle, setUploadingChapterTitle] = useState('')
+  const [uploading, setUploading] = useState(false)
   const [chapterForm] = Form.useForm()
-  const [kpForm] = Form.useForm()
 
   /** 加载课程和章节数据 */
   async function loadData() {
@@ -94,19 +101,26 @@ export default function CourseDetailPage() {
     }
   }
 
-  /** 创建知识点 */
-  async function handleCreateKnowledgePoint() {
-    if (!selectedChapterId) return
+  /** 打开章节上传弹窗 */
+  function handleOpenUpload(chapterId: string, chapterTitle: string) {
+    setUploadingChapterId(chapterId)
+    setUploadingChapterTitle(chapterTitle)
+    setUploadModalOpen(true)
+  }
+
+  /** 在章节中上传文档 */
+  async function handleChapterUpload(file: File) {
+    if (!id || !uploadingChapterId) return
+    setUploading(true)
     try {
-      const values = await kpForm.validateFields()
-      await createKnowledgePoint(selectedChapterId, values)
-      message.success('知识点创建成功')
-      setKpModalOpen(false)
-      kpForm.resetFields()
+      const result = await uploadDocument(id, file, uploadingChapterId)
+      message.success(`文档 "${result.filename}" 上传成功，AI 正在解析并将知识点归入当前章节`)
+      setUploadModalOpen(false)
       loadData()
     } catch (err) {
-      if ((err as { errorFields?: unknown[] }).errorFields) return
-      message.error('创建失败: ' + (err as Error).message)
+      message.error('上传失败: ' + (err as Error).message)
+    } finally {
+      setUploading(false)
     }
   }
 
@@ -135,20 +149,15 @@ export default function CourseDetailPage() {
     {
       title: '操作',
       key: 'actions',
-      width: 200,
+      width: 160,
       render: (_: unknown, record: Chapter) => (
         <Space>
           <Button
             size="small"
-            type="primary"
-            ghost
-            icon={<PlusOutlined />}
-            onClick={() => {
-              setSelectedChapterId(record.id)
-              setKpModalOpen(true)
-            }}
+            icon={<UploadOutlined />}
+            onClick={() => handleOpenUpload(record.id, record.title)}
           >
-            添加知识点
+            上传文档
           </Button>
           <Popconfirm
             title="确定删除此章节?"
@@ -185,9 +194,6 @@ export default function CourseDetailPage() {
           <div style={{ color: '#8c8c8c', marginTop: 8 }}>{course.description || '暂无描述'}</div>
         </div>
         <Space>
-          <Button icon={<UploadOutlined />} onClick={() => navigate(`/courses/${id}/upload`)}>
-            上传文档
-          </Button>
           <Button icon={<FileTextOutlined />} onClick={() => navigate(`/courses/${id}/documents`)}>
             文档列表
           </Button>
@@ -208,25 +214,20 @@ export default function CourseDetailPage() {
           }
           items={[
             {
-              title: '创建章节与知识点',
+              title: '创建章节',
               description: '构建课程知识结构',
               icon: course.chapter_count > 0 ? <CheckCircleOutlined style={{ color: '#52c41a' }} /> : undefined,
               status: course.chapter_count > 0 ? 'finish' : 'process',
             },
             {
-              title: '上传课程文档',
-              description: '上传讲义/课件/教材',
+              title: '在章节中上传文档',
+              description: '在对应章节中上传讲义/课件, AI 自动提取知识点',
               status: course.chapter_count > 0 ? (course.document_count > 0 ? 'finish' : 'process') : 'wait',
-            },
-            {
-              title: '关联文档到知识点',
-              description: '在文档列表中将切片绑定到知识点',
-              status: course.document_count > 0 ? 'process' : 'wait',
             },
             {
               title: '开始知识检索',
               description: '基于知识库的智能问答',
-              status: 'wait',
+              status: course.document_count > 0 ? 'process' : 'wait',
             },
           ]}
         />
@@ -297,40 +298,52 @@ export default function CourseDetailPage() {
         </Form>
       </Modal>
 
-      {/* 创建知识点弹框 */}
+      {/* 章节上传文档弹框 */}
       <Modal
-        title="添加知识点"
-        open={kpModalOpen}
-        onOk={handleCreateKnowledgePoint}
+        title={`上传文档到: ${uploadingChapterTitle}`}
+        open={uploadModalOpen}
         onCancel={() => {
-          setKpModalOpen(false)
-          kpForm.resetFields()
+          setUploadModalOpen(false)
+          setUploadingChapterId(null)
         }}
-        okText="创建"
-        cancelText="取消"
+        footer={null}
+        width={520}
       >
-        <Form form={kpForm} layout="vertical" style={{ marginTop: 16 }}>
-          <Form.Item
-            name="title"
-            label="知识点名称"
-            rules={[{ required: true, message: '请输入知识点名称' }]}
+        <div style={{ padding: '16px 0' }}>
+          <Alert
+            message="上传文档到此章节"
+            description={`上传 PDF/PPTX/DOCX/MD/TXT 文件。PDF/PPTX 将使用 AI 页面级解析并提取知识点，知识点会自动归入"${uploadingChapterTitle}"章节。`}
+            type="info"
+            showIcon
+            style={{ marginBottom: 16 }}
+          />
+          <Dragger
+            name="file"
+            multiple={false}
+            showUploadList={false}
+            accept=".pdf,.pptx,.docx,.md,.txt"
+            disabled={uploading}
+            customRequest={({ file }) => {
+              handleChapterUpload(file as File)
+            }}
           >
-            <Input placeholder="例如: 监督学习与无监督学习" />
-          </Form.Item>
-          <Form.Item name="description" label="描述">
-            <Input.TextArea rows={2} />
-          </Form.Item>
-          <Form.Item name="content" label="知识点正文">
-            <Input.TextArea rows={4} placeholder="详细的知识点讲解内容..." />
-          </Form.Item>
-          <Form.Item name="difficulty" label="难度">
-            <Select placeholder="选择难度等级">
-              <Select.Option value="easy">简单</Select.Option>
-              <Select.Option value="medium">中等</Select.Option>
-              <Select.Option value="hard">困难</Select.Option>
-            </Select>
-          </Form.Item>
-        </Form>
+            <p className="ant-upload-drag-icon">
+              <InboxOutlined />
+            </p>
+            <p className="ant-upload-text">点击或拖拽文件到此区域上传</p>
+            <p className="ant-upload-hint">
+              支持 PDF、PPTX、DOCX、Markdown、TXT 格式
+            </p>
+          </Dragger>
+          {uploading && (
+            <div style={{ textAlign: 'center', marginTop: 16 }}>
+              <Spin />
+              <Text type="secondary" style={{ display: 'block', marginTop: 8 }}>
+                正在上传并解析文档...
+              </Text>
+            </div>
+          )}
+        </div>
       </Modal>
     </div>
   )

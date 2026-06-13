@@ -145,6 +145,55 @@ export default function Settings() {
           </Form.Item>
         </Card>
 
+        {/* 文档解析模型配置 */}
+        <Card
+          title={
+            <Space>
+              <Tag color="purple">文档解析</Tag>
+              <span>多模态文档解析配置</span>
+              <Text type="secondary" style={{ fontSize: 12 }}>
+                (PDF/PPTX 视觉理解解析)
+              </Text>
+            </Space>
+          }
+          style={{ marginBottom: 24 }}
+        >
+          <Alert
+            message={
+              <span>
+                📄 使用多模态大模型将 PDF/PPTX 逐页渲染为图片进行视觉理解，
+                可保留表格、公式、图表等传统解析丢失的内容。{' '}
+                <strong>需要支持视觉的多模态模型</strong>（如 gpt-4o-mini、qwen-vl-plus），
+                留空则自动降级为传统文本提取。
+              </span>
+            }
+            type="success"
+            showIcon={false}
+            style={{ marginBottom: 16 }}
+          />
+          <Form.Item
+            name="doc_parser_api_key"
+            label="API Key"
+            tooltip="需要支持图片输入 (image_url) 的多模态模型 Key，如 OpenAI、Qwen-VL 等"
+          >
+            <Input.Password placeholder="sk-your-vision-model-api-key" />
+          </Form.Item>
+          <Form.Item
+            name="doc_parser_api_base"
+            label="API 地址"
+            tooltip="多模态模型的服务地址，需支持 OpenAI 兼容的 vision API"
+          >
+            <Input placeholder="https://api.openai.com/v1" />
+          </Form.Item>
+          <Form.Item
+            name="doc_parser_model"
+            label="模型名称"
+            tooltip="推荐 gpt-4o-mini (便宜)、gpt-4o (最强)、qwen-vl-plus (中文优化)。注意: DeepSeek 当前不支持图片输入"
+          >
+            <Input placeholder="gpt-4o-mini" />
+          </Form.Item>
+        </Card>
+
         <Space>
           <Button
             type="primary"

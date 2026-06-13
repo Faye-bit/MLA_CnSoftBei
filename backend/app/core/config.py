@@ -37,6 +37,16 @@ class Settings(BaseSettings):
     embedding_api_base: str = "https://api.openai.com/v1"
     embedding_model: str = "text-embedding-3-small"
 
+    # ============ 文档解析多模态 LLM 配置 ============
+    # 用于 PDF/PPTX 的视觉理解解析 (Phase 2 升级)
+    # 将文档逐页渲染为图片后发送给多模态大模型, 输出结构化 Markdown
+    # 注意: 需要支持视觉/多模态的模型, DeepSeek 目前不支持 image_url 输入
+    # 推荐: gpt-4o-mini (便宜), gpt-4o (最强), qwen-vl-plus (中文优)
+    # 留空则降级到 PyMuPDF/python-pptx 传统解析 (与当前行为完全一致)
+    doc_parser_api_key: str = ""
+    doc_parser_api_base: str = "https://api.openai.com/v1"
+    doc_parser_model: str = "gpt-4o-mini"
+
     # 文件上传配置
     upload_dir: str = "./uploads"
     max_upload_size_mb: int = 50

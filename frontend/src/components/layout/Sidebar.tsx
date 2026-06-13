@@ -4,7 +4,7 @@
  */
 
 import { useNavigate, useLocation } from 'react-router-dom'
-import { Layout, Menu, Avatar, Dropdown, Space, Typography, Divider, message } from 'antd'
+import { Layout, Menu, Avatar, Dropdown, Space, Typography, message } from 'antd'
 import {
   DashboardOutlined,
   BookOutlined,
@@ -15,6 +15,8 @@ import {
   SafetyCertificateOutlined,
   FileTextOutlined,
   LogoutOutlined,
+  MessageOutlined,
+  IdcardOutlined,
 } from '@ant-design/icons'
 import type { MenuProps } from 'antd'
 import { useAuthStore } from '../../store'
@@ -54,7 +56,17 @@ export default function Sidebar({ collapsed }: { collapsed: boolean }) {
           icon: <SearchOutlined />,
           label: '知识检索',
         },
+        {
+          key: '/chat',
+          icon: <MessageOutlined />,
+          label: 'AI 对话',
+        },
       ],
+    },
+    {
+      key: '/student-profile',
+      icon: <IdcardOutlined />,
+      label: '我的画像',
     },
     {
       key: '/profile',
@@ -163,7 +175,7 @@ export default function Sidebar({ collapsed }: { collapsed: boolean }) {
         <Menu
           mode="inline"
           selectedKeys={[selectedKey]}
-          defaultOpenKeys={['knowledge-group', 'admin-group']}
+          defaultOpenKeys={['knowledge-group', 'admin-group', 'chat-group', 'profile-group']}
           items={menuItems}
           onClick={handleMenuClick}
           style={{ borderRight: 0 }}

@@ -30,12 +30,19 @@ import type {
   UserAdminUpdate,
   AvatarUploadResponse,
   AuditLog,
+  Conversation,
+  ConversationDetail,
+  Message,
+  ChatSource,
+  StudentProfile,
+  ProfileUpdateRequest,
+  ProfileVersion,
 } from '../types'
 
 // 创建 axios 实例, 配置基础 URL 和超时
 const api = axios.create({
   baseURL: 'http://localhost:8000/api/v1',
-  timeout: 60000,  // 文档上传 + 解析可能需要较长时间
+  timeout: 600000,  // 文档上传 + 解析可能需要较长时间
   headers: { 'Content-Type': 'application/json' },
 })
 
@@ -147,14 +154,19 @@ export async function deleteKnowledgePoint(kpId: string) {
 
 // ==================== 文档 API ====================
 
-/** 上传文档 */
-export async function uploadDocument(courseId: string, file: File) {
+/** 上传文档 (可指定所属章节) */
+export async function uploadDocument(courseId: string, file: File, chapterId?: string) {
   const formData = new FormData()
   formData.append('file', file)
+  const params: Record<string, string> = {}
+  if (chapterId) params.chapter_id = chapterId
   const res = await api.post<ApiResponse<DocumentUploadResponse>>(
     `/courses/${courseId}/documents/upload`,
     formData,
-    { headers: { 'Content-Type': 'multipart/form-data' } }
+    {
+      headers: { 'Content-Type': 'multipart/form-data' },
+      params,
+    }
   )
   return res.data.data!
 }
@@ -221,6 +233,19 @@ export async function createExtractedKP(
     { chapter_id: chapterId, kp_list: kpList },
   )
   return res.data.data!
+}
+
+/** 获取页面图片完整 URL */
+export function getPageImageUrl(courseId: string, documentId: string, pageNumber: number): string {
+  return `http://localhost:8000/api/v1/courses/${courseId}/documents/${documentId}/pages/${pageNumber}/image`
+}
+
+/** 关联页面到知识点 */
+export async function linkPageToKp(courseId: string, pageId: string, knowledgePointIds: string[]) {
+  await api.put(
+    `/courses/${courseId}/documents/pages/${pageId}/link-kp`,
+    { knowledge_point_ids: knowledgePointIds }
+  )
 }
 
 // ==================== 检索 API ====================
@@ -357,4 +382,192 @@ export async function getAuditLogs(
   if (userId) params.user_id = userId
   const res = await api.get<ApiResponse<PaginatedResponse<AuditLog>>>('/audit-logs/', { params })
   return res.data.data!
+}
+
+// ==================== 对话 API ====================
+
+/** 创建对话 */
+export async function createConversation(data: {
+  course_id?: string
+  title?: string
+  conversation_type?: 'chat' | 'profile_collection'
+}) {
+  const res = await api.post<ApiResponse<Conversation>>('/chat/conversations', data)
+  return res.data.data!
+}
+
+/** 获取对话列表 */
+export async function getConversations(
+  page = 1,
+  pageSize = 20,
+  type?: 'chat' | 'profile_collection'
+) {
+  const params: Record<string, string | number> = { page, pageSize }
+  if (type) params.type = type
+  const res = await api.get<ApiResponse<PaginatedResponse<Conversation>>>('/chat/conversations', { params })
+  return res.data.data!
+}
+
+/** 获取对话详情 (含消息列表) */
+export async function getConversationDetail(conversationId: string) {
+  const res = await api.get<ApiResponse<ConversationDetail>>(`/chat/conversations/${conversationId}`)
+  return res.data.data!
+}
+
+/** 更新对话标题 */
+export async function updateConversation(conversationId: string, data: { title?: string }) {
+  const res = await api.put<ApiResponse<Conversation>>(`/chat/conversations/${conversationId}`, data)
+  return res.data.data!
+}
+
+/** 删除对话 */
+export async function deleteConversation(conversationId: string) {
+  await api.delete(`/chat/conversations/${conversationId}`)
+}
+
+/** 获取对话消息列表 */
+export async function getConversationMessages(conversationId: string) {
+  const res = await api.get<ApiResponse<Message[]>>(`/chat/conversations/${conversationId}/messages`)
+  return res.data.data!
+}
+
+/**
+ * SSE 流式对话
+ * 使用 fetch + ReadableStream 实现 SSE 消费, 不使用 axios
+ *
+ * @param conversationId - 对话 ID
+ * @param content - 用户消息内容
+ * @param courseId - 关联课程 ID (可选)
+ * @param callbacks - 回调函数集合
+ * @returns AbortController 用于取消请求
+ */
+export function streamChat(
+  conversationId: string,
+  content: string,
+  courseId: string | null,
+  callbacks: {
+    onContent: (chunk: string) => void
+    onSources: (sources: ChatSource[]) => void
+    onDone: (messageId: string) => void
+    onError: (error: string) => void
+  }
+): AbortController {
+  const controller = new AbortController()
+  const token = useAuthStore.getState().token
+
+  // 构建请求 URL 和 Body
+  const url = `http://localhost:8000/api/v1/chat/conversations/${conversationId}/messages`
+  const body: Record<string, unknown> = { content }
+  if (courseId) body.course_id = courseId
+
+  fetch(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: JSON.stringify(body),
+    signal: controller.signal,
+  })
+    .then(async (response) => {
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => null)
+        const msg = errorData?.detail || `请求失败 (${response.status})`
+        callbacks.onError(msg)
+        return
+      }
+
+      const reader = response.body?.getReader()
+      if (!reader) {
+        callbacks.onError('无法读取响应流')
+        return
+      }
+
+      const decoder = new TextDecoder()
+      let buffer = ''
+
+      // 逐块读取 SSE 流
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+
+        buffer += decoder.decode(value, { stream: true })
+
+        // 解析 SSE 事件 (每行格式: data: {...}\n\n)
+        const lines = buffer.split('\n\n')
+        buffer = lines.pop() || ''  // 最后一个可能不完整, 保留在 buffer 中
+
+        for (const line of lines) {
+          if (!line.trim() || !line.startsWith('data: ')) continue
+
+          try {
+            const jsonStr = line.slice(6)  // 去掉 "data: " 前缀
+            const event = JSON.parse(jsonStr)
+
+            switch (event.type) {
+              case 'content':
+                callbacks.onContent(event.content)
+                break
+              case 'sources':
+                callbacks.onSources(event.sources || [])
+                break
+              case 'done':
+                callbacks.onDone(event.message_id)
+                break
+              case 'error':
+                callbacks.onError(event.message || '未知错误')
+                break
+            }
+          } catch {
+            // 忽略解析错误的行
+          }
+        }
+      }
+    })
+    .catch((err) => {
+      if (err.name !== 'AbortError') {
+        callbacks.onError(err.message || '网络错误')
+      }
+    })
+
+  return controller
+}
+
+// ==================== 学生画像 API ====================
+
+/** 获取当前用户画像 */
+export async function getStudentProfile() {
+  const res = await api.get<ApiResponse<StudentProfile>>('/profile/')
+  return res.data.data!
+}
+
+/** 手动更新画像 */
+export async function updateStudentProfile(data: ProfileUpdateRequest) {
+  const res = await api.put<ApiResponse<StudentProfile>>('/profile/', data)
+  return res.data.data!
+}
+
+/** 从对话中提取画像 */
+export async function extractProfile(conversationId: string) {
+  const res = await api.post<ApiResponse<StudentProfile>>('/profile/extract', {
+    conversation_id: conversationId,
+  })
+  return res.data.data!
+}
+
+/** 获取画像版本历史 */
+export async function getProfileVersions() {
+  const res = await api.get<ApiResponse<ProfileVersion[]>>('/profile/versions')
+  return res.data.data!
+}
+
+/** 从记忆重建画像 (描述式归类) */
+export async function rebuildProfile() {
+  const res = await api.post<ApiResponse<StudentProfile>>('/profile/rebuild')
+  return res.data.data!
+}
+
+/** 删除/重置画像 */
+export async function deleteProfile() {
+  await api.delete('/profile/')
 }

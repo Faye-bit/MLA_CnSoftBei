@@ -1,16 +1,17 @@
 /**
  * 文档列表页
- * 展示课程下的所有文档、解析状态, 支持将切片关联到知识点
+ * 展示课程下的所有文档、解析状态, 支持将切片/页面关联到知识点
+ * Phase 3: PDF/PPTX 文档显示页面网格视图, DOCX/MD/TXT 显示切片列表
  */
 
 import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
-import { Table, Tag, Typography, Popconfirm, message, Space, Button, Drawer, Select, Alert, Modal, List, Checkbox } from 'antd'
-import { DeleteOutlined, EyeOutlined, LinkOutlined, ThunderboltOutlined, PlusOutlined } from '@ant-design/icons'
-import { getDocuments, deleteDocument, getDocumentDetail, getCourseKnowledgePoints, linkChunkToKp, extractKP, createExtractedKP, getChapters } from '../services/api'
-import type { Document, DocumentDetail, Chapter } from '../types'
+import { Table, Tag, Typography, Popconfirm, message, Space, Button, Drawer, Select, Alert, Modal, List, Checkbox, Image, Card, Row, Col } from 'antd'
+import { DeleteOutlined, EyeOutlined, LinkOutlined, ThunderboltOutlined, PlusOutlined, FileImageOutlined } from '@ant-design/icons'
+import { getDocuments, deleteDocument, getDocumentDetail, getCourseKnowledgePoints, linkChunkToKp, linkPageToKp, extractKP, createExtractedKP, getChapters, getPageImageUrl } from '../services/api'
+import type { Document, DocumentDetail, DocumentPage, Chapter } from '../types'
 
-const { Title, Text } = Typography
+const { Title, Text, Paragraph } = Typography
 
 /** 提取的知识点预览类型 */
 interface ExtractedKP {
@@ -78,6 +79,11 @@ export default function DocumentList() {
   const [extractedKPs, setExtractedKPs] = useState<ExtractedKP[]>([])
   const [creating, setCreating] = useState(false)
   const [currentExtractDocId, setCurrentExtractDocId] = useState<string | null>(null)
+
+  // 页面大图查看 (Phase 3)
+  const [pagePreviewOpen, setPagePreviewOpen] = useState(false)
+  const [previewPage, setPreviewPage] = useState<DocumentPage | null>(null)
+  const [linkingPageId, setLinkingPageId] = useState<string | null>(null)
 
   /** 加载文档列表 */
   async function loadDocuments(p = 1) {
@@ -150,6 +156,24 @@ export default function DocumentList() {
         next.delete(chunkId)
         return next
       })
+    }
+  }
+
+  /** 关联页面到知识点 (Phase 3) */
+  async function handleLinkPageToKp(pageId: string, kpId: string) {
+    if (!id || !kpId) return
+    setLinkingPageId(pageId)
+    try {
+      await linkPageToKp(id, pageId, [kpId])
+      message.success('页面已关联到知识点')
+      if (selectedDoc) {
+        const updated = await getDocumentDetail(id, selectedDoc.id)
+        setSelectedDoc(updated)
+      }
+    } catch (err) {
+      message.error('关联失败: ' + (err as Error).message)
+    } finally {
+      setLinkingPageId(null)
     }
   }
 
@@ -256,10 +280,16 @@ export default function DocumentList() {
       },
     },
     {
-      title: '切片数',
-      dataIndex: 'chunk_count',
-      key: 'chunk_count',
+      title: '切片/页数',
+      key: 'count',
       width: 80,
+      render: (_: unknown, record: Document) => {
+        // 对于 PDF/PPTX 显示页数, 其他显示切片数
+        if (record.file_type === 'pdf' || record.file_type === 'pptx') {
+          return <span>{record.page_count > 0 ? `${record.page_count} 页` : '-'}</span>
+        }
+        return <span>{record.chunk_count > 0 ? `${record.chunk_count} 片` : '-'}</span>
+      },
     },
     {
       title: '上传时间',
@@ -343,7 +373,7 @@ export default function DocumentList() {
           <div>
             {/* 文档元信息 */}
             <div style={{ marginBottom: 16 }}>
-              <Space size={16}>
+              <Space size={16} wrap>
                 <span>
                   类型: <Tag color={typeColorMap[selectedDoc.file_type]}>{selectedDoc.file_type.toUpperCase()}</Tag>
                 </span>
@@ -354,6 +384,14 @@ export default function DocumentList() {
                     {statusMap[selectedDoc.parse_status]?.label}
                   </Tag>
                 </span>
+                {selectedDoc.file_type === 'pdf' || selectedDoc.file_type === 'pptx' ? (
+                  <>
+                    <span>页数: {selectedDoc.page_count}</span>
+                    {selectedDoc.kp_count > 0 && <span>知识点: {selectedDoc.kp_count}</span>}
+                  </>
+                ) : (
+                  <span>切片: {selectedDoc.chunk_count}</span>
+                )}
               </Space>
             </div>
 
@@ -363,108 +401,272 @@ export default function DocumentList() {
               </div>
             )}
 
-            {kpOptions.length === 0 && (
-              <Alert
-                message="尚未创建知识点"
-                description="请先在课程详情页创建章节和知识点，或者使用下方的「自动提取」功能让 AI 帮你从文档中提取知识点。"
-                type="warning"
-                showIcon
-                style={{ marginBottom: 16 }}
-              />
-            )}
-
-            {/* 自动提取知识点按钮 */}
-            <div style={{ marginBottom: 16 }}>
-              <Button
-                type="primary"
-                ghost
-                icon={<ThunderboltOutlined />}
-                onClick={() => handleOpenExtract(selectedDoc.id)}
-              >
-                AI 自动提取知识点
-              </Button>
-              <Text type="secondary" style={{ marginLeft: 8, fontSize: 12 }}>
-                LLM 阅读文档切片, 自动识别知识点并关联
-              </Text>
-            </div>
-
-            <Title level={5}>
-              文本切片 ({selectedDoc.chunks.length})
-              {selectedDoc.chunks.filter((c) => c.knowledge_point_id).length > 0 && (
-                <Tag color="green" style={{ marginLeft: 8 }}>
-                  已关联 {selectedDoc.chunks.filter((c) => c.knowledge_point_id).length} 条
-                </Tag>
-              )}
-            </Title>
-            {selectedDoc.chunks.length === 0 ? (
-              <div style={{ color: '#8c8c8c' }}>暂无切片</div>
-            ) : (
-              selectedDoc.chunks.map((chunk) => {
-                const linkedKp = getLinkedKp(chunk.knowledge_point_id)
-                return (
-                  <div
-                    key={chunk.id}
-                    style={{
-                      marginBottom: 12,
-                      padding: 12,
-                      background: chunk.knowledge_point_id ? '#f6ffed' : '#fafafa',
-                      borderRadius: 6,
-                      border: chunk.knowledge_point_id ? '1px solid #b7eb8f' : '1px solid #f0f0f0',
-                    }}
-                  >
-                    {/* 切片头部信息 + 关联下拉 */}
-                    <div
-                      style={{
-                        display: 'flex',
-                        justifyContent: 'space-between',
-                        alignItems: 'center',
-                        marginBottom: 6,
-                      }}
-                    >
-                      <Space size={8}>
-                        <Text type="secondary" style={{ fontSize: 12 }}>
-                          切片 #{chunk.chunk_index} | {chunk.token_count} tokens
-                        </Text>
-                        {linkedKp && (
-                          <Tag color="green" icon={<LinkOutlined />}>
-                            {linkedKp.chapter_title} / {linkedKp.title}
-                          </Tag>
-                        )}
-                      </Space>
-
-                      {/* 关联知识点下拉 */}
-                      {kpOptions.length > 0 && (
-                        <Select
+            {/* PDF/PPTX: 页面网格视图 */}
+            {selectedDoc.file_type === 'pdf' || selectedDoc.file_type === 'pptx' ? (
+              <>
+                <Title level={5}>
+                  页面列表 ({selectedDoc.pages?.length || 0})
+                  {selectedDoc.kp_count > 0 && (
+                    <Tag color="blue" style={{ marginLeft: 8 }}>
+                      {selectedDoc.kp_count} 个知识点
+                    </Tag>
+                  )}
+                </Title>
+                {(!selectedDoc.pages || selectedDoc.pages.length === 0) ? (
+                  <div style={{ color: '#8c8c8c' }}>暂无页面数据</div>
+                ) : (
+                  <Row gutter={[12, 12]}>
+                    {selectedDoc.pages.map((page) => (
+                      <Col span={12} key={page.id}>
+                        <Card
+                          hoverable
                           size="small"
-                          placeholder="关联到知识点..."
-                          value={chunk.knowledge_point_id || undefined}
-                          onChange={(kpId) => handleLinkChunk(chunk.id, kpId)}
-                          loading={linkingChunks.has(chunk.id)}
-                          style={{ minWidth: 220 }}
-                          allowClear
-                          options={kpOptions.map((kp) => ({
-                            label: `${kp.chapter_title} / ${kp.title}`,
-                            value: kp.knowledge_point_id,
-                          }))}
-                          optionFilterProp="label"
-                          showSearch
-                          popupMatchSelectWidth={false}
-                        />
-                      )}
-                    </div>
+                          onClick={() => {
+                            setPreviewPage(page)
+                            setPagePreviewOpen(true)
+                          }}
+                          cover={
+                            <div style={{ height: 140, overflow: 'hidden', background: '#f5f5f5', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                              <img
+                                src={getPageImageUrl(id!, selectedDoc.id, page.page_number)}
+                                alt={`第 ${page.page_number} 页`}
+                                style={{ width: '100%', objectFit: 'cover' }}
+                                onError={(e) => {
+                                  const target = e.target as HTMLImageElement
+                                  target.style.display = 'none'
+                                  // 显示占位图标
+                                  const parent = target.parentElement
+                                  if (parent && !parent.querySelector('.img-placeholder')) {
+                                    const placeholder = document.createElement('span')
+                                    placeholder.className = 'img-placeholder'
+                                    placeholder.textContent = '🖼️'
+                                    placeholder.style.fontSize = '32px'
+                                    parent.appendChild(placeholder)
+                                  }
+                                }}
+                              />
+                            </div>
+                          }
+                        >
+                          <Card.Meta
+                            title={
+                              <Space size={4}>
+                                <Text strong>第 {page.page_number} 页</Text>
+                                {page.linked_kp_ids.length > 0 && (
+                                  <Tag color="green" style={{ fontSize: 10 }}>
+                                    已关联 {page.linked_kp_ids.length}
+                                  </Tag>
+                                )}
+                              </Space>
+                            }
+                            description={
+                              <div>
+                                {page.summary ? (
+                                  <Paragraph ellipsis={{ rows: 2 }} style={{ marginBottom: 4, fontSize: 12 }}>
+                                    {page.summary}
+                                  </Paragraph>
+                                ) : (
+                                  <Text type="secondary" style={{ fontSize: 12 }}>
+                                    {page.extracted_kps.length > 0 ? '未生成摘要' : '待 AI 解析'}
+                                  </Text>
+                                )}
+                                {page.extracted_kps.length > 0 && (
+                                  <Space size={4} wrap>
+                                    {page.extracted_kps.map((kp, idx) => (
+                                      <Tag key={idx} color="blue" style={{ fontSize: 10, margin: '2px 0' }}>
+                                        {kp.title}
+                                      </Tag>
+                                    ))}
+                                  </Space>
+                                )}
+                              </div>
+                            }
+                          />
+                        </Card>
+                      </Col>
+                    ))}
+                  </Row>
+                )}
+              </>
+            ) : (
+              <>
+                {/* DOCX/MD/TXT: 切片列表视图 (保持现有逻辑) */}
+                {kpOptions.length === 0 && (
+                  <Alert
+                    message="尚未创建知识点"
+                    description="请先在课程详情页创建章节和知识点，或者使用下方的「自动提取」功能让 AI 帮你从文档中提取知识点。"
+                    type="warning"
+                    showIcon
+                    style={{ marginBottom: 16 }}
+                  />
+                )}
 
-                    {/* 切片文本内容 */}
-                    <div style={{ fontSize: 13, lineHeight: 1.6, color: '#595959' }}>
-                      {chunk.content.slice(0, 300)}
-                      {chunk.content.length > 300 ? '...' : ''}
-                    </div>
-                  </div>
-                )
-              })
+                {/* 自动提取知识点按钮 */}
+                <div style={{ marginBottom: 16 }}>
+                  <Button
+                    type="primary"
+                    ghost
+                    icon={<ThunderboltOutlined />}
+                    onClick={() => handleOpenExtract(selectedDoc.id)}
+                  >
+                    AI 自动提取知识点
+                  </Button>
+                  <Text type="secondary" style={{ marginLeft: 8, fontSize: 12 }}>
+                    LLM 阅读文档切片, 自动识别知识点并关联
+                  </Text>
+                </div>
+
+                <Title level={5}>
+                  文本切片 ({selectedDoc.chunks.length})
+                  {selectedDoc.chunks.filter((c) => c.knowledge_point_id).length > 0 && (
+                    <Tag color="green" style={{ marginLeft: 8 }}>
+                      已关联 {selectedDoc.chunks.filter((c) => c.knowledge_point_id).length} 条
+                    </Tag>
+                  )}
+                </Title>
+                {selectedDoc.chunks.length === 0 ? (
+                  <div style={{ color: '#8c8c8c' }}>暂无切片</div>
+                ) : (
+                  selectedDoc.chunks.map((chunk) => {
+                    const linkedKp = getLinkedKp(chunk.knowledge_point_id)
+                    return (
+                      <div
+                        key={chunk.id}
+                        style={{
+                          marginBottom: 12,
+                          padding: 12,
+                          background: chunk.knowledge_point_id ? '#f6ffed' : '#fafafa',
+                          borderRadius: 6,
+                          border: chunk.knowledge_point_id ? '1px solid #b7eb8f' : '1px solid #f0f0f0',
+                        }}
+                      >
+                        <div
+                          style={{
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            alignItems: 'center',
+                            marginBottom: 6,
+                          }}
+                        >
+                          <Space size={8}>
+                            <Text type="secondary" style={{ fontSize: 12 }}>
+                              切片 #{chunk.chunk_index} | {chunk.token_count} tokens
+                            </Text>
+                            {linkedKp && (
+                              <Tag color="green" icon={<LinkOutlined />}>
+                                {linkedKp.chapter_title} / {linkedKp.title}
+                              </Tag>
+                            )}
+                          </Space>
+                          {kpOptions.length > 0 && (
+                            <Select
+                              size="small"
+                              placeholder="关联到知识点..."
+                              value={chunk.knowledge_point_id || undefined}
+                              onChange={(kpId) => handleLinkChunk(chunk.id, kpId)}
+                              loading={linkingChunks.has(chunk.id)}
+                              style={{ minWidth: 220 }}
+                              allowClear
+                              options={kpOptions.map((kp) => ({
+                                label: `${kp.chapter_title} / ${kp.title}`,
+                                value: kp.knowledge_point_id,
+                              }))}
+                              optionFilterProp="label"
+                              showSearch
+                              popupMatchSelectWidth={false}
+                            />
+                          )}
+                        </div>
+                        <div style={{ fontSize: 13, lineHeight: 1.6, color: '#595959' }}>
+                          {chunk.content.slice(0, 300)}
+                          {chunk.content.length > 300 ? '...' : ''}
+                        </div>
+                      </div>
+                    )
+                  })
+                )}
+              </>
             )}
           </div>
         )}
       </Drawer>
+
+      {/* 页面大图预览弹窗 (Phase 3) */}
+      <Modal
+        title={previewPage ? `第 ${previewPage.page_number} 页` : '页面预览'}
+        open={pagePreviewOpen}
+        onCancel={() => setPagePreviewOpen(false)}
+        width={900}
+        footer={null}
+      >
+        {previewPage && (
+          <div>
+            <Image
+              src={getPageImageUrl(id!, selectedDoc!.id, previewPage.page_number)}
+              alt={`第 ${previewPage.page_number} 页`}
+              style={{ width: '100%' }}
+              fallback="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII="
+            />
+
+            <div style={{ marginTop: 16 }}>
+              {/* 页面摘要 */}
+              {previewPage.summary && (
+                <div style={{ marginBottom: 12 }}>
+                  <Text strong>📝 页面摘要：</Text>
+                  <Paragraph style={{ marginTop: 4 }}>{previewPage.summary}</Paragraph>
+                </div>
+              )}
+
+              {/* 提取的知识点 */}
+              {previewPage.extracted_kps.length > 0 && (
+                <div style={{ marginBottom: 12 }}>
+                  <Text strong>🏷️ AI 提取的知识点：</Text>
+                  <div style={{ marginTop: 8 }}>
+                    {previewPage.extracted_kps.map((kp, idx) => (
+                      <Tag
+                        key={idx}
+                        color={kp.difficulty === 'easy' ? 'green' : kp.difficulty === 'medium' ? 'blue' : 'red'}
+                        style={{ marginBottom: 4 }}
+                      >
+                        {kp.title}
+                        {kp.description ? `: ${kp.description}` : ''}
+                        <Text type="secondary" style={{ fontSize: 10, marginLeft: 4 }}>
+                          ({kp.difficulty === 'easy' ? '基础' : kp.difficulty === 'medium' ? '中等' : '困难'})
+                        </Text>
+                      </Tag>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* 关联已有知识点 */}
+              {kpOptions.length > 0 && (
+                <div style={{ marginTop: 12 }}>
+                  <Text strong>🔗 关联到已有知识点：</Text>
+                  <Select
+                    placeholder="选择知识点关联此页面..."
+                    style={{ minWidth: 300, marginLeft: 8 }}
+                    loading={linkingPageId === previewPage.id}
+                    onChange={(kpId) => handleLinkPageToKp(previewPage.id, kpId)}
+                    options={kpOptions.map((kp) => ({
+                      label: `${kp.chapter_title} / ${kp.title}`,
+                      value: kp.knowledge_point_id,
+                    }))}
+                    optionFilterProp="label"
+                    showSearch
+                    value={previewPage.linked_kp_ids.length > 0 ? previewPage.linked_kp_ids[0] : undefined}
+                  />
+                </div>
+              )}
+
+              {/* 无知识点提示 */}
+              {previewPage.extracted_kps.length === 0 && previewPage.linked_kp_ids.length === 0 && (
+                <Text type="secondary">此页面暂无知识点（可能是目录页、标题页或尚未 AI 解析）</Text>
+              )}
+            </div>
+          </div>
+        )}
+      </Modal>
 
       {/* 自动提取知识点模态框 */}
       <Modal

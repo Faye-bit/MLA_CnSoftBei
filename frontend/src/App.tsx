@@ -19,8 +19,10 @@ import Dashboard from './pages/Dashboard'
 import CourseList from './pages/CourseList'
 import CourseDetailPage from './pages/CourseDetail'
 import DocumentList from './pages/DocumentList'
-import DocumentUpload from './pages/DocumentUpload'
 import KnowledgeSearch from './pages/KnowledgeSearch'
+import Chat from './pages/Chat'
+import ProfileCollection from './pages/ProfileCollection'
+import StudentProfilePage from './pages/StudentProfile'
 import Settings from './pages/Settings'
 import Profile from './pages/Profile'
 
@@ -46,8 +48,11 @@ export default function App() {
           <Route path="/courses" element={<CourseList />} />
           <Route path="/courses/:id" element={<CourseDetailPage />} />
           <Route path="/courses/:id/documents" element={<DocumentList />} />
-          <Route path="/courses/:id/upload" element={<DocumentUpload />} />
           <Route path="/knowledge" element={<KnowledgeSearch />} />
+          <Route path="/chat" element={<Chat />} />
+          <Route path="/chat/:id" element={<Chat />} />
+          <Route path="/profile-collection" element={<ProfileCollection />} />
+          <Route path="/student-profile" element={<StudentProfilePage />} />
           <Route path="/settings" element={<Settings />} />
           <Route path="/profile" element={<Profile />} />
 

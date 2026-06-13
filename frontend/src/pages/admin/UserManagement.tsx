@@ -79,7 +79,7 @@ export default function UserManagement() {
   const handleSaveEdit = async () => {
     if (!editingUser) return
     try {
-      const values = await editForm.validateFields()
+      await editForm.validateFields();
     } catch {
       return
     }

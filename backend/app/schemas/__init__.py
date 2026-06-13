@@ -10,5 +10,15 @@ from app.schemas.course import (
 )
 from app.schemas.document import (
     DocumentResponse, DocumentChunkResponse, DocumentDetailResponse, DocumentUploadResponse,
+    DocumentPageResponse, PageKnowledgePointLinkRequest,
 )
-from app.schemas.retrieval import RetrievalRequest, RetrievalResultItem, RetrievalResponse
+from app.schemas.retrieval import (
+    RetrievalRequest, RetrievalResultItem, RetrievalResponse, PageRetrievalResultItem,
+)
+from app.schemas.conversation import (
+    ConversationCreate, ConversationUpdate, ConversationResponse, ConversationDetailResponse,
+    MessageResponse, SendMessageRequest,
+)
+from app.schemas.profile import (
+    ProfileUpdate, ProfileExtractionRequest, ProfileResponse, ProfileVersionResponse,
+)

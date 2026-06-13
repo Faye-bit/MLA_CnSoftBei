@@ -5,7 +5,7 @@
 
 import { useState, useCallback, useRef, useEffect } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { Form, Input, Button, Card, message, Typography, Select, Radio, Divider } from 'antd'
+import { Form, Input, Button, Card, message, Typography, Radio, Divider } from 'antd'
 import { MailOutlined, LockOutlined, UserOutlined, SafetyCertificateOutlined } from '@ant-design/icons'
 import { sendVerificationCode, register as registerApi, login as loginApi } from '../services/api'
 import { useAuthStore } from '../store'
