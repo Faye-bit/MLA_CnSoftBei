@@ -58,7 +58,7 @@ class Settings(BaseSettings):
     # ============ JWT 认证配置 ============
     jwt_secret: str = "change-me-to-a-random-secret-in-production"
     jwt_algorithm: str = "HS256"
-    jwt_expire_minutes: int = 60
+    jwt_expire_minutes: int = 10080  # 7天 = 60 * 24 * 7
 
     # ============ 邮箱 SMTP 配置 (QQ邮箱) ============
     smtp_host: str = "smtp.qq.com"
