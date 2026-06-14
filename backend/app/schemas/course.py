@@ -77,32 +77,40 @@ class ChapterResponse(BaseModel):
 # ==================== 知识点 (KnowledgePoint) ====================
 
 class KnowledgePointCreate(BaseModel):
-    """ 创建知识点请求 """
-    title: str = Field(..., min_length=1, max_length=200, description="知识点名称")
-    description: Optional[str] = Field(default=None, description="知识点描述")
-    content: Optional[str] = Field(default=None, description="知识点正文内容")
-    prerequisite_kp_id: Optional[uuid.UUID] = Field(default=None, description="前置依赖知识点 ID")
-    difficulty: str = Field(default="medium", pattern="^(easy|medium|hard)$", description="难度等级")
+    title: str = Field(..., min_length=1, max_length=200)
+    description: Optional[str] = None
+    content: Optional[str] = None
+    prerequisite_kp_id: Optional[uuid.UUID] = None
+    parent_kp_id: Optional[uuid.UUID] = None
+    kp_type: str = Field(default="item", pattern="^(category|item)$")
+    difficulty: str = Field(default="medium", pattern="^(easy|medium|hard)$")
 
 
 class KnowledgePointUpdate(BaseModel):
-    """ 更新知识点请求 """
-    title: Optional[str] = Field(default=None, min_length=1, max_length=200, description="知识点名称")
-    description: Optional[str] = Field(default=None, description="知识点描述")
-    content: Optional[str] = Field(default=None, description="知识点正文内容")
-    prerequisite_kp_id: Optional[uuid.UUID] = Field(default=None, description="前置依赖知识点 ID")
-    difficulty: Optional[str] = Field(default=None, pattern="^(easy|medium|hard)$", description="难度等级")
+    title: Optional[str] = Field(default=None, min_length=1, max_length=200)
+    description: Optional[str] = None
+    content: Optional[str] = None
+    prerequisite_kp_id: Optional[uuid.UUID] = None
+    parent_kp_id: Optional[uuid.UUID] = None
+    kp_type: Optional[str] = Field(default=None, pattern="^(category|item)$")
+    difficulty: Optional[str] = Field(default=None, pattern="^(easy|medium|hard)$")
 
 
 class KnowledgePointResponse(BaseModel):
-    """ 知识点响应 """
-    id: uuid.UUID
-    chapter_id: uuid.UUID
-    title: str
-    description: Optional[str]
-    content: Optional[str]
-    prerequisite_kp_id: Optional[uuid.UUID]
-    difficulty: str
-    created_at: datetime
+    id: uuid.UUID; chapter_id: uuid.UUID; title: str
+    description: Optional[str] = None; content: Optional[str] = None
+    prerequisite_kp_id: Optional[uuid.UUID] = None
+    parent_kp_id: Optional[uuid.UUID] = None
+    kp_type: str = "item"; difficulty: str; created_at: datetime
+    model_config = {"from_attributes": True}
 
+
+class KnowledgePointTreeNode(BaseModel):
+    """ 树节点: category 为根, item 为子 """
+    id: uuid.UUID; chapter_id: uuid.UUID; title: str
+    description: Optional[str] = None; content: Optional[str] = None
+    prerequisite_kp_id: Optional[uuid.UUID] = None
+    parent_kp_id: Optional[uuid.UUID] = None
+    kp_type: str = "item"; difficulty: str; created_at: datetime
+    children: list["KnowledgePointTreeNode"] = Field(default_factory=list)
     model_config = {"from_attributes": True}

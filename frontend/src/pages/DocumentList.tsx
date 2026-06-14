@@ -77,6 +77,7 @@ export default function DocumentList() {
   const [chapters, setChapters] = useState<Chapter[]>([])
   const [extracting, setExtracting] = useState(false)
   const [extractedKPs, setExtractedKPs] = useState<ExtractedKP[]>([])
+  const [classified, setClassified] = useState<Array<{ category: string; items: Array<{ title: string; description: string; difficulty: string; chunk_ids: string[]; selected: boolean }> }>>([])
   const [creating, setCreating] = useState(false)
   const [currentExtractDocId, setCurrentExtractDocId] = useState<string | null>(null)
 
@@ -192,7 +193,7 @@ export default function DocumentList() {
     }
   }
 
-  /** 执行 LLM 提取知识点 */
+  /** 执行 LLM 提取知识点 + 自动分类 */
   async function handleExtract() {
     if (!id || !currentExtractDocId || !extractChapterId) {
       message.warning('请先选择目标章节')
@@ -201,13 +202,25 @@ export default function DocumentList() {
     setExtracting(true)
     try {
       const data = await extractKP(id, currentExtractDocId, extractChapterId)
+      // 优先使用分类结构, 兼容旧格式
+      if (data.classified && data.classified.length > 0) {
+        setClassified(data.classified.map((cat: { category: string; items: Array<{ title: string; description: string; difficulty: string; chunk_ids: string[] }> }) => ({
+          ...cat,
+          items: cat.items.map(item => ({ ...item, selected: true })),
+        })))
+      } else {
+        setClassified([])
+      }
       const kps = (data.kp_list || []).map((kp) => ({
         ...kp,
         selected: true,
       }))
       setExtractedKPs(kps)
+      const catCount = data.classified?.length || 0
       if (kps.length === 0) {
         message.info('LLM 未从文档中识别到新知识点')
+      } else if (catCount > 0) {
+        message.success(`提取到 ${kps.length} 个知识点, AI 已分为 ${catCount} 个分类`)
       } else {
         message.success(`提取到 ${kps.length} 个知识点, 请确认后创建`)
       }
@@ -218,14 +231,32 @@ export default function DocumentList() {
     }
   }
 
-  /** 批量创建确认的知识点 */
+  /** 批量创建确认的知识点 (优先使用分类结构) */
   async function handleCreateKPs() {
     if (!id || !currentExtractDocId || !extractChapterId) return
-    const selected = extractedKPs.filter((kp) => kp.selected)
-    if (selected.length === 0) {
-      message.warning('请至少选择一个知识点')
+
+    // 有分类结构 → 发送分类格式
+    if (classified.length > 0) {
+      const catsWithSelected = classified
+        .map(cat => ({ category: cat.category, items: cat.items.filter(item => item.selected) }))
+        .filter(cat => cat.items.length > 0)
+      if (catsWithSelected.length === 0) { message.warning('请至少保留一个知识点'); return }
+      setCreating(true)
+      try {
+        await createExtractedKP(id, currentExtractDocId, extractChapterId, catsWithSelected)
+        message.success(`已创建 ${catsWithSelected.length} 个分类的知识点树`)
+        setExtractModalOpen(false)
+        setExtractedKPs([])
+        setClassified([])
+        if (currentExtractDocId) handleViewDetail(currentExtractDocId)
+      } catch (err) { message.error('创建失败: ' + (err as Error).message) }
+      finally { setCreating(false) }
       return
     }
+
+    // 回退: 扁平列表
+    const selected = extractedKPs.filter((kp) => kp.selected)
+    if (selected.length === 0) { message.warning('请至少选择一个知识点'); return }
     setCreating(true)
     try {
       await createExtractedKP(id, currentExtractDocId, extractChapterId, selected)

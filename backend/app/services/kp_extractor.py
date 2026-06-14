@@ -224,3 +224,103 @@ async def batch_create_knowledge_points(
     await db.commit()
     logger.info(f"批量创建知识点完成: {len(created)} 个")
     return created
+
+
+# ===== AI 知识点自动分类 =====
+
+CLASSIFY_PROMPT = """将知识点按主题分组。输出 JSON:
+[{"category":"分类名","items":[{"title":"知识点","description":"描述","difficulty":"easy|medium|hard"}]}]"""
+
+
+async def classify_knowledge_points(kp_list: list[dict], batch_size: int = 30) -> list[dict]:
+    """ LLM 将知识点按主题自动分组 (大批量自动分批处理) """
+    if len(kp_list) <= 1:
+        return [{"category": "", "items": kp_list}]
+
+    # 超过 batch_size 则分批处理
+    if len(kp_list) > batch_size:
+        all_results: list[dict] = []
+        for i in range(0, len(kp_list), batch_size):
+            batch = kp_list[i:i + batch_size]
+            batch_result = await classify_knowledge_points(batch, batch_size)
+            all_results.extend(batch_result)
+        # 合并同名分类
+        merged: dict[str, list[dict]] = {}
+        for cat in all_results:
+            name = cat.get("category", "未分类")
+            if name not in merged:
+                merged[name] = []
+            merged[name].extend(cat.get("items", []))
+        return [{"category": k, "items": v} for k, v in merged.items()]
+
+    api_key = get_config_value("llm_api_key")
+    api_base = get_config_value("llm_api_base")
+    model = get_config_value("llm_model")
+    client = AsyncOpenAI(api_key=api_key, base_url=api_base)
+    kp_summary = json.dumps([
+        {"title": k["title"], "description": k.get("description", ""),
+         "difficulty": k.get("difficulty", "medium")} for k in kp_list
+    ], ensure_ascii=False, indent=2)
+    try:
+        resp = await client.chat.completions.create(
+            model=model, temperature=0.2, max_tokens=2000,
+            messages=[{"role": "system", "content": CLASSIFY_PROMPT},
+                       {"role": "user", "content": f"分类:\n{kp_summary}"}])
+        raw = resp.choices[0].message.content or ""
+    except Exception as e:
+        logger.error(f"LLM 分类失败: {e}")
+        return [{"category": "", "items": kp_list}]
+    try:
+        t = raw.strip(); b1, b2 = t.find("["), t.rfind("]")
+        if b1 != -1 and b2 != -1: t = t[b1:b2 + 1]
+        cats = json.loads(t)
+        if not isinstance(cats, list): raise ValueError("not list")
+    except Exception:
+        return [{"category": "", "items": kp_list}]
+    all_titles = {k["title"] for k in kp_list}; seen = set()
+    result = []
+    for cat in cats or []:
+        if not isinstance(cat, dict): continue
+        name = str(cat.get("category", "")).strip() or "未分类"
+        items = []
+        for item in (cat.get("items") or []):
+            t2 = str(item.get("title", "")).strip()
+            if t2 and t2 in all_titles and t2 not in seen:
+                items.append({"title": t2, "description": str(item.get("description", "")).strip()[:100],
+                              "difficulty": item.get("difficulty", "medium")})
+                seen.add(t2)
+        if items: result.append({"category": name, "items": items})
+    for kp in kp_list:
+        if kp["title"] not in seen:
+            f = next((c for c in result if c["category"] == "未分类"), None)
+            if f: f["items"].append(kp)
+            else: result.append({"category": "未分类", "items": [kp]})
+            seen.add(kp["title"])
+    logger.info(f"分类: {len(result)} 组, {len(seen)} KP")
+    return result
+
+
+async def batch_create_classified_knowledge_points(
+    chapter_id: uuid.UUID, classified: list[dict], db: AsyncSession
+) -> dict:
+    """ 批量创建分类后的树形知识点 """
+    cn, ic = 0, 0
+    for cat in classified:
+        name = cat.get("category", "").strip() or "默认分类"
+        items = cat.get("items", [])
+        if not items: continue
+        ck = KnowledgePoint(chapter_id=chapter_id, title=name, kp_type="category", difficulty="medium")
+        db.add(ck); await db.flush(); cn += 1
+        for kd in items:
+            ik = KnowledgePoint(chapter_id=chapter_id, title=kd["title"],
+                description=kd.get("description", ""), difficulty=kd.get("difficulty", "medium"),
+                kp_type="item", parent_kp_id=ck.id)
+            db.add(ik); await db.flush(); ic += 1
+            for cid_str in kd.get("chunk_ids", []):
+                try:
+                    cid = uuid.UUID(cid_str); chunk = await db.get(DocumentChunk, cid)
+                    if chunk: chunk.knowledge_point_id = ik.id
+                except ValueError: pass
+    await db.commit()
+    logger.info(f"分类创建: {cn} 类, {ic} KP")
+    return {"category_count": cn, "item_count": ic}

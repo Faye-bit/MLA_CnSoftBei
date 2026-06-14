@@ -23,7 +23,10 @@ import {
   Steps,
   Upload,
   Alert,
+  Tree,
+  Popover,
 } from 'antd'
+import type { DataNode } from 'antd/es/tree'
 import {
   PlusOutlined,
   DeleteOutlined,
@@ -43,7 +46,7 @@ import {
   uploadDocument,
 } from '../services/api'
 import { useAuthStore } from '../store'
-import type { CourseDetail, Chapter, KnowledgePoint } from '../types'
+import type { CourseDetail, Chapter, KnowledgePoint, KnowledgePointTreeNode } from '../types'
 
 const { Title, Text } = Typography
 const { Dragger } = Upload
@@ -263,7 +266,7 @@ export default function CourseDetailPage() {
           rowKey="id"
           pagination={false}
           expandable={{
-            expandedRowRender: (record) => <KnowledgePointList chapterId={record.id} />,
+            expandedRowRender: (record) => <KnowledgePointList chapterId={record.id} onDelete={loadData} />,
           }}
           locale={{ emptyText: '暂无章节，点击右上角按钮添加' }}
         />
@@ -353,66 +356,64 @@ export default function CourseDetailPage() {
  * 知识点列表子组件
  * 在章节表格的展开行中渲染
  */
-function KnowledgePointList({ chapterId }: { chapterId: string }) {
-  const [kps, setKps] = useState<KnowledgePoint[]>([])
+function KnowledgePointList({ chapterId, onDelete }: { chapterId: string; onDelete: () => void }) {
+  const [nodes, setNodes] = useState<KnowledgePointTreeNode[]>([])
   const [loading, setLoading] = useState(true)
 
-  useEffect(() => {
-    async function loadKps() {
-      try {
-        const data = await getKnowledgePoints(chapterId)
-        setKps(data)
-      } catch {
-        // ignore
-      } finally {
-        setLoading(false)
-      }
-    }
-    loadKps()
-  }, [chapterId])
+  async function load() {
+    setLoading(true)
+    try { setNodes(await getKnowledgePoints(chapterId) as unknown as KnowledgePointTreeNode[]) }
+    catch { /* ignore */ } finally { setLoading(false) }
+  }
+  useEffect(() => { load() }, [chapterId])
 
   if (loading) return <Spin size="small" />
-  if (kps.length === 0) return <div style={{ color: '#8c8c8c' }}>暂无知识点</div>
+  if (nodes.length === 0) return <div style={{ color: '#8c8c8c' }}>暂无知识点</div>
 
-  return (
-    <div style={{ padding: '8px 0' }}>
-      {kps.map((kp) => (
-        <div
-          key={kp.id}
-          style={{
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            padding: '8px 16px',
-            borderBottom: '1px solid #f0f0f0',
-          }}
-        >
-          <div>
-            <span style={{ fontWeight: 500 }}>{kp.title}</span>
-            <Tag color={kp.difficulty === 'easy' ? 'green' : kp.difficulty === 'medium' ? 'blue' : 'red'} style={{ marginLeft: 8 }}>
-              {kp.difficulty === 'easy' ? '简单' : kp.difficulty === 'medium' ? '中等' : '困难'}
-            </Tag>
+  function toTree(items: KnowledgePointTreeNode[]): DataNode[] {
+    return items.map(item => {
+      const hasChildren = item.children?.length > 0
+      return {
+        key: item.id,
+        icon: item.kp_type === 'category' ? '📁' : undefined,
+        title: (
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span>
+              <span style={{ fontWeight: item.kp_type === 'category' ? 600 : 400 }}>{item.title}</span>
+              {item.kp_type !== 'category' && (
+                <>
+                  <Tag color={item.difficulty === 'easy' ? 'green' : item.difficulty === 'medium' ? 'blue' : 'red'} style={{ marginLeft: 8, fontSize: 11 }}>
+                    {item.difficulty === 'easy' ? '简单' : item.difficulty === 'medium' ? '中等' : '困难'}
+                  </Tag>
+                  <Popover trigger="click" placement="right"
+                    title={<span style={{ fontSize: 15, fontWeight: 600 }}>{item.title}</span>}
+                    content={
+                      <div style={{ maxWidth: 380 }}>
+                        {item.description && <p style={{ color: '#333', lineHeight: 1.8, marginBottom: 8 }}>{item.description}</p>}
+                        {item.content && <p style={{ color: '#555', lineHeight: 1.8, marginBottom: 8, borderTop: '1px solid #f0f0f0', paddingTop: 8 }}>{item.content}</p>}
+                        <Tag color={item.difficulty === 'easy' ? 'green' : item.difficulty === 'medium' ? 'blue' : 'red'}>
+                          难度: {item.difficulty === 'easy' ? '简单' : item.difficulty === 'medium' ? '中等' : '困难'}
+                        </Tag>
+                      </div>
+                    }
+                  >
+                    <Button type="link" size="small" style={{ padding: '0 4px', fontSize: 12 }}>详情</Button>
+                  </Popover>
+                </>
+              )}
+            </span>
+            <Popconfirm title={item.kp_type === 'category' ? '删除分类会同时删除其下所有知识点' : '确定删除?'}
+              onConfirm={async e => { e?.stopPropagation(); await deleteKnowledgePoint(item.id); message.success('已删除'); load(); onDelete() }}
+              okText="确定" cancelText="取消">
+              <Button size="small" danger icon={<DeleteOutlined />} onClick={e => e.stopPropagation()} />
+            </Popconfirm>
           </div>
-          <Popconfirm
-            title="确定删除此知识点?"
-            onConfirm={async () => {
-              try {
-                await deleteKnowledgePoint(kp.id)
-                message.success('知识点已删除')
-                // 重新加载
-                window.location.reload()
-              } catch (err) {
-                message.error('删除失败: ' + (err as Error).message)
-              }
-            }}
-            okText="确定"
-            cancelText="取消"
-          >
-            <Button size="small" danger icon={<DeleteOutlined />} />
-          </Popconfirm>
-        </div>
-      ))}
-    </div>
-  )
+        ),
+        children: hasChildren ? toTree(item.children) : undefined,
+      }
+    })
+  }
+
+  return <div style={{ padding: '8px 0' }}><Tree treeData={toTree(nodes)} defaultExpandAll={false} blockNode /></div>
 }
 
