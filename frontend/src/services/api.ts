@@ -12,6 +12,7 @@ import type {
   CourseDetail,
   Chapter,
   KnowledgePoint,
+  KnowledgePointTreeNode,
   Document,
   DocumentDetail,
   DocumentUploadResponse,
@@ -135,9 +136,9 @@ export async function deleteChapter(chapterId: string) {
 
 // ==================== 知识点 API ====================
 
-/** 获取知识点列表 */
+/** 获取知识点列表 (树形结构) */
 export async function getKnowledgePoints(chapterId: string) {
-  const res = await api.get<ApiResponse<KnowledgePoint[]>>(`/courses/chapters/${chapterId}/knowledge-points`)
+  const res = await api.get<ApiResponse<KnowledgePointTreeNode[]>>(`/courses/chapters/${chapterId}/knowledge-points`)
   return res.data.data!
 }
 
@@ -150,6 +151,14 @@ export async function createKnowledgePoint(chapterId: string, data: KnowledgePoi
 /** 删除知识点 */
 export async function deleteKnowledgePoint(kpId: string) {
   await api.delete(`/courses/knowledge-points/${kpId}`)
+}
+
+/** AI 重新分类章节知识点 */
+export async function reclassifyKnowledgePoints(chapterId: string) {
+  const res = await api.post<ApiResponse<{ category_count: number; item_count: number }>>(
+    `/courses/chapters/${chapterId}/knowledge-points/reclassify`
+  )
+  return res.data.data!
 }
 
 // ==================== 文档 API ====================

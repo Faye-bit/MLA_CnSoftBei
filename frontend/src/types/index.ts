@@ -54,14 +54,19 @@ export interface Chapter {
 
 /** 知识点 */
 export interface KnowledgePoint {
-  id: string
-  chapter_id: string
-  title: string
-  description: string | null
-  content: string | null
-  prerequisite_kp_id: string | null
-  difficulty: 'easy' | 'medium' | 'hard'
-  created_at: string
+  id: string; chapter_id: string; title: string
+  description: string | null; content: string | null
+  prerequisite_kp_id: string | null; parent_kp_id: string | null
+  kp_type: 'category' | 'item'
+  difficulty: 'easy' | 'medium' | 'hard'; created_at: string
+}
+/** 知识点树节点 */
+export interface KnowledgePointTreeNode {
+  id: string; chapter_id: string; title: string
+  description: string | null; content: string | null
+  prerequisite_kp_id: string | null; parent_kp_id: string | null
+  kp_type: 'category' | 'item'; difficulty: string; created_at: string
+  children: KnowledgePointTreeNode[]
 }
 
 // ==================== 文档相关 ====================
@@ -208,10 +213,9 @@ export interface ChapterCreate {
 }
 
 export interface KnowledgePointCreate {
-  title: string
-  description?: string
-  content?: string
-  prerequisite_kp_id?: string
+  title: string; description?: string; content?: string
+  prerequisite_kp_id?: string; parent_kp_id?: string
+  kp_type?: 'category' | 'item'
   difficulty?: 'easy' | 'medium' | 'hard'
 }
 

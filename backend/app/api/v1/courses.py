@@ -20,6 +20,7 @@ from app.schemas.course import (
     CourseCreate, CourseUpdate, CourseResponse, CourseDetailResponse,
     ChapterCreate, ChapterUpdate, ChapterResponse,
     KnowledgePointCreate, KnowledgePointUpdate, KnowledgePointResponse,
+    KnowledgePointTreeNode,
 )
 from app.api.deps import get_current_user
 
@@ -150,7 +151,7 @@ async def get_course(
         chapter_responses.append(ChapterResponse(
             id=ch.id, course_id=ch.course_id, title=ch.title,
             description=ch.description, order_index=ch.order_index,
-            knowledge_point_count=len(ch.knowledge_points), created_at=ch.created_at,
+            knowledge_point_count=sum(1 for kp in ch.knowledge_points if kp.kp_type == "item"), created_at=ch.created_at,
         ))
 
     detail = CourseDetailResponse(
@@ -255,7 +256,7 @@ async def list_chapters(
         items.append(ChapterResponse(
             id=ch.id, course_id=ch.course_id, title=ch.title,
             description=ch.description, order_index=ch.order_index,
-            knowledge_point_count=len(ch.knowledge_points), created_at=ch.created_at,
+            knowledge_point_count=sum(1 for kp in ch.knowledge_points if kp.kp_type == "item"), created_at=ch.created_at,
         ))
     return ApiResponse(data=items)
 
@@ -322,7 +323,8 @@ async def create_knowledge_point(
     kp = KnowledgePoint(
         chapter_id=chapter_id, title=body.title, description=body.description,
         content=body.content, prerequisite_kp_id=body.prerequisite_kp_id,
-        difficulty=body.difficulty,
+        parent_kp_id=body.parent_kp_id if body.kp_type == "item" else None,
+        kp_type=body.kp_type, difficulty=body.difficulty,
     )
     db.add(kp)
     await db.flush()
@@ -330,19 +332,37 @@ async def create_knowledge_point(
     return ApiResponse(data=kp, message="知识点创建成功")
 
 
-@router.get("/chapters/{chapter_id}/knowledge-points", response_model=ApiResponse[list[KnowledgePointResponse]], summary="知识点列表")
+@router.get("/chapters/{chapter_id}/knowledge-points", response_model=ApiResponse[list[KnowledgePointTreeNode]], summary="知识点列表(树形)")
 async def list_knowledge_points(
     chapter_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """ 获取知识点列表, 仅章节所属课程的所有者可访问 """
+    """ 获取章节知识点, 以树形结构返回 (category 为根, item 为子) """
     await _get_owned_chapter(chapter_id, current_user, db)
 
     stmt = select(KnowledgePoint).where(KnowledgePoint.chapter_id == chapter_id)
     result = await db.execute(stmt)
-    kps = result.scalars().all()
-    return ApiResponse(data=list(kps))
+    all_kps = list(result.scalars().all())
+
+    roots: list[KnowledgePointTreeNode] = []
+    kp_map: dict[uuid.UUID, KnowledgePointTreeNode] = {}
+    for kp in all_kps:
+        kp_map[kp.id] = KnowledgePointTreeNode(
+            id=kp.id, chapter_id=kp.chapter_id, title=kp.title,
+            description=kp.description, content=kp.content,
+            prerequisite_kp_id=kp.prerequisite_kp_id,
+            parent_kp_id=kp.parent_kp_id, kp_type=kp.kp_type,
+            difficulty=kp.difficulty, created_at=kp.created_at, children=[],
+        )
+    for kp in all_kps:
+        node = kp_map[kp.id]
+        if kp.parent_kp_id and kp.parent_kp_id in kp_map:
+            kp_map[kp.parent_kp_id].children.append(node)
+        else:
+            roots.append(node)
+
+    return ApiResponse(data=roots)
 
 
 @router.put("/knowledge-points/{kp_id}", response_model=ApiResponse[KnowledgePointResponse], summary="更新知识点")
@@ -363,6 +383,10 @@ async def update_knowledge_point(
         kp.content = body.content
     if body.prerequisite_kp_id is not None:
         kp.prerequisite_kp_id = body.prerequisite_kp_id
+    if body.parent_kp_id is not None:
+        kp.parent_kp_id = body.parent_kp_id
+    if body.kp_type is not None:
+        kp.kp_type = body.kp_type
     if body.difficulty is not None:
         kp.difficulty = body.difficulty
 
@@ -382,3 +406,43 @@ async def delete_knowledge_point(
     await db.delete(kp)
     await db.flush()
     return ApiResponse(message="知识点已删除")
+
+
+@router.post("/chapters/{chapter_id}/knowledge-points/reclassify", response_model=ApiResponse[dict], summary="重新分类知识点")
+async def reclassify_knowledge_points(
+    chapter_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """ 对章节下已有的扁平知识点进行 AI 自动分类, 重建为树形结构 """
+    await _get_owned_chapter(chapter_id, current_user, db)
+
+    from app.services.kp_extractor import classify_knowledge_points, batch_create_classified_knowledge_points
+
+    stmt = select(KnowledgePoint).where(KnowledgePoint.chapter_id == chapter_id)
+    result = await db.execute(stmt)
+    flat_kps = list(result.scalars().all())
+
+    if len(flat_kps) < 2:
+        return ApiResponse(data={"category_count": 0, "item_count": len(flat_kps)},
+                           message="知识点不足 2 个, 无需分类")
+
+    kp_dicts = [{"title": kp.title, "description": kp.description or "",
+                 "difficulty": kp.difficulty} for kp in flat_kps]
+
+    classified = await classify_knowledge_points(kp_dicts)
+
+    has_categories = len(classified) > 1 or any(c.get("category", "").strip() for c in classified)
+    if not has_categories:
+        return ApiResponse(data={"category_count": 0, "item_count": len(flat_kps)},
+                           message="分类后未产生有意义的分组, 保持扁平")
+
+    # 删除扁平知识点 (联级会删 page_knowledge_points 关联)
+    for kp in flat_kps:
+        await db.delete(kp)
+    await db.flush()
+
+    result2 = await batch_create_classified_knowledge_points(chapter_id, classified, db)
+
+    return ApiResponse(data=result2,
+                       message=f"分类完成: {result2['category_count']} 个分类, {result2['item_count']} 个子知识点")

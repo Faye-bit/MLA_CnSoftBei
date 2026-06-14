@@ -157,20 +157,30 @@ class KnowledgePoint(Base):
         Text, nullable=True
     )
 
-    # 前置依赖知识点 ID: 指向另一个知识点(自引用), 表示学 A 之前需要先掌握 B
+    # 前置依赖知识点 ID
     prerequisite_kp_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True), ForeignKey("knowledge_points.id", ondelete="SET NULL"), nullable=True
     )
 
-    # 难度等级: easy / medium / hard
+    # 知识点类型: category=知识类型分类(目录) / item=具体知识点
+    kp_type: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="item"
+    )
+
+    # 父知识点 ID: item 挂到 category 下形成树形结构
+    parent_kp_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("knowledge_points.id", ondelete="SET NULL"), nullable=True
+    )
+
+    # 难度等级
     difficulty: Mapped[str] = mapped_column(
         String(20), nullable=False, default="medium"
     )
 
-    # 来源类型: 标记知识点是手动创建还是 LLM 自动提取
+    # 来源类型
     source_type: Mapped[str] = mapped_column(
         String(20), nullable=False, default="manual"
-    )  # "manual" | "auto"
+    )
 
     # 创建时间
     created_at: Mapped[datetime] = mapped_column(
@@ -184,7 +194,20 @@ class KnowledgePoint(Base):
 
     # 关联关系: 前置依赖知识点
     prerequisite_kp: Mapped[Optional["KnowledgePoint"]] = relationship(
-        "KnowledgePoint", remote_side=[id], backref="dependent_kps"
+        "KnowledgePoint", remote_side=[id], foreign_keys=[prerequisite_kp_id],
+        backref="dependent_kps"
+    )
+
+    # 关联关系: 父知识点 (知识类型分类)
+    parent_kp: Mapped[Optional["KnowledgePoint"]] = relationship(
+        "KnowledgePoint", remote_side=[id],
+        foreign_keys=[parent_kp_id], back_populates="children"
+    )
+
+    # 子知识点列表
+    children: Mapped[List["KnowledgePoint"]] = relationship(
+        "KnowledgePoint", foreign_keys=[parent_kp_id],
+        back_populates="parent_kp", cascade="all, delete-orphan"
     )
 
     # 关联关系: 知识点关联的页面 (多对多)

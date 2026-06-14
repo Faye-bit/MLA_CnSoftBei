@@ -77,6 +77,8 @@ CREATE TABLE knowledge_points (
     description        TEXT,
     content            TEXT,
     prerequisite_kp_id UUID REFERENCES knowledge_points(id) ON DELETE SET NULL,
+    kp_type            VARCHAR(20)  NOT NULL DEFAULT 'item',
+    parent_kp_id       UUID REFERENCES knowledge_points(id) ON DELETE SET NULL,
     difficulty         VARCHAR(20)  NOT NULL DEFAULT 'medium',
     source_type        VARCHAR(20)  NOT NULL DEFAULT 'manual',
     created_at         TIMESTAMPTZ  NOT NULL DEFAULT NOW()
@@ -310,6 +312,8 @@ classDiagram
         +Text description
         +Text content
         +UUID prerequisite_kp_id FK→self
+        +String(20) kp_type = "item"
+        +UUID parent_kp_id FK→self
         +String(20) difficulty = "medium"
         +String(20) source_type = "manual"
         +DateTime created_at
@@ -503,11 +507,13 @@ classDiagram
 | `description` | Text | nullable | 知识点描述 |
 | `content` | Text | nullable | 正文内容 |
 | `prerequisite_kp_id` | UUID | FK→self, SET NULL | 前置依赖知识点 |
+| `kp_type` | String(20) | NOT NULL, default=`"item"` | 类型 (category=分类/item=知识点) |
+| `parent_kp_id` | UUID | FK→self, SET NULL | 所属知识类型分类 |
 | `difficulty` | String(20) | NOT NULL, default=`"medium"` | 难度 (easy/medium/hard) |
 | `source_type` | String(20) | NOT NULL, default=`"manual"` | 来源 (manual/auto) |
 | `created_at` | DateTime | NOT NULL | 创建时间 |
 
-**关系:** belongs to `Chapter`, self-referencing `prerequisite_kp`, M2M with `DocumentPage` via `page_knowledge_points`
+**关系:** belongs to `Chapter`, self-referencing `prerequisite_kp` 和 `parent_kp→children`, M2M with `DocumentPage` via `page_knowledge_points`
 
 ---
 
