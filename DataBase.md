@@ -482,7 +482,7 @@ classDiagram
 | `created_at` | DateTime | NOT NULL | 创建时间 |
 | `updated_at` | DateTime | NOT NULL | 更新时间 |
 
-**关系:** has many `chapters`, has many `documents` (cascade delete)
+**关系:** 每个课程可以有很多个章节`chapter`，有很多个文档`document`，课程与章节、文档之间采取级联删除机制。
 
 #### `chapters` — 章节表
 
@@ -495,7 +495,7 @@ classDiagram
 | `order_index` | Integer | NOT NULL, default=`0` | 排序序号 |
 | `created_at` | DateTime | NOT NULL | 创建时间 |
 
-**关系:** belongs to `Course`, has many `KnowledgePoint` (cascade delete), has many `Document`
+**关系:** 从属于`Course`, 每个章节可以有很多个知识点`KnowledgePoint` (级联删除),有很多文档`Document`。
 
 #### `knowledge_points` — 知识点表
 
@@ -513,7 +513,7 @@ classDiagram
 | `source_type` | String(20) | NOT NULL, default=`"manual"` | 来源 (manual/auto) |
 | `created_at` | DateTime | NOT NULL | 创建时间 |
 
-**关系:** belongs to `Chapter`, self-referencing `prerequisite_kp` 和 `parent_kp→children`, M2M with `DocumentPage` via `page_knowledge_points`
+**关系:** 从属于 `Chapter`, 外键引用自身的`prerequisite_kp`和 `parent_kp→children`, 通过 `page_knowledge_points`表与`DocumentPage`建立关系。
 
 ---
 
@@ -538,11 +538,11 @@ classDiagram
 | `created_at` | DateTime | NOT NULL | 创建时间 |
 | `updated_at` | DateTime | NOT NULL | 更新时间 |
 
-**关系:** belongs to `Course`, belongs to `Chapter` (可选), has many `DocumentChunk`, has many `DocumentPage`
+**关系:** 从属于`Chapter`，每个文档可以有很多个文档切片`DocumentChunk`和很多个文档页面`DocumentPage`。
 
 #### `document_chunks` — 文本切片表
 
-用于 DOCX/MD/TXT 文件的文本切片，作为旧版检索单元保留。
+用于 DOCX/MD/TXT 文件的文本切片，作为检索单元保留。
 
 | 字段 | 类型 | 约束 | 说明 |
 |------|------|------|------|
@@ -569,7 +569,7 @@ classDiagram
 | `extracted_kps` | JSONB | nullable | LLM 提取的知识点原始数据 |
 | `created_at` | DateTime | NOT NULL | 创建时间 |
 
-**关系:** belongs to `Document`, M2M with `KnowledgePoint` via `page_knowledge_points`
+**关系:** 从属于文档`Document`，通过`page_knowledge_points`表与知识点`KnowledgePoint`形成多对多关系。
 
 #### `page_knowledge_points` — 页面-知识点关联表
 
@@ -600,7 +600,7 @@ classDiagram
 | `created_at` | DateTime | NOT NULL | 创建时间 |
 | `updated_at` | DateTime | NOT NULL | 更新时间 |
 
-**关系:** has many `Message` (cascade delete)
+**关系:** 每个对话可以有多个消息`Message` (采取级联删除)。
 
 #### `messages` — 消息表
 

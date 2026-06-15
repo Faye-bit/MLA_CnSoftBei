@@ -6,6 +6,30 @@
 
 ---
 
+## 开发进度
+
+| 阶段 | 内容 | 状态 |
+|------|------|------|
+| 第一阶段 | 基础框架与课程知识库 | ✅ 已完成 |
+| 第二阶段 | 画像与对话 | ✅ 已完成 |
+| 第三阶段 | 多智能体资源生成 | 🚧 进行中 |
+| 第四阶段 | 学习路径与智能辅导 | 📋 待开始 |
+| 第五阶段 | 评估、安全与展示优化 | 📋 待开始 |
+
+### 已实现功能
+
+- **用户系统**：注册/登录/退出、密码重置、邮箱验证、JWT Token 自动刷新
+- **课程管理**：课程/章节 CRUD，知识点树形分类展示
+- **文档知识库**：多格式文档上传（PDF/DOCX/PPTX/MD/TXT）、自动解析切片、向量化索引
+- **AI 知识点提取**：LLM 自动识别知识点，分批处理，人工复核编辑，去重后批量创建
+- **知识点详情弹窗**：点击知识点弹出卡片，展示关联页面与结构化内容
+- **RAG 语义检索**：关键词 + 向量混合检索，结果高亮、去重归并、内容增强
+- **AI 对话**：基于知识库的智能问答，输出关联引用来源，Markdown/HTML 混合渲染
+- **学生画像**：对话式信息收集，自动抽取画像维度，可视化展示与编辑
+- **仪表盘**：真实数据统计（切片数、知识点数等）
+
+---
+
 ## 环境要求
 
 | 依赖 | 版本 | 说明 |
@@ -179,49 +203,6 @@ PostgreSQL 和 Redis 是后台服务，即使关掉终端也不会停，需要�
 
 ---
 
-## Phase 1 完成清单
-
-### 已实现功能
-
-#### 后端
-
-| 功能 | 说明 |
-|------|------|
-| 项目框架 | FastAPI + SQLAlchemy 2.0 异步 + Pydantic 校验 |
-| 数据库 | 7 张表：users / courses / chapters / knowledge_points / documents / document_chunks / system_configs |
-| 文档处理流水线 | 上传 → 解析 (PDF/DOCX/PPTX/MD/TXT) → 递归切片 → Embedding 向量化 → Chroma 存储 |
-| RAG 检索 | 语义搜索 → 关联切片 + 来源文档 + 相似度分数 |
-| 课程管理 API | 课程 / 章节 / 知识点的完整 CRUD |
-| 文档管理 API | 上传 / 列表 / 详情 / 删除，切片关联知识点 |
-| AI 自动提取知识点 | LLM 阅读文档切片 → 自动识别知识点 → 预览确认 → 批量创建并关联切片 |
-| 动态配置 | API Key 运行时热替换，前端页面配置即时生效 |
-
-#### 前端
-
-| 页面 | 功能 |
-|------|------|
-| 仪表盘 | 课程/文档统计、系统状态、快捷导航 |
-| 课程管理 | 课程卡片列表、创建/删除 |
-| 课程详情 | 工作流步骤引导、章节表格 + 知识点 CRUD |
-| 文档上传 | 拖拽上传、格式标签提示、上传后操作引导 |
-| 文档列表 | 解析状态展示、详情抽屉（切片查看 + 知识点关联 + AI 自动提取） |
-| 知识检索 | 课程选择、语义搜索、结果引用展示 |
-| 系统设置 | LLM + Embedding API 配置表单，修改即时生效 |
-
-### 使用流程
-
-```
-系统设置（配置 API Key）
-  → 创建课程
-    → 创建章节
-      → 上传对应章节文档
-        → AI 自动提取知识点 或 手工创建知识点
-          → 关联切片到知识点
-            → 知识检索
-```
-
----
-
 ## 技术栈
 
 | 层面 | 技术 | 说明 |
@@ -235,6 +216,8 @@ PostgreSQL 和 Redis 是后台服务，即使关掉终端也不会停，需要�
 | 前端框架 | React 19 + TypeScript + Vite | 现代前端方案 |
 | UI 组件 | Ant Design 5 + Tailwind CSS | 中文生态好，快速开发 |
 | 状态管理 | Zustand | 轻量级 |
+| Markdown 渲染 | react-markdown + remark-gfm + rehype-highlight | 代码高亮、表格、公式支持 |
+| 认证 | JWT + bcrypt | Token 认证 + 自动刷新 |
 
 ---
 
@@ -244,69 +227,116 @@ PostgreSQL 和 Redis 是后台服务，即使关掉终端也不会停，需要�
 CnSoftBei/
 ├── backend/
 │   ├── app/
-│   │   ├── main.py                    # FastAPI 入口
+│   │   ├── main.py                       # FastAPI 入口
 │   │   ├── core/
-│   │   │   ├── config.py              # 全局配置 (Pydantic Settings)
-│   │   │   └── database.py            # 异步数据库引擎
+│   │   │   ├── config.py                 # 全局配置 (Pydantic Settings)
+│   │   │   └── database.py               # 异步数据库引擎
 │   │   ├── models/
-│   │   │   ├── user.py                # 用户模型
-│   │   │   ├── course.py              # 课程 / 章节 / 知识点模型
-│   │   │   ├── document.py            # 文档 / 切片模型
-│   │   │   └── config.py              # 系统配置模型 (API Key 存储)
+│   │   │   ├── user.py                   # 用户模型
+│   │   │   ├── course.py                 # 课程 / 章节 / 知识点模型
+│   │   │   ├── document.py               # 文档 / 切片模型
+│   │   │   ├── document_page.py          # 文档页面模型 (PDF/PPTX 页级索引)
+│   │   │   ├── conversation.py           # 对话消息模型
+│   │   │   ├── profile.py                # 学生画像模型
+│   │   │   ├── audit_log.py              # 审计日志模型
+│   │   │   ├── email_verification.py     # 邮箱验证模型
+│   │   │   └── config.py                 # 系统配置模型 (API Key 存储)
 │   │   ├── schemas/
-│   │   │   ├── common.py              # 分页 / 统一响应格式
-│   │   │   ├── course.py              # 课程相关 Schema
-│   │   │   ├── document.py            # 文档相关 Schema
-│   │   │   └── retrieval.py           # 检索相关 Schema
+│   │   │   ├── common.py                 # 分页 / 统一响应格式
+│   │   │   ├── auth.py                   # 认证相关 Schema
+│   │   │   ├── user.py                   # 用户相关 Schema
+│   │   │   ├── course.py                 # 课程相关 Schema
+│   │   │   ├── document.py               # 文档相关 Schema
+│   │   │   ├── retrieval.py              # 检索相关 Schema
+│   │   │   ├── conversation.py           # 对话相关 Schema
+│   │   │   ├── profile.py                # 画像相关 Schema
+│   │   │   └── audit_log.py              # 审计日志 Schema
 │   │   ├── api/v1/
-│   │   │   ├── courses.py             # 课程 / 章节 / 知识点 CRUD
-│   │   │   ├── documents.py           # 文档上传 / 提取知识点 / 切片关联
-│   │   │   ├── retrieval.py           # RAG 语义检索
-│   │   │   └── config.py              # 运行时 API 配置
+│   │   │   ├── router.py                 # 路由注册
+│   │   │   ├── auth.py                   # 注册 / 登录 / Token 刷新
+│   │   │   ├── users.py                  # 用户信息管理
+│   │   │   ├── courses.py                # 课程 / 章节 / 知识点 CRUD
+│   │   │   ├── documents.py              # 文档上传 / 提取知识点 / 切片关联
+│   │   │   ├── retrieval.py              # RAG 语义检索
+│   │   │   ├── chat.py                   # AI 对话 (流式 SSE)
+│   │   │   ├── profile.py                # 学生画像构建与管理
+│   │   │   ├── config.py                 # 运行时 API 配置
+│   │   │   ├── stats.py                  # 仪表盘统计数据
+│   │   │   └── audit_logs.py             # 审计日志查询
 │   │   └── services/
-│   │       ├── document_parser.py     # 多格式文档解析
-│   │       ├── chunker.py             # 递归文本切片器
-│   │       ├── embedder.py            # Embedding 嵌入生成 (动态配置)
-│   │       ├── vector_store.py        # Chroma 向量存储
-│   │       ├── retriever.py           # RAG 检索 + 文档处理流水线
-│   │       ├── config_service.py      # 动态配置服务 (DB 缓存 + .env 回退)
-│   │       └── kp_extractor.py        # AI 知识点自动提取 (LLM)
+│   │       ├── document_parser.py        # 多格式文档解析
+│   │       ├── page_parser.py            # PDF/PPTX 页面级解析
+│   │       ├── chunker.py                # 递归文本切片器
+│   │       ├── embedder.py               # Embedding 嵌入生成 (动态配置)
+│   │       ├── vector_store.py           # Chroma 向量存储
+│   │       ├── retriever.py              # RAG 检索 + 文档处理流水线
+│   │       ├── text_normalizer.py        # 文本规范化 (去页码/合并断行)
+│   │       ├── content_enhancer.py       # LLM 内容增强 (二次加工)
+│   │       ├── config_service.py         # 动态配置服务 (DB 缓存 + .env 回退)
+│   │       ├── kp_extractor.py           # AI 知识点自动提取 (LLM)
+│   │       ├── page_kp_service.py        # 页面级知识点关联服务
+│   │       ├── chat_service.py           # AI 对话服务
+│   │       ├── profile_service.py        # 学生画像服务
+│   │       ├── audit_service.py          # 审计日志服务
+│   │       └── email_service.py          # 邮件验证服务
 │   ├── requirements.txt
-│   ├── docker-compose.yml             # 开发环境 (备选)
+│   ├── docker-compose.yml                # 开发环境 (备选)
 │   └── .env.example
 ├── frontend/
 │   ├── src/
-│   │   ├── App.tsx                    # 路由表
-│   │   ├── main.tsx                   # 应用入口
+│   │   ├── App.tsx                       # 路由表
+│   │   ├── main.tsx                      # 应用入口
 │   │   ├── components/
-│   │   │   ├── layout/                # AppLayout + Sidebar
-│   │   │   └── common/                # FileUpload 等通用组件
+│   │   │   ├── layout/
+│   │   │   │   ├── AppLayout.tsx         # 主布局 (侧边栏 + 顶栏 + 内容区)
+│   │   │   │   └── Sidebar.tsx           # 侧边导航栏
+│   │   │   ├── auth/                     # 登录/注册/密码重置表单
+│   │   │   ├── chat/                     # 对话消息组件
+│   │   │   ├── profile/                  # 画像展示组件
+│   │   │   ├── common/                   # 通用组件
+│   │   │   ├── EnhancedResultCard.tsx    # 检索结果增强卡片
+│   │   │   └── MarkdownRenderer.tsx      # Markdown/HTML 混合渲染器
 │   │   ├── pages/
-│   │   │   ├── Dashboard.tsx          # 仪表盘
-│   │   │   ├── CourseList.tsx         # 课程管理
-│   │   │   ├── CourseDetail.tsx       # 课程详情 (工作流步骤 + 章节/知识点)
-│   │   │   ├── DocumentUpload.tsx     # 文档上传 (格式标签 + 操作引导)
-│   │   │   ├── DocumentList.tsx       # 文档列表 (详情 + 关联 + AI提取)
-│   │   │   ├── KnowledgeSearch.tsx    # 知识检索
-│   │   │   └── Settings.tsx           # 系统设置 (API 配置)
-│   │   ├── services/api.ts            # 后端接口封装
-│   │   ├── store/index.ts             # 全局状态 (Zustand)
-│   │   └── types/index.ts             # TypeScript 类型定义
+│   │   │   ├── Dashboard.tsx             # 仪表盘
+│   │   │   ├── Login.tsx                 # 登录页
+│   │   │   ├── Register.tsx              # 注册页
+│   │   │   ├── PasswordReset.tsx         # 密码重置页
+│   │   │   ├── CourseList.tsx            # 课程管理
+│   │   │   ├── CourseDetail.tsx          # 课程详情 (树形章节/知识点 + 弹窗卡片)
+│   │   │   ├── DocumentList.tsx          # 文档列表 (详情 + 关联 + AI提取)
+│   │   │   ├── KnowledgeSearch.tsx       # 知识检索 (高亮 + 增强卡片)
+│   │   │   ├── Chat.tsx                  # AI 对话 (流式 SSE + 引用来源)
+│   │   │   ├── Profile.tsx              # 画像构建对话页
+│   │   │   ├── StudentProfile.tsx        # 学生画像展示与编辑
+│   │   │   ├── ProfileCollection.tsx     # 画像维度可视化
+│   │   │   ├── Settings.tsx              # 系统设置 (API 配置)
+│   │   │   └── admin/                    # 管理后台页面
+│   │   ├── services/
+│   │   │   └── api.ts                    # 后端接口封装
+│   │   ├── store/
+│   │   │   ├── index.ts                  # 全局状态 (Zustand)
+│   │   │   └── auth.ts                   # 认证状态管理
+│   │   └── types/
+│   │       └── index.ts                  # TypeScript 类型定义
 │   ├── package.json
 │   └── vite.config.ts
-├── Need.md                            # 详细需求文档
-├── 赛题.md                            # 赛题说明
-└── README.md                          # 本文件
+├── CLAUDE.md                             # 项目编码规范
+├── Need.md                               # 详细需求文档
+├── 赛题.md                               # 赛题说明
+├── DataBase.md                           # 数据库结构文档
+├── TODO.md                               # 待办任务清单
+└── README.md                             # 本文件
 ```
 
-## 后续阶段规划
+---
 
-| Phase | 内容 |
-|-------|------|
-| Phase 2 | 对话式画像构建：Profile Agent + 对话信息抽取 + 画像可视化；知识检索结果 LLM 加工优化 |
-| Phase 3 | 多智能体资源生成：Coordinator + 5 种资源 Agent + 生成进度追踪 |
-| Phase 4 | 学习路径规划 + 智能辅导（RAG 答疑） |
-| Phase 5 | 学习评估 + 内容安全过滤 + 事实校验 + UI 优化 |
+## 测试账号
+
+| 邮箱 | 密码 |
+|------|------|
+| 3285337942@qq.com | 20060605 |
+
+---
 
 ## 开源协议标注
 
