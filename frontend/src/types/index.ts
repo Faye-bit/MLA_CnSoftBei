@@ -76,6 +76,7 @@ export interface KnowledgePointTreeNode {
   description: string | null; content: string | null
   prerequisite_kp_id: string | null; parent_kp_id: string | null
   kp_type: 'category' | 'item'; difficulty: string; created_at: string
+  image_url: string
   children: KnowledgePointTreeNode[]
   linked_pages: LinkedPageInfo[]
 }

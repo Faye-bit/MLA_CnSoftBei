@@ -122,6 +122,7 @@ class KnowledgePointTreeNode(BaseModel):
     prerequisite_kp_id: Optional[uuid.UUID] = None
     parent_kp_id: Optional[uuid.UUID] = None
     kp_type: str = "item"; difficulty: str; created_at: datetime
+    image_url: str = ""
     children: list["KnowledgePointTreeNode"] = Field(default_factory=list)
     linked_pages: list[LinkedPageInfo] = Field(default_factory=list)
     model_config = {"from_attributes": True}

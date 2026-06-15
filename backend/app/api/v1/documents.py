@@ -420,6 +420,84 @@ async def delete_document(
     return ApiResponse(message="文档已删除, 关联数据和向量已清理")
 
 
+@router.put("/{document_id}/link-chapter", response_model=ApiResponse[dict], summary="关联文档到章节并自动分类")
+async def link_document_to_chapter(
+    course_id: uuid.UUID,
+    document_id: uuid.UUID,
+    chapter_id: uuid.UUID = Query(..., description="目标章节 ID"),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """ 将已有文档关联到指定章节, 并自动对该章节知识点运行 AI 分类 """
+    await _verify_course_owner(course_id, current_user, db)
+    document = await db.get(Document, document_id)
+    if not document or document.course_id != course_id:
+        raise HTTPException(status_code=404, detail="文档不存在")
+    chapter = await db.get(Chapter, chapter_id)
+    if not chapter or chapter.course_id != course_id:
+        raise HTTPException(status_code=404, detail="章节不存在")
+    document.chapter_id = chapter_id
+    await db.commit()
+
+    # 如果文档有页面但无知识点记录, 先运行知识点融合 (fuse_knowledge_points)
+    classify_result = {"category_count": 0, "item_count": 0}
+    try:
+        from app.services.kp_extractor import classify_knowledge_points, batch_create_tree_knowledge_points
+        from app.services.page_kp_service import fuse_knowledge_points
+        from app.models.course import KnowledgePoint
+        from app.models.document_page import PageKnowledgePoint, DocumentPage
+
+        # 检查是否有页面数据但无关联知识点
+        page_count_stmt = select(DocumentPage.id).where(DocumentPage.document_id == document_id).limit(1)
+        has_pages = (await db.execute(page_count_stmt)).scalar_one_or_none() is not None
+
+        linked_kp_stmt = (
+            select(PageKnowledgePoint.knowledge_point_id)
+            .join(DocumentPage, PageKnowledgePoint.document_page_id == DocumentPage.id)
+            .where(DocumentPage.document_id == document_id)
+            .limit(1)
+        )
+        has_linked_kps = (await db.execute(linked_kp_stmt)).scalar_one_or_none() is not None
+
+        # 有页面但没关联知识点 → 运行融合
+        if has_pages and not has_linked_kps:
+            logger.info(f"文档 {document_id}: 有页面无知识点, 运行 fuse_knowledge_points")
+            kp_count = await fuse_knowledge_points(document_id, course_id, db)
+            logger.info(f"文档 {document_id}: fuse 完成, 创建 {kp_count} 个知识点")
+
+        # 迁移该文档关联的知识点到目标章节
+        pkp_stmt = (
+            select(PageKnowledgePoint.knowledge_point_id)
+            .join(DocumentPage, PageKnowledgePoint.document_page_id == DocumentPage.id)
+            .where(DocumentPage.document_id == document_id)
+        )
+        pkp_result = await db.execute(pkp_stmt)
+        related_kp_ids = [row[0] for row in pkp_result.all()]
+        if related_kp_ids:
+            kp_stmt = select(KnowledgePoint).where(KnowledgePoint.id.in_(related_kp_ids))
+            kp_result = await db.execute(kp_stmt)
+            for kp in kp_result.scalars().all():
+                kp.chapter_id = chapter_id
+            await db.flush()
+
+        # 对目标章节所有知识点进行分类
+        stmt = select(KnowledgePoint).where(KnowledgePoint.chapter_id == chapter_id)
+        r = await db.execute(stmt)
+        kps = list(r.scalars().all())
+        if len(kps) >= 2:
+            kp_dicts = [{"title": k.title, "description": k.description or "", "difficulty": k.difficulty} for k in kps]
+            classified = await classify_knowledge_points(kp_dicts)
+            if classified:
+                classify_result = await batch_create_tree_knowledge_points(chapter_id, classified, db)
+    except Exception as e:
+        logger.warning(f"关联后分类失败: {e}")
+
+    return ApiResponse(
+        data={"document_id": str(document_id), "chapter_id": str(chapter_id), **classify_result},
+        message=f"已关联到章节「{chapter.title}」, 分类: {classify_result['category_count']} 组 {classify_result['item_count']} 个"
+    )
+
+
 # ==================== 页面级 API (Phase 3) ====================
 
 
