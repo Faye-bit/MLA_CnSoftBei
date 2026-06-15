@@ -8,7 +8,7 @@ import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { Table, Tag, Typography, Popconfirm, message, Space, Button, Drawer, Select, Alert, Modal, List, Checkbox, Image, Card, Row, Col } from 'antd'
 import { DeleteOutlined, EyeOutlined, LinkOutlined, ThunderboltOutlined, PlusOutlined, FileImageOutlined } from '@ant-design/icons'
-import { getDocuments, deleteDocument, getDocumentDetail, getCourseKnowledgePoints, linkChunkToKp, linkPageToKp, extractKP, createExtractedKP, getChapters, getPageImageUrl } from '../services/api'
+import { getDocuments, deleteDocument, getDocumentDetail, getCourseKnowledgePoints, linkChunkToKp, linkPageToKp, extractKP, createExtractedKP, getChapters, getPageImageUrl, linkDocumentToChapter } from '../services/api'
 import type { Document, DocumentDetail, DocumentPage, Chapter } from '../types'
 
 const { Title, Text, Paragraph } = Typography
@@ -66,6 +66,9 @@ export default function DocumentList() {
   const [detailOpen, setDetailOpen] = useState(false)
   const [selectedDoc, setSelectedDoc] = useState<DocumentDetail | null>(null)
   const [detailLoading, setDetailLoading] = useState(false)
+  const [linkChapterId, setLinkChapterId] = useState<string | null>(null)
+  const [linkChapterLoading, setLinkChapterLoading] = useState(false)
+  const [detailChapters, setDetailChapters] = useState<Array<{ id: string; title: string }>>([])
 
   // 知识点关联
   const [kpOptions, setKpOptions] = useState<KpOption[]>([])
@@ -110,11 +113,14 @@ export default function DocumentList() {
     if (!id) return
     setDetailLoading(true)
     setDetailOpen(true)
+    setLinkChapterId(null)
     try {
-      const [docData, kpData] = await Promise.all([
+      const [docData, kpData, chData] = await Promise.all([
         getDocumentDetail(id, docId),
         getCourseKnowledgePoints(id),
+        getChapters(id),
       ])
+      setDetailChapters(chData.map(ch => ({ id: ch.id, title: ch.title })))
       setSelectedDoc(docData)
       setKpOptions(kpData)
     } catch (err) {
@@ -431,6 +437,39 @@ export default function DocumentList() {
                 提示: {selectedDoc.error_message}
               </div>
             )}
+
+            {/* 关联章节 */}
+            <div style={{ marginBottom: 16, padding: 12, background: '#fafafa', borderRadius: 6, display: 'flex', alignItems: 'center', gap: 12 }}>
+              <span style={{ whiteSpace: 'nowrap' }}>关联章节:</span>
+              <Select
+                placeholder="选择已有章节"
+                style={{ flex: 1 }}
+                value={linkChapterId || undefined}
+                onChange={(val) => setLinkChapterId(val || null)}
+                allowClear
+                loading={linkChapterLoading}
+                options={(detailChapters || []).map(ch => ({ value: ch.id, label: ch.title }))}
+              />
+              <Button
+                type="primary"
+                size="small"
+                loading={linkChapterLoading}
+                disabled={!linkChapterId}
+                onClick={async () => {
+                  if (!id || !linkChapterId || !selectedDoc) return
+                  setLinkChapterLoading(true)
+                  try {
+                    const r = await linkDocumentToChapter(id, selectedDoc.id, linkChapterId)
+                    message.success(`已关联并分类: ${r.category_count} 组 ${r.item_count} 个知识点`)
+                    setLinkChapterId(null)
+                    handleViewDetail(selectedDoc.id)
+                  } catch (err) { message.error('关联失败: ' + (err as Error).message) }
+                  finally { setLinkChapterLoading(false) }
+                }}
+              >
+                关联
+              </Button>
+            </div>
 
             {/* PDF/PPTX: 页面网格视图 */}
             {selectedDoc.file_type === 'pdf' || selectedDoc.file_type === 'pptx' ? (

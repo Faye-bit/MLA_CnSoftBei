@@ -201,6 +201,14 @@ export async function deleteDocument(courseId: string, documentId: string) {
   await api.delete(`/courses/${courseId}/documents/${documentId}`)
 }
 
+/** 关联文档到章节并自动分类 */
+export async function linkDocumentToChapter(courseId: string, documentId: string, chapterId: string) {
+  const res = await api.put<ApiResponse<{ document_id: string; chapter_id: string; category_count: number; item_count: number }>>(
+    `/courses/${courseId}/documents/${documentId}/link-chapter`, null, { params: { chapter_id: chapterId } }
+  )
+  return res.data.data!
+}
+
 /** 获取课程下所有知识点 (供切片关联选择) */
 export async function getCourseKnowledgePoints(courseId: string) {
   const res = await api.get<ApiResponse<Array<{

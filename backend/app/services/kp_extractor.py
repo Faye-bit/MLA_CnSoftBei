@@ -301,9 +301,11 @@ async def classify_knowledge_points(kp_list: list[dict], batch_size: int = 30) -
 
 
 async def batch_create_classified_knowledge_points(
-    chapter_id: uuid.UUID, classified: list[dict], db: AsyncSession
+    chapter_id: uuid.UUID, classified: list[dict], db: AsyncSession,
+    page_map: dict[str, list[uuid.UUID]] | None = None,
 ) -> dict:
-    """ 批量创建分类后的树形知识点 """
+    """ 批量创建分类后的树形知识点, 可选恢复页面关联 """
+    from app.models.document_page import PageKnowledgePoint
     cn, ic = 0, 0
     for cat in classified:
         name = cat.get("category", "").strip() or "零散概念"
@@ -316,6 +318,10 @@ async def batch_create_classified_knowledge_points(
                 description=kd.get("description", ""), difficulty=kd.get("difficulty", "medium"),
                 kp_type="item", parent_kp_id=ck.id)
             db.add(ik); await db.flush(); ic += 1
+            # 恢复页面关联
+            if page_map and kd["title"] in page_map:
+                for page_id in page_map[kd["title"]]:
+                    db.add(PageKnowledgePoint(document_page_id=page_id, knowledge_point_id=ik.id, relevance=1.0))
             for cid_str in kd.get("chunk_ids", []):
                 try:
                     cid = uuid.UUID(cid_str); chunk = await db.get(DocumentChunk, cid)
