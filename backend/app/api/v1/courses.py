@@ -14,13 +14,14 @@ from sqlalchemy.orm import selectinload
 from app.core.database import get_db
 from app.models.course import Course, Chapter, KnowledgePoint
 from app.models.document import Document
+from app.models.document_page import DocumentPage
 from app.models.user import User
 from app.schemas.common import PaginatedResponse, ApiResponse
 from app.schemas.course import (
     CourseCreate, CourseUpdate, CourseResponse, CourseDetailResponse,
     ChapterCreate, ChapterUpdate, ChapterResponse,
     KnowledgePointCreate, KnowledgePointUpdate, KnowledgePointResponse,
-    KnowledgePointTreeNode,
+    KnowledgePointTreeNode, LinkedPageInfo,
 )
 from app.api.deps import get_current_user
 
@@ -151,7 +152,7 @@ async def get_course(
         chapter_responses.append(ChapterResponse(
             id=ch.id, course_id=ch.course_id, title=ch.title,
             description=ch.description, order_index=ch.order_index,
-            knowledge_point_count=sum(1 for kp in ch.knowledge_points if kp.kp_type == "item"), created_at=ch.created_at,
+            knowledge_point_count=sum(1 for kp in ch.knowledge_points if kp.kp_type != "category"), created_at=ch.created_at,
         ))
 
     detail = CourseDetailResponse(
@@ -256,7 +257,7 @@ async def list_chapters(
         items.append(ChapterResponse(
             id=ch.id, course_id=ch.course_id, title=ch.title,
             description=ch.description, order_index=ch.order_index,
-            knowledge_point_count=sum(1 for kp in ch.knowledge_points if kp.kp_type == "item"), created_at=ch.created_at,
+            knowledge_point_count=sum(1 for kp in ch.knowledge_points if kp.kp_type != "category"), created_at=ch.created_at,
         ))
     return ApiResponse(data=items)
 
@@ -323,7 +324,7 @@ async def create_knowledge_point(
     kp = KnowledgePoint(
         chapter_id=chapter_id, title=body.title, description=body.description,
         content=body.content, prerequisite_kp_id=body.prerequisite_kp_id,
-        parent_kp_id=body.parent_kp_id if body.kp_type == "item" else None,
+        parent_kp_id=body.parent_kp_id,
         kp_type=body.kp_type, difficulty=body.difficulty,
     )
     db.add(kp)
@@ -338,22 +339,48 @@ async def list_knowledge_points(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """ 获取章节知识点, 以树形结构返回 (category 为根, item 为子) """
+    """ 获取章节知识点, 以树形结构返回 (core→sub→concept), 同时包含关联的文档页面 """
     await _get_owned_chapter(chapter_id, current_user, db)
 
-    stmt = select(KnowledgePoint).where(KnowledgePoint.chapter_id == chapter_id)
+    # 预加载关联的页面及文档信息, 用于在知识点详情弹窗中展示页面缩略图
+    stmt = (
+        select(KnowledgePoint)
+        .where(KnowledgePoint.chapter_id == chapter_id)
+        .options(
+            selectinload(KnowledgePoint.pages).selectinload(DocumentPage.document)
+        )
+    )
     result = await db.execute(stmt)
     all_kps = list(result.scalars().all())
 
     roots: list[KnowledgePointTreeNode] = []
     kp_map: dict[uuid.UUID, KnowledgePointTreeNode] = {}
     for kp in all_kps:
+        # 构造关联页面信息 list
+        linked_pages: list[LinkedPageInfo] = []
+        for page in kp.pages:
+            doc = page.document
+            linked_pages.append(LinkedPageInfo(
+                page_id=page.id,
+                document_id=doc.id,
+                document_name=doc.filename,
+                page_number=page.page_number,
+                image_url=(
+                    f"/api/v1/courses/{doc.course_id}/documents/"
+                    f"{doc.id}/pages/{page.page_number}/image"
+                ),
+                summary=page.summary,
+            ))
+        # 按页码排序
+        linked_pages.sort(key=lambda p: p.page_number)
+
         kp_map[kp.id] = KnowledgePointTreeNode(
             id=kp.id, chapter_id=kp.chapter_id, title=kp.title,
             description=kp.description, content=kp.content,
             prerequisite_kp_id=kp.prerequisite_kp_id,
             parent_kp_id=kp.parent_kp_id, kp_type=kp.kp_type,
-            difficulty=kp.difficulty, created_at=kp.created_at, children=[],
+            difficulty=kp.difficulty, created_at=kp.created_at,
+            children=[], linked_pages=linked_pages,
         )
     for kp in all_kps:
         node = kp_map[kp.id]
@@ -417,7 +444,7 @@ async def reclassify_knowledge_points(
     """ 对章节下已有的扁平知识点进行 AI 自动分类, 重建为树形结构 """
     await _get_owned_chapter(chapter_id, current_user, db)
 
-    from app.services.kp_extractor import classify_knowledge_points, batch_create_classified_knowledge_points
+    from app.services.kp_extractor import classify_knowledge_points, batch_create_tree_knowledge_points
 
     stmt = select(KnowledgePoint).where(KnowledgePoint.chapter_id == chapter_id)
     result = await db.execute(stmt)
@@ -425,24 +452,19 @@ async def reclassify_knowledge_points(
 
     if len(flat_kps) < 2:
         return ApiResponse(data={"category_count": 0, "item_count": len(flat_kps)},
-                           message="知识点不足 2 个, 无需分类")
+                           message="知识点不足 2 个, 无需整理")
 
     kp_dicts = [{"title": kp.title, "description": kp.description or "",
                  "difficulty": kp.difficulty} for kp in flat_kps]
 
-    classified = await classify_knowledge_points(kp_dicts)
+    # 调用 LLM 将知识点按主题分组
+    tree = await classify_knowledge_points(kp_dicts)
 
-    has_categories = len(classified) > 1 or any(c.get("category", "").strip() for c in classified)
-    if not has_categories:
+    if not tree:
         return ApiResponse(data={"category_count": 0, "item_count": len(flat_kps)},
-                           message="分类后未产生有意义的分组, 保持扁平")
+                           message="整理后未产生有意义的知识树, 保持扁平")
 
-    # 删除扁平知识点 (联级会删 page_knowledge_points 关联)
-    for kp in flat_kps:
-        await db.delete(kp)
-    await db.flush()
-
-    result2 = await batch_create_classified_knowledge_points(chapter_id, classified, db)
+    result2 = await batch_create_tree_knowledge_points(chapter_id, tree, db)
 
     return ApiResponse(data=result2,
-                       message=f"分类完成: {result2['category_count']} 个分类, {result2['item_count']} 个子知识点")
+                       message=f"知识树整理完成: {result2['category_count']} 个分类, {result2['item_count']} 个知识点")

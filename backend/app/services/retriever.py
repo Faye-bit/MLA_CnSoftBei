@@ -541,8 +541,9 @@ async def _process_page_based(
     步骤:
       1. 渲染页面图片
       2. 保存图片到磁盘, 创建 DocumentPage 记录
-      3. 如果配置了 doc_parser API Key → 并发 LLM 提取每页知识点
-      4. 知识点融合 + 创建 KnowledgePoint 记录
+      3. 如果配置了 doc_parser API Key → 并发 LLM 提取每页知识点 (扁平)
+      4. 知识点融合去重 → 扁平 KnowledgePoint 记录
+      4.5 全文上下文建树 → LLM 拿到所有页面摘要后建立 core→sub→concept 知识树
       5. 生成嵌入向量 (每页摘要 + 知识点 → 嵌入 → Chroma)
       6. 更新文档状态
     """
@@ -621,53 +622,56 @@ async def _process_page_based(
     except Exception as e:
         logger.warning(f"文档 {doc.id}: 知识点融合失败, 跳过: {e}")
 
-    # 4.5 AI 自动分类 → 将扁平知识点转为树形结构 (category/子知识点)
+    # 4.5 LLM 分类 → 将扁平知识点整理为树形结构 (category→item)
     if kp_count > 1:
         try:
             from app.services.kp_extractor import (
-                classify_knowledge_points, batch_create_classified_knowledge_points,
+                classify_knowledge_points, batch_create_tree_knowledge_points,
             )
             from app.models.course import KnowledgePoint as KPModel, Chapter
-            # 获取融合后创建的知识点
+
+            # 确定目标章节
             doc_chapter_id = doc.chapter_id
-            if doc_chapter_id:
-                stmt = select(KPModel).where(KPModel.chapter_id == doc_chapter_id)
-            else:
-                # 默认章节
+            target_chapter = doc_chapter_id
+            if not target_chapter:
                 ch_stmt = select(Chapter).where(
                     Chapter.course_id == course_id, Chapter.title == "自动提取"
                 )
                 ch_result = await db.execute(ch_stmt)
                 default_ch = ch_result.scalar_one_or_none()
                 if default_ch:
-                    stmt = select(KPModel).where(KPModel.chapter_id == default_ch.id)
-                else:
-                    stmt = select(KPModel).where(KPModel.id == None)  # empty
-            result = await db.execute(stmt)
-            flat_kps = list(result.scalars().all())
-            if len(flat_kps) > 1:
-                kp_dicts = [{"title": kp.title, "description": kp.description or "",
-                             "difficulty": kp.difficulty} for kp in flat_kps]
-                classified = await classify_knowledge_points(kp_dicts)
-                # 只有分类有意义 (>1组 或 分类名非空) 才重建树形结构
-                has_real_category = any(c.get("category", "").strip() for c in classified)
-                if len(classified) > 1 or has_real_category:
-                    # 删除扁平知识点, 重建为树形结构
-                    for kp in flat_kps:
-                        await db.delete(kp)
-                    await db.flush()
-                    target_chapter = doc_chapter_id or (default_ch.id if default_ch else None)
-                    if target_chapter:
-                        result2 = await batch_create_classified_knowledge_points(
+                    target_chapter = default_ch.id
+            if not target_chapter:
+                logger.warning(f"文档 {doc.id}: 无有效目标章节, 跳过知识树构建")
+            else:
+                # 加载该章节下所有扁平知识点 (fuse 阶段创建的)
+                kp_stmt = (
+                    select(KPModel)
+                    .where(KPModel.chapter_id == target_chapter)
+                )
+                kp_result = await db.execute(kp_stmt)
+                flat_kps = list(kp_result.scalars().all())
+
+                if len(flat_kps) >= 2:
+                    # 转为 dict 格式 → LLM 分类
+                    kp_dicts = [
+                        {"title": kp.title, "description": kp.description or "",
+                         "difficulty": kp.difficulty}
+                        for kp in flat_kps
+                    ]
+                    classified = await classify_knowledge_points(kp_dicts)
+
+                    if classified:
+                        result2 = await batch_create_tree_knowledge_points(
                             target_chapter, classified, db
                         )
-                        kp_count = result2["item_count"]
                         logger.info(
-                            f"文档 {doc.id}: AI 分类完成, "
-                            f"{result2['category_count']} 个分类, {kp_count} 个子知识点"
+                            f"文档 {doc.id}: 知识树整理完成, "
+                            f"{result2['category_count']} 个分类, "
+                            f"{result2['item_count']} 个知识点"
                         )
         except Exception as e:
-            logger.warning(f"文档 {doc.id}: AI 分类失败, 保留扁平结构: {e}")
+            logger.warning(f"文档 {doc.id}: 知识树构建失败, 保留扁平结构: {e}")
 
     # 5. 生成嵌入向量: 每页的摘要 + 知识点 → 嵌入 → Chroma
     try:

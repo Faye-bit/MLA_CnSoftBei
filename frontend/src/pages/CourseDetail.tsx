@@ -25,6 +25,8 @@ import {
   Alert,
   Tree,
   Popover,
+  Image,
+  Divider,
 } from 'antd'
 import type { DataNode } from 'antd/es/tree'
 import {
@@ -46,10 +48,13 @@ import {
   uploadDocument,
 } from '../services/api'
 import { useAuthStore } from '../store'
-import type { CourseDetail, Chapter, KnowledgePoint, KnowledgePointTreeNode } from '../types'
+import type { CourseDetail, Chapter, KnowledgePoint, KnowledgePointTreeNode, LinkedPageInfo } from '../types'
 
 const { Title, Text } = Typography
 const { Dragger } = Upload
+
+/** 后端 API 基础地址, 用于拼接页面图片完整 URL */
+const API_BASE = 'http://localhost:8000'
 
 export default function CourseDetailPage() {
   const { id } = useParams<{ id: string }>()
@@ -378,30 +383,58 @@ function KnowledgePointList({ chapterId, onDelete }: { chapterId: string; onDele
         icon: item.kp_type === 'category' ? '📁' : undefined,
         title: (
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span>
-              <span style={{ fontWeight: item.kp_type === 'category' ? 600 : 400 }}>{item.title}</span>
-              {item.kp_type !== 'category' && (
-                <>
+            {item.kp_type !== 'category' ? (
+              <Popover trigger="click" placement="right"
+                title={<span style={{ fontSize: 15, fontWeight: 600 }}>{item.title}</span>}
+                content={
+                  <div style={{ maxWidth: 420 }}>
+                    {item.description && <p style={{ color: '#333', lineHeight: 1.8, marginBottom: 8 }}>{item.description}</p>}
+                    {item.content && <p style={{ color: '#555', lineHeight: 1.8, marginBottom: 8, borderTop: '1px solid #f0f0f0', paddingTop: 8 }}>{item.content}</p>}
+                    <Tag color={item.difficulty === 'easy' ? 'green' : item.difficulty === 'medium' ? 'blue' : 'red'}>
+                      难度: {item.difficulty === 'easy' ? '简单' : item.difficulty === 'medium' ? '中等' : '困难'}
+                    </Tag>
+                    {item.linked_pages && item.linked_pages.length > 0 && (
+                      <>
+                        <Divider style={{ margin: '12px 0 8px', fontSize: 13, color: '#888' }}>关联页面</Divider>
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                          {item.linked_pages.map((page: LinkedPageInfo) => (
+                            <div key={page.page_id} style={{ width: 140, textAlign: 'center' }}>
+                              <Image
+                                src={`${API_BASE}${page.image_url}`}
+                                alt={`第 ${page.page_number} 页`}
+                                width={130}
+                                height={90}
+                                style={{ objectFit: 'cover', borderRadius: 4, border: '1px solid #e8e8e8' }}
+                                fallback="data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTMwIiBoZWlnaHQ9IjkwIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciPjxyZWN0IHdpZHRoPSIxMzAiIGhlaWdodD0iOTAiIGZpbGw9IiNmNWY1ZjUiLz48dGV4dCB4PSI2NSIgeT0iNTAiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGZpbGw9IiNjY2MiIGZvbnQtc2l6ZT0iMTIiPuWbvueJh+WKoOi9veWksei0pTwvdGV4dD48L3N2Zz4="
+                              />
+                              <div style={{ fontSize: 11, color: '#888', marginTop: 2 }}>
+                                第 {page.page_number} 页
+                              </div>
+                              {page.summary && (
+                                <div style={{ fontSize: 10, color: '#aaa', marginTop: 1, lineHeight: 1.4, maxHeight: 28, overflow: 'hidden' }}>
+                                  {page.summary}
+                                </div>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      </>
+                    )}
+                  </div>
+                }
+              >
+                <span style={{ cursor: 'pointer' }} onClick={e => e.stopPropagation()}>
+                  <span style={{ fontWeight: 400 }}>{item.title}</span>
                   <Tag color={item.difficulty === 'easy' ? 'green' : item.difficulty === 'medium' ? 'blue' : 'red'} style={{ marginLeft: 8, fontSize: 11 }}>
                     {item.difficulty === 'easy' ? '简单' : item.difficulty === 'medium' ? '中等' : '困难'}
                   </Tag>
-                  <Popover trigger="click" placement="right"
-                    title={<span style={{ fontSize: 15, fontWeight: 600 }}>{item.title}</span>}
-                    content={
-                      <div style={{ maxWidth: 380 }}>
-                        {item.description && <p style={{ color: '#333', lineHeight: 1.8, marginBottom: 8 }}>{item.description}</p>}
-                        {item.content && <p style={{ color: '#555', lineHeight: 1.8, marginBottom: 8, borderTop: '1px solid #f0f0f0', paddingTop: 8 }}>{item.content}</p>}
-                        <Tag color={item.difficulty === 'easy' ? 'green' : item.difficulty === 'medium' ? 'blue' : 'red'}>
-                          难度: {item.difficulty === 'easy' ? '简单' : item.difficulty === 'medium' ? '中等' : '困难'}
-                        </Tag>
-                      </div>
-                    }
-                  >
-                    <Button type="link" size="small" style={{ padding: '0 4px', fontSize: 12 }}>详情</Button>
-                  </Popover>
-                </>
-              )}
-            </span>
+                </span>
+              </Popover>
+            ) : (
+              <span>
+                <span style={{ fontWeight: 600 }}>{item.title}</span>
+              </span>
+            )}
             <Popconfirm title={item.kp_type === 'category' ? '删除分类会同时删除其下所有知识点' : '确定删除?'}
               onConfirm={async e => { e?.stopPropagation(); await deleteKnowledgePoint(item.id); message.success('已删除'); load(); onDelete() }}
               okText="确定" cancelText="取消">

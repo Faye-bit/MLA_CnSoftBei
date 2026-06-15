@@ -105,6 +105,16 @@ class KnowledgePointResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class LinkedPageInfo(BaseModel):
+    """ 知识点关联的文档页面信息 (用于在知识点详情弹窗中展示) """
+    page_id: uuid.UUID
+    document_id: uuid.UUID
+    document_name: str
+    page_number: int
+    image_url: str
+    summary: Optional[str] = None
+
+
 class KnowledgePointTreeNode(BaseModel):
     """ 树节点: category 为根, item 为子 """
     id: uuid.UUID; chapter_id: uuid.UUID; title: str
@@ -113,4 +123,5 @@ class KnowledgePointTreeNode(BaseModel):
     parent_kp_id: Optional[uuid.UUID] = None
     kp_type: str = "item"; difficulty: str; created_at: datetime
     children: list["KnowledgePointTreeNode"] = Field(default_factory=list)
+    linked_pages: list[LinkedPageInfo] = Field(default_factory=list)
     model_config = {"from_attributes": True}

@@ -60,6 +60,16 @@ export interface KnowledgePoint {
   kp_type: 'category' | 'item'
   difficulty: 'easy' | 'medium' | 'hard'; created_at: string
 }
+/** 知识点关联的文档页面信息 */
+export interface LinkedPageInfo {
+  page_id: string
+  document_id: string
+  document_name: string
+  page_number: number
+  image_url: string
+  summary: string | null
+}
+
 /** 知识点树节点 */
 export interface KnowledgePointTreeNode {
   id: string; chapter_id: string; title: string
@@ -67,6 +77,7 @@ export interface KnowledgePointTreeNode {
   prerequisite_kp_id: string | null; parent_kp_id: string | null
   kp_type: 'category' | 'item'; difficulty: string; created_at: string
   children: KnowledgePointTreeNode[]
+  linked_pages: LinkedPageInfo[]
 }
 
 // ==================== 文档相关 ====================

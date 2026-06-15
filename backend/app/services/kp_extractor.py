@@ -20,11 +20,11 @@ EXTRACT_SYSTEM_PROMPT = """你是一个专业的课程知识图谱构建助手�
 要求:
 1. 识别片段中涉及的核心知识点, 每个知识点包括:
    - title: 知识点名称 (简洁准确, 10字以内)
-   - description: 一句话描述 (30字以内)
+   - description: 一句话描述 (50字以内)
    - difficulty: 难度 (easy/medium/hard)
 2. 只提取片段中明确涉及的知识点, 不要编造
 3. 如果片段不包含明确的知识点, 返回空列表
-4. 请自行判断应提取多少个知识点, 不要遗漏任何明确涉及的知识点
+4. 请自行判断应提取多少个知识点
 
 输出格式: 严格的JSON数组, 不要包含任何解释文字
 [{"title": "知识点名", "description": "一句话描述", "difficulty": "easy|medium|hard"}]"""
@@ -228,7 +228,7 @@ async def batch_create_knowledge_points(
 
 # ===== AI 知识点自动分类 =====
 
-CLASSIFY_PROMPT = """将知识点按主题分组。输出 JSON:
+CLASSIFY_PROMPT = """将知识点按主题分组，输出 JSON:
 [{"category":"分类名","items":[{"title":"知识点","description":"描述","difficulty":"easy|medium|hard"}]}]"""
 
 
@@ -306,7 +306,7 @@ async def batch_create_classified_knowledge_points(
     """ 批量创建分类后的树形知识点 """
     cn, ic = 0, 0
     for cat in classified:
-        name = cat.get("category", "").strip() or "默认分类"
+        name = cat.get("category", "").strip() or "零散概念"
         items = cat.get("items", [])
         if not items: continue
         ck = KnowledgePoint(chapter_id=chapter_id, title=name, kp_type="category", difficulty="medium")
@@ -323,4 +323,67 @@ async def batch_create_classified_knowledge_points(
                 except ValueError: pass
     await db.commit()
     logger.info(f"分类创建: {cn} 类, {ic} KP")
+    return {"category_count": cn, "item_count": ic}
+
+
+async def batch_create_tree_knowledge_points(
+    chapter_id: uuid.UUID, classified: list[dict], db: AsyncSession
+) -> dict:
+    """
+    将 LLM 分类结果应用到章节中的已有知识点:
+      1. 为每个分类创建 category 类型的父知识点
+      2. 将章节下已有的 item 知识点按标题匹配, 挂到对应 category 下 (设置 parent_kp_id)
+      3. 保留已有的 PageKnowledgePoint 关联 (不删除重建, 只更新 parent_kp_id)
+
+    与 batch_create_classified_knowledge_points 的区别:
+      前者创建全新的知识点 (适合从零构建), 本函数操作已有知识点 (适合 fuse 后的二次整理)
+
+    :param chapter_id: 目标章节 ID
+    :param classified: classify_knowledge_points() 的输出 [{"category": "..", "items": [..]}]
+    :param db: 数据库会话
+    :return: {"category_count": int, "item_count": int}
+    """
+    from app.models.course import KnowledgePoint as KPModel
+
+    # 1. 加载章节下所有已有知识点, 建立标题→实例的索引
+    stmt = select(KPModel).where(KPModel.chapter_id == chapter_id)
+    result = await db.execute(stmt)
+    existing_kps: dict[str, KPModel] = {kp.title: kp for kp in result.scalars().all()}
+
+    cn, ic = 0, 0
+    for cat in classified:
+        name = str(cat.get("category", "")).strip() or "默认分类"
+        items = cat.get("items", [])
+        if not items:
+            continue
+
+        # 检查是否已有同名 category, 复用
+        cat_kp = existing_kps.get(name)
+        if cat_kp is None:
+            cat_kp = KPModel(
+                chapter_id=chapter_id, title=name,
+                kp_type="category", difficulty="medium",
+            )
+            db.add(cat_kp)
+            await db.flush()
+            cn += 1
+        else:
+            # 已有同名知识点, 将其转为 category 类型
+            cat_kp.kp_type = "category"
+            cat_kp.parent_kp_id = None  # category 不应有父节点
+
+        # 将已有 item 知识点按标题匹配, 挂到 category 下
+        for kd in items:
+            title = kd["title"]
+            kp = existing_kps.get(title)
+            if kp is not None:
+                kp.parent_kp_id = cat_kp.id
+                kp.kp_type = "item"
+                if not kp.description and kd.get("description"):
+                    kp.description = kd["description"]
+                kp.difficulty = kd.get("difficulty", kp.difficulty or "medium")
+                ic += 1
+
+    await db.commit()
+    logger.info(f"知识树整理完成: {cn} 个分类, {ic} 个知识点已关联")
     return {"category_count": cn, "item_count": ic}
