@@ -14,8 +14,15 @@ import {
   ThunderboltOutlined,
 } from '@ant-design/icons'
 import ProfileDimensionCard from '../components/profile/ProfileDimensionCard'
-import { getStudentProfile, updateStudentProfile, deleteProfile, rebuildProfile } from '../services/api'
-import type { StudentProfile as StudentProfileType } from '../types'
+import RadarChart from '../components/profile/RadarChart'
+import {
+  getStudentProfile,
+  updateStudentProfile,
+  deleteProfile,
+  rebuildProfile,
+  getRadarData,
+} from '../services/api'
+import type { StudentProfile as StudentProfileType, RadarDimension } from '../types'
 
 const { Title, Text, Paragraph } = Typography
 
@@ -35,6 +42,12 @@ export default function StudentProfile() {
   const [loading, setLoading] = useState(true)
   const [rebuilding, setRebuilding] = useState(false)
 
+  // 雷达图状态
+  const [radarDimensions, setRadarDimensions] = useState<RadarDimension[]>([])
+  const [radarOverall, setRadarOverall] = useState(0)
+  const [radarUpdatedAt, setRadarUpdatedAt] = useState('')
+  const [radarLoading, setRadarLoading] = useState(true)
+
   /** 加载画像 */
   const loadProfile = useCallback(async () => {
     setLoading(true)
@@ -48,9 +61,30 @@ export default function StudentProfile() {
     }
   }, [])
 
+  /** 加载雷达图 */
+  const loadRadar = useCallback(async () => {
+    setRadarLoading(true)
+    try {
+      const data = await getRadarData()
+      setRadarDimensions(data.dimensions || [])
+      setRadarOverall(data.overall_score || 0)
+      setRadarUpdatedAt(data.updated_at || '')
+    } catch (err) {
+      console.error('雷达图加载失败:', err)
+      // 不阻断页面, 但给用户提示
+      const msg = (err as Error).message || String(err)
+      if (msg && !msg.includes('401')) {
+        message.warning('雷达图加载失败: ' + msg)
+      }
+    } finally {
+      setRadarLoading(false)
+    }
+  }, [])
+
   useEffect(() => {
     loadProfile()
-  }, [loadProfile])
+    loadRadar()
+  }, [loadProfile, loadRadar])
 
   /** 手动更新某个维度 (描述式: 直接传字符串) */
   const handleSaveDimension = useCallback(async (dimKey: string, text: string) => {
@@ -145,6 +179,14 @@ export default function StudentProfile() {
           {profile.summary}
         </Paragraph>
       )}
+
+      {/* 学习行为雷达图 */}
+      <RadarChart
+        dimensions={radarDimensions}
+        overallScore={radarOverall}
+        loading={radarLoading}
+        updatedAt={radarUpdatedAt}
+      />
 
       {/* 系统已了解的信息 (后台自动提取的记忆) */}
       {profile?.memories && profile.memories.length > 0 && (

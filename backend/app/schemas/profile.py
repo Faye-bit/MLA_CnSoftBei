@@ -43,3 +43,24 @@ class ProfileVersionResponse(BaseModel):
     version: int
     created_at: Optional[datetime] = None
     summary: Optional[str] = None
+
+
+# ============================================================================
+# 雷达图 Schema
+# ============================================================================
+
+class RadarDimensionItem(BaseModel):
+    """ 雷达图单个维度 """
+    key: str = Field(..., description="维度 key (subject_balance 等)")
+    label: str = Field(..., description="维度中文名称")
+    score: float = Field(..., description="0-10 评分")
+    tooltip: str = Field(default="", description="前端 Tooltip 释义")
+    icon: str = Field(default="", description="前端图标标识")
+
+
+class RadarResponse(BaseModel):
+    """ 雷达图完整响应 """
+    dimensions: list[RadarDimensionItem] = Field(default_factory=list, description="6 个维度评分列表")
+    overall_score: float = Field(default=0.0, description="综合平均分")
+    updated_at: str = Field(default="", description="计算时间 (ISO 格式)")
+    data_available: bool = Field(default=False, description="是否有足量行为数据")

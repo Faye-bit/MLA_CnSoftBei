@@ -4,6 +4,7 @@
 """
 
 import uuid
+import traceback
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -17,6 +18,7 @@ from app.schemas.profile import (
     ProfileExtractionRequest,
     ProfileResponse,
     ProfileVersionResponse,
+    RadarResponse,
 )
 from app.services.profile_service import (
     get_or_create_profile,
@@ -24,7 +26,9 @@ from app.services.profile_service import (
     extract_profile_from_conversation,
     rebuild_profile_from_memories,
 )
+from app.services.radar_service import get_radar_data
 from app.api.deps import get_current_user
+from loguru import logger
 
 router = APIRouter(prefix="/profile", tags=["学生画像"])
 
@@ -181,6 +185,40 @@ async def get_profile_versions(
         ],
         message="获取成功",
     )
+
+
+@router.get("/radar", summary="获取学习行为雷达图")
+async def get_study_radar(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    获取当前用户的学习行为雷达图数据
+    基于近 30 天平台行为统计, 6 个维度 0-10 分
+    """
+    try:
+        radar = await get_radar_data(current_user.id, db)
+        result = {
+            "dimensions": [],
+            "overall_score": 0.0,
+            "updated_at": "",
+            "data_available": False,
+        }
+        for dim in radar.get("dimensions", []):
+            result["dimensions"].append({
+                "key": str(dim.get("key", "")),
+                "label": str(dim.get("label", "")),
+                "score": float(dim.get("score", 0)),
+                "tooltip": str(dim.get("tooltip", "")),
+                "icon": str(dim.get("icon", "")),
+            })
+        result["overall_score"] = float(radar.get("overall_score", 0))
+        result["updated_at"] = str(radar.get("updated_at", ""))
+        result["data_available"] = bool(radar.get("data_available", False))
+        return ApiResponse(data=result, message="雷达图数据获取成功")
+    except Exception as e:
+        logger.error(f"雷达图接口异常: {e}\n{traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail=f"雷达图获取失败: {str(e)}")
 
 
 @router.delete("/", response_model=ApiResponse[None], summary="重置画像")

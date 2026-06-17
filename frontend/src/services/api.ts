@@ -588,3 +588,9 @@ export async function rebuildProfile() {
 export async function deleteProfile() {
   await api.delete('/profile/')
 }
+
+/** 获取学习行为雷达图 */
+export async function getRadarData() {
+  const res = await api.get<ApiResponse<import('../types').RadarResponse>>('/profile/radar')
+  return res.data.data!
+}

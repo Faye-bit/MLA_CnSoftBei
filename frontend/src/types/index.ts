@@ -436,3 +436,22 @@ export interface ProfileVersion {
   created_at: string | null
   summary: string | null
 }
+
+// ==================== 雷达图相关 ====================
+
+/** 雷达图单个维度 */
+export interface RadarDimension {
+  key: string
+  label: string
+  score: number
+  tooltip: string
+  icon: string
+}
+
+/** 雷达图完整响应 */
+export interface RadarResponse {
+  dimensions: RadarDimension[]
+  overall_score: number
+  updated_at: string
+  data_available: boolean
+}
