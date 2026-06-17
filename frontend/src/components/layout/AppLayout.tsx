@@ -11,13 +11,84 @@
 
 import { useState, useEffect, useRef } from 'react'
 import { Outlet, useNavigate } from 'react-router-dom'
-import { Layout, Button, theme, message } from 'antd'
-import { MenuFoldOutlined, MenuUnfoldOutlined } from '@ant-design/icons'
+import { Layout, Button, Avatar, Dropdown, Space, Typography, theme, message } from 'antd'
+import {
+  MenuFoldOutlined,
+  MenuUnfoldOutlined,
+  UserOutlined,
+  LogoutOutlined,
+} from '@ant-design/icons'
+import type { MenuProps } from 'antd'
 import Sidebar from './Sidebar'
+import FloatingChat from '../common/FloatingChat'
 import { useAuthStore } from '../../store'
+import { logout as logoutApi, getAvatarUrl } from '../../services/api'
 import { getTokenRemainingSeconds } from '../../utils/jwt'
 
 const { Header, Content } = Layout
+const { Text } = Typography
+
+/**
+ * 顶栏用户头像下拉菜单组件
+ * 点击头像弹出个人中心和退出登录选项
+ */
+function HeaderUserMenu() {
+  const navigate = useNavigate()
+  const user = useAuthStore((s) => s.user)
+  const logout = useAuthStore((s) => s.logout)
+
+  /** 退出登录 */
+  const handleLogout = async () => {
+    await logoutApi()
+    logout()
+    message.success('已退出登录')
+    navigate('/login', { replace: true })
+  }
+
+  /** 下拉菜单项 */
+  const dropdownItems: MenuProps['items'] = [
+    {
+      key: 'user-info',
+      label: (
+        <div style={{ padding: '4px 0' }}>
+          <div style={{ fontWeight: 600, fontSize: 14 }}>{user?.nickname || user?.username || '用户'}</div>
+          <Text type="secondary" style={{ fontSize: 12 }}>{user?.email || ''}</Text>
+        </div>
+      ),
+      disabled: true,
+    },
+    { type: 'divider' },
+    {
+      key: 'profile',
+      icon: <UserOutlined />,
+      label: '个人中心',
+      onClick: () => navigate('/profile'),
+    },
+    { type: 'divider' },
+    {
+      key: 'logout',
+      icon: <LogoutOutlined />,
+      label: '退出登录',
+      onClick: handleLogout,
+    },
+  ]
+
+  return (
+    <Dropdown menu={{ items: dropdownItems }} trigger={['click']} placement="bottomRight">
+      <Space style={{ cursor: 'pointer' }}>
+        <Avatar
+          src={getAvatarUrl(user?.avatar)}
+          icon={<UserOutlined />}
+          size="small"
+          style={{ flexShrink: 0, backgroundColor: '#1677ff' }}
+        />
+        <Text style={{ fontSize: 13, maxWidth: 100, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          {user?.nickname || user?.username || '用户'}
+        </Text>
+      </Space>
+    </Dropdown>
+  )
+}
 
 export default function AppLayout() {
   const [collapsed, setCollapsed] = useState(false)
@@ -90,20 +161,26 @@ export default function AppLayout() {
             background: token.colorBgContainer,
             display: 'flex',
             alignItems: 'center',
+            justifyContent: 'space-between',
             borderBottom: `1px solid ${token.colorBorderSecondary}`,
             flexShrink: 0,
           }}
         >
-          <Button
-            type="text"
-            icon={collapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
-            onClick={() => setCollapsed(!collapsed)}
-            style={{ fontSize: 16, width: 40, height: 40 }}
-          />
+          {/* 左侧: 折叠按钮 + 标题 */}
+          <div style={{ display: 'flex', alignItems: 'center' }}>
+            <Button
+              type="text"
+              icon={collapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
+              onClick={() => setCollapsed(!collapsed)}
+              style={{ fontSize: 16, width: 40, height: 40 }}
+            />
+            <span style={{ marginLeft: 16, fontSize: 16, fontWeight: 500 }}>
+              {collapsed ? '' : '面向高校的个性化学习资源智能平台'}
+            </span>
+          </div>
 
-          <span style={{ marginLeft: 16, fontSize: 16, fontWeight: 500 }}>
-            {collapsed ? '' : '面向高校的个性化学习资源智能平台'}
-          </span>
+          {/* 右侧: 用户头像下拉 */}
+          <HeaderUserMenu />
         </Header>
 
         {/* 内容区域 */}
@@ -120,6 +197,7 @@ export default function AppLayout() {
           <Outlet />
         </Content>
       </Layout>
+      <FloatingChat />
     </Layout>
   )
 }

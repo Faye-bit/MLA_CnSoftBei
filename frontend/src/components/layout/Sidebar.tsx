@@ -1,40 +1,35 @@
 /**
  * 侧边栏导航组件
- * 提供课程管理、知识检索、个人中心、管理后台等页面的导航入口
+ * 提供课程管理、知识检索、AI 对话、画像、管理后台等页面的导航入口
+ * 注: 个人中心和退出登录已移至顶栏右侧头像下拉菜单
  */
 
 import { useNavigate, useLocation } from 'react-router-dom'
-import { Layout, Menu, Avatar, Dropdown, Space, Typography, message } from 'antd'
+import { Layout, Menu } from 'antd'
 import {
   DashboardOutlined,
   BookOutlined,
   SearchOutlined,
   SettingOutlined,
-  UserOutlined,
   TeamOutlined,
   SafetyCertificateOutlined,
   FileTextOutlined,
-  LogoutOutlined,
   MessageOutlined,
   IdcardOutlined,
 } from '@ant-design/icons'
 import type { MenuProps } from 'antd'
 import { useAuthStore } from '../../store'
-import { logout as logoutApi, getAvatarUrl } from '../../services/api'
 
 const { Sider } = Layout
-const { Text } = Typography
 
 type MenuItem = Required<MenuProps>['items'][number]
 
 export default function Sidebar({ collapsed }: { collapsed: boolean }) {
   const navigate = useNavigate()
   const location = useLocation()
-  const user = useAuthStore((s) => s.user)
   const isAdmin = useAuthStore((s) => s.isAdmin)
-  const logout = useAuthStore((s) => s.logout)
 
-  /** 导航菜单项配置 */
+  /** 导航菜单项配置 (个人中心已移至顶栏头像下拉) */
   const menuItems: MenuItem[] = [
     {
       key: '/',
@@ -69,11 +64,6 @@ export default function Sidebar({ collapsed }: { collapsed: boolean }) {
       label: '我的画像',
     },
     {
-      key: '/profile',
-      icon: <UserOutlined />,
-      label: '个人中心',
-    },
-    {
       key: '/settings',
       icon: <SettingOutlined />,
       label: '系统设置',
@@ -105,31 +95,6 @@ export default function Sidebar({ collapsed }: { collapsed: boolean }) {
   const handleMenuClick: MenuProps['onClick'] = (e) => {
     navigate(e.key)
   }
-
-  /** 退出登录 */
-  const handleLogout = async () => {
-    await logoutApi()
-    logout()
-    message.success('已退出登录')
-    navigate('/login', { replace: true })
-  }
-
-  /** 用户下拉菜单 */
-  const userDropdownItems: MenuProps['items'] = [
-    {
-      key: 'profile',
-      icon: <UserOutlined />,
-      label: '个人中心',
-      onClick: () => navigate('/profile'),
-    },
-    { type: 'divider' },
-    {
-      key: 'logout',
-      icon: <LogoutOutlined />,
-      label: '退出登录',
-      onClick: handleLogout,
-    },
-  ]
 
   /** 根据当前路径确定选中的菜单项 */
   const selectedKey = location.pathname
@@ -175,50 +140,11 @@ export default function Sidebar({ collapsed }: { collapsed: boolean }) {
         <Menu
           mode="inline"
           selectedKeys={[selectedKey]}
-          defaultOpenKeys={['knowledge-group', 'admin-group', 'chat-group', 'profile-group']}
+          defaultOpenKeys={['knowledge-group', 'admin-group']}
           items={menuItems}
           onClick={handleMenuClick}
           style={{ borderRight: 0 }}
         />
-      </div>
-
-      {/* 底部用户信息 */}
-      <div
-        style={{
-          borderTop: '1px solid #f0f0f0',
-          padding: collapsed ? '12px 8px' : '12px',
-          flexShrink: 0,
-        }}
-      >
-        <Dropdown menu={{ items: userDropdownItems }} trigger={['click']} placement="topRight">
-          <Space
-            style={{
-              cursor: 'pointer',
-              width: '100%',
-              justifyContent: collapsed ? 'center' : 'flex-start',
-            }}
-          >
-            <Avatar
-              src={getAvatarUrl(user?.avatar)}
-              icon={<UserOutlined />}
-              size="small"
-              style={{ flexShrink: 0 }}
-            />
-            {!collapsed && (
-              <Text
-                style={{
-                  maxWidth: 120,
-                  overflow: 'hidden',
-                  textOverflow: 'ellipsis',
-                  whiteSpace: 'nowrap',
-                  fontSize: 13,
-                }}
-              >
-                {user?.nickname || user?.username || '用户'}
-              </Text>
-            )}
-          </Space>
-        </Dropdown>
       </div>
     </Sider>
   )
