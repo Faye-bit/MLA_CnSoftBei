@@ -17,6 +17,42 @@ from loguru import logger
 from sqlalchemy.ext.asyncio import AsyncSession
 from openai import AsyncOpenAI
 
+# Poppler 工具路径 (pdf2image 底层依赖, 用于 PDF 渲染为图片)
+# Windows 下需手动下载 poppler 并指定 bin 目录路径
+_POPPLER_PATH = None
+
+def _get_poppler_path() -> str | None:
+    """
+    自动检测 poppler 工具路径
+    优先检查环境变量 POPPLER_PATH, 其次检查常见安装位置
+    :return: poppler bin 目录路径, 找不到返回 None
+    """
+    global _POPPLER_PATH
+    if _POPPLER_PATH is not None:
+        return _POPPLER_PATH if _POPPLER_PATH else None
+
+    # 1. 环境变量
+    env_path = os.environ.get("POPPLER_PATH", "")
+    if env_path and os.path.exists(os.path.join(env_path, "pdftoppm.exe")):
+        _POPPLER_PATH = env_path
+        return env_path
+
+    # 2. 常见安装位置 (Windows)
+    candidates = [
+        "D:/Poppler/poppler-24.08.0/Library/bin",
+        "C:/Poppler/bin",
+        "C:/Program Files/poppler/bin",
+        "E:/poppler/bin",
+    ]
+    for candidate in candidates:
+        if os.path.exists(os.path.join(candidate, "pdftoppm.exe")):
+            _POPPLER_PATH = candidate
+            return candidate
+
+    # 3. 系统 PATH (pdftoppm 可直接调用时返回空字符串即可)
+    _POPPLER_PATH = ""
+    return ""
+
 
 # ==================== 页面渲染 ====================
 
@@ -67,10 +103,19 @@ def _render_pdf_pages(file_path: str, pages_dir: str, dpi: int) -> List[str]:
     """
     from pdf2image import convert_from_path
 
+    poppler_path = _get_poppler_path()
+    if poppler_path:
+        logger.info(f"使用 poppler 路径: {poppler_path}")
+    else:
+        logger.info("poppler 路径为空, 依赖系统 PATH")
+
     logger.info(f"开始渲染 PDF 页面: {file_path}, DPI={dpi}")
 
     # 逐页转换为 PIL Image 列表
-    images = convert_from_path(file_path, dpi=dpi)
+    if poppler_path:
+        images = convert_from_path(file_path, dpi=dpi, poppler_path=poppler_path)
+    else:
+        images = convert_from_path(file_path, dpi=dpi)
 
     saved_paths: List[str] = []
     for i, img in enumerate(images, start=1):
