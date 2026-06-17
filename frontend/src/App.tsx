@@ -30,6 +30,10 @@ import Profile from './pages/Profile'
 import UserManagement from './pages/admin/UserManagement'
 import AuditLogs from './pages/admin/AuditLogs'
 
+// Phase 3: AI 助学
+import LearningHub from './pages/LearningHub'
+import LearningSessionPage from './pages/LearningSession'
+
 export default function App() {
   return (
     <Routes>
@@ -55,6 +59,10 @@ export default function App() {
           <Route path="/student-profile" element={<StudentProfilePage />} />
           <Route path="/settings" element={<Settings />} />
           <Route path="/profile" element={<Profile />} />
+
+          {/* Phase 3: AI 助学 */}
+          <Route path="/learning" element={<LearningHub />} />
+          <Route path="/learning/:id" element={<LearningSessionPage />} />
 
           {/* 管理员专属路由: 需要管理员权限 */}
           <Route element={<AdminRoute />}>

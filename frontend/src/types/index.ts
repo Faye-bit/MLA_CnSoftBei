@@ -437,6 +437,215 @@ export interface ProfileVersion {
   summary: string | null
 }
 
+// ==================== Phase 3: AI 助学 (学习会话) ====================
+
+/** 学习会话 */
+export interface LearningSession {
+  id: string
+  user_id: string
+  course_id: string
+  status: 'active' | 'completed' | 'paused'
+  learning_path: LearningPath
+  current_stage_index: number
+  profile_snapshot: Record<string, unknown>
+  session_metadata: Record<string, unknown>
+  is_favorited: boolean
+  created_at: string | null
+  updated_at: string | null
+}
+
+/** 学习会话列表项 */
+export interface LearningSessionListItem {
+  id: string
+  course_id: string
+  course_name: string | null
+  status: string
+  learning_path: LearningPath
+  current_stage_index: number
+  progress_percent: number
+  total_stages: number
+  completed_stages: number
+  is_favorited: boolean
+  created_at: string | null
+  updated_at: string | null
+}
+
+/** 收藏切换响应 */
+export interface FavoriteToggleResponse {
+  is_favorited: boolean
+}
+
+/** 学习会话详情 */
+export interface LearningSessionDetail extends LearningSession {
+  course_name: string | null
+  stages: LearningStageDetail[]
+}
+
+/** 学习路径 */
+export interface LearningPath {
+  stages: LearningPathStage[]
+}
+
+/** 学习路径中的阶段 */
+export interface LearningPathStage {
+  title: string
+  description: string
+  knowledge_points: string[]
+  order: number
+  status?: 'pending' | 'active' | 'completed'
+}
+
+/** 学习阶段 */
+export interface LearningStage {
+  id: string
+  session_id: string
+  title: string
+  description: string | null
+  order_index: number
+  status: 'pending' | 'generating' | 'completed' | 'failed'
+  knowledge_point_ids: string[]
+  stage_metadata: Record<string, unknown>
+  created_at: string | null
+  updated_at: string | null
+}
+
+/** 学习阶段详情 (含资源) */
+export interface LearningStageDetail extends LearningStage {
+  resources: GeneratedResource[]
+}
+
+/** 生成资源 */
+export interface GeneratedResource {
+  id: string
+  stage_id: string
+  resource_type: ResourceType
+  title: string
+  description: string | null
+  order_index: number
+  resource_metadata: Record<string, unknown>
+  created_at: string | null
+}
+
+/** 生成资源详情 (含 content) */
+export interface GeneratedResourceDetail extends GeneratedResource {
+  content: string
+}
+
+/** 资源类型 */
+export type ResourceType = 'handout' | 'mindmap' | 'exercise' | 'reading' | 'coding_practice' | 'video_script'
+
+/** 资源类型显示配置 */
+export interface ResourceTypeConfig {
+  type: ResourceType
+  label: string
+  icon: React.ReactNode  // 将由组件层注入
+}
+
+/** 创建学习会话请求 */
+export interface LearningSessionCreate {
+  course_id: string
+}
+
+/** 完成阶段请求 */
+export interface StageCompleteRequest {
+  completed: boolean
+}
+
+// ==================== SSE 事件类型 ====================
+
+/** SSE 事件基类 */
+export interface SSEEvent {
+  type: string
+}
+
+/** 会话初始化 */
+export interface SessionInitEvent extends SSEEvent {
+  session_id: string
+  course_name: string
+}
+
+/** 阶段开始 */
+export interface StageStartEvent extends SSEEvent {
+  stage_index: number
+  stage_title: string
+  total_stages: number
+}
+
+/** Agent 开始 */
+export interface AgentStartEvent extends SSEEvent {
+  agent: string
+  message: string
+}
+
+/** Agent 进度 */
+export interface AgentProgressEvent extends SSEEvent {
+  agent: string
+  message: string
+}
+
+/** Agent 完成 */
+export interface AgentDoneEvent extends SSEEvent {
+  agent: string
+  result_summary: string | null
+}
+
+/** 资源就绪 */
+export interface ResourceReadyEvent extends SSEEvent {
+  resource_id?: string
+  resource_type: string
+  title: string
+  stage_index?: number
+}
+
+/** 阶段完成 */
+export interface StageCompleteEvent extends SSEEvent {
+  stage_index: number
+  resources: GeneratedResource[]
+}
+
+/** 路径更新 */
+export interface PathUpdateEvent extends SSEEvent {
+  learning_path: LearningPath
+}
+
+/** 会话完成 */
+export interface SessionCompleteEvent extends SSEEvent {
+  session_id: string
+  message: string
+}
+
+/** SSE 错误 */
+export interface SSEErrorEvent extends SSEEvent {
+  message: string
+  agent?: string
+}
+
+/** Agent 状态 */
+export interface AgentStatus {
+  name: string
+  displayName: string
+  status: 'pending' | 'running' | 'completed' | 'failed'
+  message: string
+  resultSummary: string | null
+}
+
+/** 练习题 JSON 结构 */
+export interface ExerciseSet {
+  questions: ExerciseQuestion[]
+}
+
+export interface ExerciseQuestion {
+  id: string
+  type: 'single_choice' | 'multiple_choice' | 'true_false' | 'short_answer' | 'fill_blank'
+  difficulty: 'easy' | 'medium' | 'hard'
+  points: string[]
+  question: string
+  options: string[]
+  /** 答案: 客观题为选项序号, 主观题 (填空/简答) 为参考答案文本 */
+  answer: number | number[] | string
+  explanation: string
+}
+
 // ==================== 雷达图相关 ====================
 
 /** 雷达图单个维度 */

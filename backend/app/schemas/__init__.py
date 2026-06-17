@@ -22,3 +22,10 @@ from app.schemas.conversation import (
 from app.schemas.profile import (
     ProfileUpdate, ProfileExtractionRequest, ProfileResponse, ProfileVersionResponse,
 )
+from app.schemas.learning import (
+    LearningSessionCreate, LearningSessionResponse, LearningSessionDetailResponse,
+    LearningSessionListItem, LearningStageResponse, LearningStageDetailResponse,
+    StageCompleteRequest, GeneratedResourceResponse, GeneratedResourceDetailResponse,
+    RegenerateResourceRequest, ExerciseProgressRequest,
+    AgentTaskResponse, FavoriteToggleResponse,
+)

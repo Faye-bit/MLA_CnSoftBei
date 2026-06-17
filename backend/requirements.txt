@@ -28,6 +28,9 @@ chromadb==0.5.23
 # AI / Embedding
 openai==1.57.0
 
+# AI Agent 编排 (Phase 3 多智能体协同)
+langgraph>=1.2.5
+
 # 缓存与任务队列
 redis==5.2.1
 celery==5.4.0

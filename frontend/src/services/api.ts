@@ -589,6 +589,378 @@ export async function deleteProfile() {
   await api.delete('/profile/')
 }
 
+// ==================== Phase 3: AI 助学 API ====================
+
+import type {
+  LearningSession, LearningSessionListItem, LearningSessionDetail,
+  LearningStageDetail, GeneratedResourceDetail,
+  LearningSessionCreate, StageCompleteRequest,
+  SessionInitEvent, StageStartEvent, AgentStartEvent, AgentProgressEvent,
+  AgentDoneEvent, ResourceReadyEvent, PathUpdateEvent,
+  StageCompleteEvent, SessionCompleteEvent, SSEErrorEvent,
+  FavoriteToggleResponse,
+} from '../types'
+
+/** 创建或恢复学习会话 */
+export async function createOrResumeSession(courseId: string) {
+  const res = await api.post<ApiResponse<LearningSession>>('/learning/sessions', {
+    course_id: courseId,
+  })
+  return res.data.data!
+}
+
+/** 获取学习会话列表 */
+export async function getLearningSessions(params?: {
+  course_id?: string, status?: string, page?: number, page_size?: number
+}) {
+  const res = await api.get<ApiResponse<PaginatedResponse<LearningSessionListItem>>>(
+    '/learning/sessions', { params }
+  )
+  return res.data.data!
+}
+
+/** 获取学习会话详情 */
+export async function getLearningSessionDetail(sessionId: string) {
+  const res = await api.get<ApiResponse<LearningSessionDetail>>(
+    `/learning/sessions/${sessionId}`
+  )
+  return res.data.data!
+}
+
+/** 删除学习会话 */
+export async function deleteLearningSession(sessionId: string) {
+  await api.delete(`/learning/sessions/${sessionId}`)
+}
+
+/** 切换学习会话收藏状态 */
+export async function toggleFavorite(sessionId: string) {
+  const res = await api.put<ApiResponse<FavoriteToggleResponse>>(
+    `/learning/sessions/${sessionId}/favorite`
+  )
+  return res.data.data!
+}
+
+/** 获取下载会话资源的 URL (直接返回 URL, 由前端触发下载) */
+export function getDownloadUrl(sessionId: string, stageIndex?: number): string {
+  const base = `http://localhost:8000/api/v1/learning/sessions/${sessionId}/download`
+  const params = stageIndex !== undefined ? `?stage_index=${stageIndex}` : ''
+  return base + params
+}
+
+/** 获取阶段详情 */
+export async function getStageDetail(sessionId: string, stageId: string) {
+  const res = await api.get<ApiResponse<LearningStageDetail>>(
+    `/learning/sessions/${sessionId}/stages/${stageId}`
+  )
+  return res.data.data!
+}
+
+/** 完成学习阶段 */
+export async function completeStage(sessionId: string, stageIndex: number) {
+  const res = await api.post<ApiResponse<{ current_stage_index: number, status: string, learning_path: unknown }>>(
+    `/learning/sessions/${sessionId}/stages/${stageIndex}/complete`,
+    { completed: true }
+  )
+  return res.data.data!
+}
+
+/** 获取资源详情 */
+export async function getResourceDetail(resourceId: string) {
+  const res = await api.get<ApiResponse<GeneratedResourceDetail>>(
+    `/learning/resources/${resourceId}`
+  )
+  return res.data.data!
+}
+
+// ==================== SSE 流式 API ====================
+
+/** SSE 学习会话进度事件回调 */
+export interface LearningStreamCallbacks {
+  onSessionInit: (data: SessionInitEvent) => void
+  onStageStart: (data: StageStartEvent) => void
+  onAgentStart: (data: AgentStartEvent) => void
+  onAgentProgress: (data: AgentProgressEvent) => void
+  onAgentDone: (data: AgentDoneEvent) => void
+  onResourceReady: (data: ResourceReadyEvent) => void
+  onPathUpdate: (data: PathUpdateEvent) => void
+  onStageComplete: (data: StageCompleteEvent) => void
+  onSessionComplete: (data: SessionCompleteEvent) => void
+  onError: (data: SSEErrorEvent | string) => void
+}
+
+/**
+ * SSE 流式连接学习会话进度
+ * 复用 streamChat 的 fetch + ReadableStream 模式
+ */
+export function streamLearningSession(
+  sessionId: string,
+  callbacks: LearningStreamCallbacks,
+  signal?: AbortSignal,
+): AbortController {
+  const controller = new AbortController()
+  const combinedSignal = signal || controller.signal
+
+  const url = `http://localhost:8000/api/v1/learning/sessions/${sessionId}/stream`
+  const token = useAuthStore.getState().token
+
+  fetch(url, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+      Accept: 'text/event-stream',
+    },
+    signal: combinedSignal,
+  })
+    .then(async (response) => {
+      if (!response.ok) {
+        const errorText = await response.text().catch(() => '')
+        callbacks.onError(`HTTP ${response.status}: ${errorText || response.statusText}`)
+        return
+      }
+
+      const reader = response.body?.getReader()
+      if (!reader) {
+        callbacks.onError('无法读取响应流')
+        return
+      }
+
+      const decoder = new TextDecoder()
+      let buffer = ''
+
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+
+        buffer += decoder.decode(value, { stream: true })
+        const lines = buffer.split('\n\n')
+        buffer = lines.pop() || ''
+
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue
+          try {
+            const eventData = JSON.parse(line.slice(6))
+            const eventType = eventData.type
+
+            switch (eventType) {
+              case 'session_init':
+                callbacks.onSessionInit(eventData)
+                break
+              case 'stage_start':
+                callbacks.onStageStart(eventData)
+                break
+              case 'agent_start':
+                callbacks.onAgentStart(eventData)
+                break
+              case 'agent_progress':
+                callbacks.onAgentProgress(eventData)
+                break
+              case 'agent_done':
+                callbacks.onAgentDone(eventData)
+                break
+              case 'resource_ready':
+                callbacks.onResourceReady(eventData)
+                break
+              case 'path_update':
+                callbacks.onPathUpdate(eventData)
+                break
+              case 'stage_complete':
+                callbacks.onStageComplete(eventData)
+                break
+              case 'session_complete':
+                callbacks.onSessionComplete(eventData)
+                break
+              case 'error':
+                callbacks.onError(eventData)
+                break
+            }
+          } catch {
+            // 跳过无法解析的行
+          }
+        }
+      }
+    })
+    .catch((err) => {
+      if (err.name !== 'AbortError') {
+        callbacks.onError(err.message || '网络错误')
+      }
+    })
+
+  return controller
+}
+
+/**
+ * SSE 流式完成阶段并生成下一阶段
+ */
+export function streamCompleteStage(
+  sessionId: string,
+  stageIndex: number,
+  callbacks: LearningStreamCallbacks,
+): AbortController {
+  const controller = new AbortController()
+
+  const url = `http://localhost:8000/api/v1/learning/sessions/${sessionId}/stages/${stageIndex}/complete`
+  const token = useAuthStore.getState().token
+
+  fetch(url, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      Accept: 'text/event-stream',
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ completed: true }),
+    signal: controller.signal,
+  })
+    .then(async (response) => {
+      if (!response.ok) {
+        callbacks.onError(`HTTP ${response.status}`)
+        return
+      }
+
+      const reader = response.body?.getReader()
+      if (!reader) { callbacks.onError('无法读取响应流'); return }
+
+      const decoder = new TextDecoder()
+      let buffer = ''
+
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+
+        buffer += decoder.decode(value, { stream: true })
+        const lines = buffer.split('\n\n')
+        buffer = lines.pop() || ''
+
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue
+          try {
+            const eventData = JSON.parse(line.slice(6))
+            const handlers: Record<string, (d: never) => void> = {
+              stage_start: callbacks.onStageStart,
+              agent_start: callbacks.onAgentStart,
+              agent_progress: callbacks.onAgentProgress,
+              agent_done: callbacks.onAgentDone,
+              resource_ready: callbacks.onResourceReady,
+              path_update: callbacks.onPathUpdate,
+              stage_complete: callbacks.onStageComplete,
+              session_complete: callbacks.onSessionComplete,
+              error: callbacks.onError,
+            }
+            const handler = handlers[eventData.type]
+            if (handler) handler(eventData)
+          } catch { /* skip */ }
+        }
+      }
+    })
+    .catch((err) => {
+      if (err.name !== 'AbortError') {
+        callbacks.onError(err.message || '网络错误')
+      }
+    })
+
+  return controller
+}
+
+/**
+ * SSE 流式重新生成资源
+ */
+export function streamRegenerateResource(
+  resourceId: string,
+  callbacks: {
+    onAgentStart: (data: AgentStartEvent) => void
+    onResourceReady: (data: ResourceReadyEvent) => void
+    onError: (msg: string) => void
+  },
+): AbortController {
+  const controller = new AbortController()
+  const url = `http://localhost:8000/api/v1/learning/resources/${resourceId}`
+  const token = useAuthStore.getState().token
+
+  fetch(url, {
+    method: 'PUT',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      Accept: 'text/event-stream',
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({}),
+    signal: controller.signal,
+  })
+    .then(async (response) => {
+      if (!response.ok) { callbacks.onError(`HTTP ${response.status}`); return }
+      const reader = response.body?.getReader()
+      if (!reader) { callbacks.onError('无法读取响应流'); return }
+      const decoder = new TextDecoder()
+      let buffer = ''
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+        buffer += decoder.decode(value, { stream: true })
+        const lines = buffer.split('\n\n')
+        buffer = lines.pop() || ''
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue
+          try {
+            const eventData = JSON.parse(line.slice(6))
+            if (eventData.type === 'agent_start') callbacks.onAgentStart(eventData)
+            else if (eventData.type === 'resource_ready') callbacks.onResourceReady(eventData)
+            else if (eventData.type === 'error') callbacks.onError(eventData.message)
+          } catch { /* skip */ }
+        }
+      }
+    })
+    .catch((err) => {
+      if (err.name !== 'AbortError') callbacks.onError(err.message || '网络错误')
+    })
+
+  return controller
+}
+
+// ==================== 练习题进度 API ====================
+
+/**
+ * 保存练习题作答进度
+ * 将用户在某个练习资源中的作答进度持久化到后端
+ *
+ * @param resourceId - 练习题资源 ID
+ * @param progress - 作答进度 { answers, submitted, current_index, scores? }
+ */
+export async function saveExerciseProgress(
+  resourceId: string,
+  progress: {
+    answers: Record<string, number | number[] | string>
+    submitted: Record<string, boolean>
+    current_index: number
+    scores?: Record<string, { score: number; feedback: string }>
+  },
+) {
+  await api.put(`/learning/resources/${resourceId}/progress`, progress)
+}
+
+/**
+ * AI 打分主观题答案 (填空 / 简答)
+ * 调用后端 LLM 对学生答案进行智能评分, 满分 10 分
+ *
+ * @param resourceId - 练习题资源 ID
+ * @param request - 打分请求
+ * @returns 评分结果 { question_id, score, feedback }
+ */
+export async function scoreExerciseAnswer(
+  resourceId: string,
+  request: {
+    question_id: string
+    question_type: string
+    question_text: string
+    user_answer: string
+    reference_answer: string
+    explanation?: string
+  },
+): Promise<{ question_id: string; score: number; feedback: string }> {
+  const res = await api.post<ApiResponse<{ question_id: string; score: number; feedback: string }>>(
+    `/learning/resources/${resourceId}/score`, request,
+  )
+  return res.data.data!
+}
+
 /** 获取学习行为雷达图 */
 export async function getRadarData() {
   const res = await api.get<ApiResponse<import('../types').RadarResponse>>('/profile/radar')

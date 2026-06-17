@@ -17,6 +17,7 @@ import {
   LogoutOutlined,
   MessageOutlined,
   IdcardOutlined,
+  ExperimentOutlined,
 } from '@ant-design/icons'
 import type { MenuProps } from 'antd'
 import { useAuthStore } from '../../store'
@@ -62,6 +63,11 @@ export default function Sidebar({ collapsed }: { collapsed: boolean }) {
           label: 'AI 对话',
         },
       ],
+    },
+    {
+      key: '/learning',
+      icon: <ExperimentOutlined />,
+      label: 'AI 助学',
     },
     {
       key: '/student-profile',

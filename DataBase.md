@@ -236,6 +236,82 @@ CREATE TABLE audit_logs (
 );
 CREATE INDEX idx_audit_logs_user_id ON audit_logs (user_id);
 CREATE INDEX idx_audit_logs_action  ON audit_logs (action);
+
+
+-- ------------------------------------------
+-- 15. learning_sessions — 学习会话表
+-- ------------------------------------------
+CREATE TABLE learning_sessions (
+    id                  UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id             UUID        NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    course_id           UUID        NOT NULL REFERENCES courses(id) ON DELETE CASCADE,
+    status              VARCHAR(20) NOT NULL DEFAULT 'active',
+    learning_path       JSONB       NOT NULL DEFAULT '{}'::jsonb,
+    current_stage_index INTEGER     NOT NULL DEFAULT 0,
+    profile_snapshot    JSONB       NOT NULL DEFAULT '{}'::jsonb,
+    session_metadata    JSONB       NOT NULL DEFAULT '{}'::jsonb,
+    is_favorited        BOOLEAN     NOT NULL DEFAULT FALSE,
+    created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX idx_learning_sessions_user_id ON learning_sessions (user_id);
+CREATE INDEX idx_learning_sessions_course_id ON learning_sessions (course_id);
+
+
+-- ------------------------------------------
+-- 16. learning_stages — 学习阶段表
+-- ------------------------------------------
+CREATE TABLE learning_stages (
+    id                  UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    session_id          UUID         NOT NULL REFERENCES learning_sessions(id) ON DELETE CASCADE,
+    title               VARCHAR(200) NOT NULL,
+    description         TEXT,
+    order_index         INTEGER      NOT NULL DEFAULT 0,
+    status              VARCHAR(20)  NOT NULL DEFAULT 'pending',
+    knowledge_point_ids JSONB        NOT NULL DEFAULT '[]'::jsonb,
+    stage_metadata      JSONB        NOT NULL DEFAULT '{}'::jsonb,
+    created_at          TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+    updated_at          TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+    CONSTRAINT uq_learning_stage_session_order UNIQUE (session_id, order_index)
+);
+CREATE INDEX idx_learning_stages_session_id ON learning_stages (session_id);
+
+
+-- ------------------------------------------
+-- 17. generated_resources — 生成资源表
+-- ------------------------------------------
+CREATE TABLE generated_resources (
+    id                UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    stage_id          UUID        NOT NULL REFERENCES learning_stages(id) ON DELETE CASCADE,
+    resource_type     VARCHAR(30) NOT NULL,
+    title             VARCHAR(300) NOT NULL,
+    description       TEXT,
+    content           TEXT        NOT NULL DEFAULT '',
+    resource_metadata JSONB       NOT NULL DEFAULT '{}'::jsonb,
+    order_index       INTEGER     NOT NULL DEFAULT 0,
+    created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX idx_generated_resources_stage_id ON generated_resources (stage_id);
+
+
+-- ------------------------------------------
+-- 18. agent_tasks — 智能体任务追踪表
+-- ------------------------------------------
+CREATE TABLE agent_tasks (
+    id             UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    session_id     UUID        NOT NULL REFERENCES learning_sessions(id) ON DELETE CASCADE,
+    resource_id    UUID REFERENCES generated_resources(id) ON DELETE SET NULL,
+    agent_name     VARCHAR(30) NOT NULL,
+    status         VARCHAR(20) NOT NULL DEFAULT 'pending',
+    input_summary  TEXT,
+    output_summary TEXT,
+    latency_ms     INTEGER,
+    token_count    INTEGER,
+    error_message  TEXT,
+    created_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    completed_at   TIMESTAMPTZ
+);
+CREATE INDEX idx_agent_tasks_session_id ON agent_tasks (session_id);
 ```
 
 ---
@@ -250,9 +326,11 @@ classDiagram
     User "1" -- "n" Conversation : user_id
     User "1" -- "1" StudentProfile : user_id
     User "1" -- "n" AuditLog : user_id
+    User "1" -- "n" LearningSession : user_id
 
     Course "1" -- "n" Chapter : course_id
     Course "1" -- "n" Document : course_id
+    Course "1" -- "n" LearningSession : course_id
 
     Chapter "1" -- "n" KnowledgePoint : chapter_id
     Chapter "1" -- "n" Document : chapter_id
@@ -267,6 +345,14 @@ classDiagram
 
     Conversation "1" -- "n" Message : conversation_id
     Conversation "n" -- "1" Course : course_id
+
+    LearningSession "1" -- "n" LearningStage : session_id
+    LearningSession "1" -- "n" AgentTask : session_id
+
+    LearningStage "1" -- "n" GeneratedResource : stage_id
+
+    GeneratedResource "1" -- "n" AgentTask : resource_id
+    AgentTask "n" -- "1" LearningSession : session_id
 
     class User {
         +UUID id PK
@@ -425,6 +511,61 @@ classDiagram
         +String(500) user_agent
         +JSONB details
         +DateTime created_at
+    }
+
+    class LearningSession {
+        +UUID id PK
+        +UUID user_id FK→users IDX
+        +UUID course_id FK→courses IDX
+        +String(20) status = "active"
+        +JSONB learning_path
+        +Integer current_stage_index = 0
+        +JSONB profile_snapshot
+        +JSONB session_metadata
+        +Boolean is_favorited = false
+        +DateTime created_at
+        +DateTime updated_at
+    }
+
+    class LearningStage {
+        +UUID id PK
+        +UUID session_id FK→learning_sessions IDX
+        +String(200) title
+        +Text description
+        +Integer order_index = 0
+        +String(20) status = "pending"
+        +JSONB knowledge_point_ids
+        +JSONB stage_metadata
+        +DateTime created_at
+        +DateTime updated_at
+        <<unique>> session_id + order_index
+    }
+
+    class GeneratedResource {
+        +UUID id PK
+        +UUID stage_id FK→learning_stages IDX
+        +String(30) resource_type
+        +String(300) title
+        +Text description
+        +Text content = ""
+        +JSONB resource_metadata
+        +Integer order_index = 0
+        +DateTime created_at
+    }
+
+    class AgentTask {
+        +UUID id PK
+        +UUID session_id FK→learning_sessions IDX
+        +UUID resource_id FK→generated_resources
+        +String(30) agent_name
+        +String(20) status = "pending"
+        +Text input_summary
+        +Text output_summary
+        +Integer latency_ms
+        +Integer token_count
+        +Text error_message
+        +DateTime created_at
+        +DateTime completed_at
     }
 ```
 
@@ -659,6 +800,115 @@ classDiagram
 | `user_agent` | String(500) | nullable | User-Agent |
 | `details` | JSONB | nullable | 详细信息 |
 | `created_at` | DateTime | NOT NULL | 操作时间 |
+
+---
+
+### 2.7 AI 助学 — 学习会话 (Phase 3)
+
+#### `learning_sessions` — 学习会话表
+
+记录用户在某门课程中的一次完整学习过程, 包含 Agent 规划的学习路径和阶段进度。支持中断恢复。
+
+| 字段 | 类型 | 约束 | 说明 |
+|------|------|------|------|
+| `id` | UUID | PK | 主键 |
+| `user_id` | UUID | FK→users, CASCADE, INDEX | 所属用户 |
+| `course_id` | UUID | FK→courses, CASCADE, INDEX | 关联课程 |
+| `status` | String(20) | NOT NULL, default=`"active"` | 状态 (active/completed/paused) |
+| `learning_path` | JSONB | NOT NULL | 完整学习路径: `{"stages": [{"title":"...", "description":"...", "knowledge_points":[...], "order":0}, ...]}` |
+| `current_stage_index` | Integer | NOT NULL, default=`0` | 当前阶段序号 (0-based) |
+| `profile_snapshot` | JSONB | NOT NULL | 会话开始时的学生画像快照 |
+| `session_metadata` | JSONB | NOT NULL | 元数据 (总阶段数、已生成资源数、token 消耗等) |
+| `is_favorited` | Boolean | NOT NULL, default=`false` | 收藏标记 |
+| `created_at` | DateTime | NOT NULL | 创建时间 |
+| `updated_at` | DateTime | NOT NULL | 更新时间 |
+
+**关系:** 每个会话有多个学习阶段 `LearningStage` 和智能体任务 `AgentTask` (级联删除)。
+
+#### `learning_stages` — 学习阶段表
+
+Coordinator Agent 规划的每个学习阶段, 包含阶段主题、涵盖的知识点和生成的所有资源。
+
+| 字段 | 类型 | 约束 | 说明 |
+|------|------|------|------|
+| `id` | UUID | PK | 主键 |
+| `session_id` | UUID | FK→learning_sessions, CASCADE, INDEX | 所属会话 |
+| `title` | String(200) | NOT NULL | 阶段标题 (精炼至 8 字以内, 如"进程管理") |
+| `description` | Text | nullable | 阶段描述 (一句话概述) |
+| `order_index` | Integer | NOT NULL, default=`0` | 排序序号 (0-based) |
+| `status` | String(20) | NOT NULL, default=`"pending"` | 状态 (pending/generating/completed/failed) |
+| `knowledge_point_ids` | JSONB | NOT NULL | 涵盖的知识点 ID 数组 |
+| `stage_metadata` | JSONB | NOT NULL | 阶段元数据 |
+| `created_at` | DateTime | NOT NULL | 创建时间 |
+| `updated_at` | DateTime | NOT NULL | 更新时间 |
+
+**约束:** UNIQUE(`session_id`, `order_index`) — 同一会话内阶段序号唯一, 防止 SSE 重连产生重复阶段。
+
+**关系:** `order_index` 必须唯一, 已有自动迁移脚本 `backend/app/core/migrate_001_fix_duplicate_stages.py` 修复历史重复数据。
+
+#### `generated_resources` — 生成资源表
+
+各 Agent 生成的单个学习资源, 内容以 Markdown / JSON / Mermaid 语法 / HTML 等形式存储。
+
+| 字段 | 类型 | 约束 | 说明 |
+|------|------|------|------|
+| `id` | UUID | PK | 主键 |
+| `stage_id` | UUID | FK→learning_stages, CASCADE, INDEX | 所属阶段 |
+| `resource_type` | String(30) | NOT NULL | 资源类型 |
+| `title` | String(300) | NOT NULL | 资源标题 |
+| `description` | Text | nullable | 资源描述 |
+| `content` | Text | NOT NULL, default=`""` | 资源内容 |
+| `resource_metadata` | JSONB | NOT NULL | 元数据 (exercise_progress 练习题进度等) |
+| `order_index` | Integer | NOT NULL, default=`0` | 排序序号 |
+| `created_at` | DateTime | NOT NULL | 创建时间 |
+
+**资源类型 (6 种):**
+
+| 类型 | 标签 | 内容格式 | 说明 |
+|------|------|----------|------|
+| `handout` | 讲义 | Markdown | 阶段知识点系统讲解, 含 mla-resource:// 链接 |
+| `mindmap` | 思维导图 | Mermaid mindmap | 知识点结构可视化, ≥12 节点多层级 |
+| `exercise` | 练习题 | JSON `{questions:[...]}` | 单选/多选/判断/填空/简答, AI 评分主观题 |
+| `reading` | 拓展阅读 | Markdown | 分级阅读推荐 (入门/进阶/研究级) |
+| `coding_practice` | 编程练习 | Markdown | 编程实操任务与代码模板 |
+| `video_script` | 交互动画 | HTML5 | 自包含交互式知识讲解动画页面 |
+
+**元数据存储:**
+- `exercise_progress`: 练习题作答进度 `{answers, submitted, current_index, scores}`
+- `scores`: 填空/简答题 AI 评分 `{"q3": {"score": 8, "feedback": "..."}}`
+
+#### `agent_tasks` — 智能体任务追踪表
+
+记录每次 Agent 调用的输入输出、状态和性能指标, 用于多智能体流水线可视化和调试。
+
+| 字段 | 类型 | 约束 | 说明 |
+|------|------|------|------|
+| `id` | UUID | PK | 主键 |
+| `session_id` | UUID | FK→learning_sessions, CASCADE, INDEX | 所属会话 |
+| `resource_id` | UUID | FK→generated_resources, SET NULL | 关联生成的资源 (非资源类 Agent 为 NULL) |
+| `agent_name` | String(30) | NOT NULL | Agent 名称 |
+| `status` | String(20) | NOT NULL, default=`"pending"` | 状态 (pending/running/completed/failed) |
+| `input_summary` | Text | nullable | 输入摘要 |
+| `output_summary` | Text | nullable | 输出摘要 |
+| `latency_ms` | Integer | nullable | 执行耗时 (毫秒) |
+| `token_count` | Integer | nullable | Token 消耗 |
+| `error_message` | Text | nullable | 错误信息 (仅在 failed 时) |
+| `created_at` | DateTime | NOT NULL | 创建时间 |
+| `completed_at` | DateTime | nullable | 完成时间 |
+
+**Agent 流水线 (7 阶段):**
+
+| Agent | 名称 | 职责 | 产出 |
+|-------|------|------|------|
+| `coordinator` | 协调者 | 规划学习路径阶段 (3-6 个) | learning_path JSON |
+| `profile` | 画像分析 | 读取学生画像生成摘要 | 画像自然语言摘要 |
+| `retrieval` | 知识检索 | RAG 检索知识库相关资料 | knowledge_context (top_k=8) |
+| `teaching_design` | 教学设计 | 设计阶段教学方案和资源类型 | 5 种资源规格 |
+| `resource_generation` | 资源生成 | 并行调用 6 个 LLM 生成器 | 6 种学习资源 |
+| `fact_check` | 安全核查 | 内容事实校验 | 核查通过/未通过 |
+| `summary` | 汇总保存 | 持久化阶段、资源、任务 + 链接注入 | 数据库记录 |
+
+**懒加载策略:** 首先生成第 1 阶段, 用户完成当前阶段后通过 SSE 触发生成下一阶段。
 
 ---
 
