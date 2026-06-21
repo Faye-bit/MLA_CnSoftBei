@@ -1,33 +1,62 @@
 /**
  * 学习路线图抽屉组件
  * 顶部可折叠的横向时间线, 展示学习路径的所有阶段
- * 使用 Ant Design Steps 组件配合自定义样式实现水平时间线效果
+ *
+ * 设计规范 (MLA Brand v2.0):
+ * - 使用品牌 token 替代硬编码色值
  */
 
-import { Collapse, Steps, Typography, Tag, Tooltip } from 'antd'
+import { Steps, Typography, Button } from 'antd'
 import {
   CheckCircleOutlined, PlayCircleOutlined, LockOutlined,
   ClockCircleOutlined, MenuFoldOutlined, MenuUnfoldOutlined,
+  RocketOutlined, LoadingOutlined, CheckOutlined,
 } from '@ant-design/icons'
 import { useState } from 'react'
 import type { LearningPathStage } from '../../types'
+import { blue, gray, semantic } from '../../styles/tokens'
 
 const { Text } = Typography
 
 interface LearningPathDrawerProps {
   stages: LearningPathStage[]
   currentStageIndex: number
+  totalStages: number
+  isLastStage: boolean
+  generating: boolean
+  onComplete: () => void
+}
+
+function CompleteButton({ isLastStage, generating, onComplete }: {
+  isLastStage: boolean; generating: boolean; onComplete: () => void
+}) {
+  if (!isLastStage) {
+    return (
+      <Button type="primary"
+        icon={generating ? <LoadingOutlined /> : <RocketOutlined />}
+        loading={generating}
+        onClick={(e) => { e.stopPropagation(); onComplete() }}>
+        {generating ? '正在生成下一阶段...' : '我已完成本阶段，生成下一阶段'}
+      </Button>
+    )
+  }
+  return (
+    <Button type="primary" icon={<CheckOutlined />}
+      onClick={(e) => { e.stopPropagation(); onComplete() }}
+      style={{ background: semantic.success, borderColor: semantic.success }}>
+      完成全部课程学习
+    </Button>
+  )
 }
 
 export default function LearningPathDrawer({
-  stages, currentStageIndex,
+  stages, currentStageIndex, totalStages, isLastStage, generating, onComplete,
 }: LearningPathDrawerProps) {
   const [collapsed, setCollapsed] = useState(false)
 
-  if (!stages || stages.length === 0) return null
+  const effectiveStages: LearningPathStage[] = (stages && stages.length > 0) ? stages : []
 
-  /** 渲染阶段的 Steps items */
-  const stepItems = stages.map((stage, index) => {
+  const stepItems = effectiveStages.map((stage, index) => {
     const status = stage.status || 'pending'
     const isCurrent = index === currentStageIndex
 
@@ -36,74 +65,49 @@ export default function LearningPathDrawer({
 
     if (status === 'completed') {
       stepStatus = 'finish'
-      icon = <CheckCircleOutlined style={{ color: '#52c41a' }} />
+      icon = <CheckCircleOutlined style={{ color: semantic.success }} />
     } else if (status === 'active' || isCurrent) {
       stepStatus = 'process'
-      icon = <PlayCircleOutlined style={{ color: '#1677ff' }} />
+      icon = <PlayCircleOutlined style={{ color: blue[500] }} />
     } else {
-      icon = <ClockCircleOutlined style={{ color: '#d9d9d9' }} />
+      icon = <ClockCircleOutlined style={{ color: gray[300] }} />
     }
 
-    // 标题精炼: 后端已尽量控制在 8 字以内, 前端再兜底截断
-    const displayTitle = stage.title.length > 8
-      ? stage.title.slice(0, 8) + '…'
-      : stage.title
-
-    const title = (
-      <Tooltip title={stage.description || stage.title}>
-        <span style={{
-          fontSize: 12,
-          fontWeight: isCurrent ? 600 : 400,
-          color: isCurrent ? '#1677ff' : undefined,
-        }}>
-          {displayTitle}
-        </span>
-      </Tooltip>
-    )
+    const displayTitle = stage.title.length > 8 ? stage.title.slice(0, 8) + '…' : stage.title
 
     return {
-      title,
+      title: <span style={{ fontSize: 12, fontWeight: isCurrent ? 600 : 400, color: isCurrent ? blue[500] : undefined }}>{displayTitle}</span>,
       status: stepStatus,
       icon,
     }
   })
 
+  const completedCount = effectiveStages.filter(s => s.status === 'completed').length
+  const stageCountLabel = effectiveStages.length > 0
+    ? `${completedCount} / ${effectiveStages.length} 阶段`
+    : `阶段 ${currentStageIndex + 1} / ${totalStages}`
+
   return (
-    <div style={{
-      background: '#fff',
-      borderBottom: '1px solid #f0f0f0',
-      boxShadow: '0 1px 4px rgba(0,0,0,0.06)',
-    }}>
-      {/* 折叠标题栏 */}
-      <div
-        onClick={() => setCollapsed(!collapsed)}
-        style={{
-          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-          padding: '10px 20px', cursor: 'pointer',
-          background: '#fafafa', borderBottom: collapsed ? 'none' : '1px solid #f0f0f0',
-        }}
-      >
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+    <div style={{ background: '#FFFFFF', borderBottom: `1px solid ${gray[200]}`, boxShadow: `0 1px 4px rgba(15,23,42,0.04)` }}>
+      {/* 标题栏 (始终可见) */}
+      <div style={{
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        padding: '10px 20px', background: gray[50],
+        borderBottom: collapsed ? 'none' : `1px solid ${gray[200]}`,
+      }}>
+        <div onClick={() => setCollapsed(!collapsed)} style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', userSelect: 'none' }}>
           {collapsed ? <MenuFoldOutlined /> : <MenuUnfoldOutlined />}
           <Text strong style={{ fontSize: 13 }}>学习路线</Text>
-          <Text type="secondary" style={{ fontSize: 12 }}>
-            {stages.filter(s => s.status === 'completed').length} / {stages.length} 阶段
-          </Text>
+          <Text type="secondary" style={{ fontSize: 12 }}>{stageCountLabel}</Text>
         </div>
+        <CompleteButton isLastStage={isLastStage} generating={generating} onComplete={onComplete} />
       </div>
 
-      {/* 水平 Steps */}
-      {!collapsed && (
-        <div style={{
-          padding: '16px 40px',
-          overflowX: 'auto',
-        }}>
-          <Steps
-            current={currentStageIndex}
-            size="small"
-            items={stepItems}
-            style={{ minWidth: stages.length * 120 }}
-          />
+      {/* 展开: 水平 Steps */}
+      {!collapsed && effectiveStages.length > 0 && (
+        <div style={{ padding: '16px 40px', overflowX: 'auto' }}>
+          <Steps current={currentStageIndex} size="small" items={stepItems}
+            style={{ minWidth: effectiveStages.length * 120 }} />
         </div>
       )}
     </div>

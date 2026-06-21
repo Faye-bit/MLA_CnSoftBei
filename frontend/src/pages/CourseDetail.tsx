@@ -37,6 +37,7 @@ import {
   SearchOutlined,
   CheckCircleOutlined,
   InboxOutlined,
+  FolderOutlined,
 } from '@ant-design/icons'
 import {
   getCourseDetail,
@@ -49,6 +50,7 @@ import {
 } from '../services/api'
 import { useAuthStore } from '../store'
 import type { CourseDetail, Chapter, KnowledgePoint, KnowledgePointTreeNode, LinkedPageInfo } from '../types'
+import { blue, gray, semantic } from '../styles/tokens'
 
 const { Title, Text } = Typography
 const { Dragger } = Upload
@@ -199,7 +201,7 @@ export default function CourseDetailPage() {
           <Title level={3} style={{ margin: 0 }}>
             {course.name}
           </Title>
-          <div style={{ color: '#8c8c8c', marginTop: 8 }}>{course.description || '暂无描述'}</div>
+          <div style={{ color: gray[400], marginTop: 8 }}>{course.description || '暂无描述'}</div>
         </div>
         <Space>
           <Button icon={<FileTextOutlined />} onClick={() => navigate(`/courses/${id}/documents`)}>
@@ -224,7 +226,7 @@ export default function CourseDetailPage() {
             {
               title: '创建章节',
               description: '构建课程知识结构',
-              icon: course.chapter_count > 0 ? <CheckCircleOutlined style={{ color: '#52c41a' }} /> : undefined,
+              icon: course.chapter_count > 0 ? <CheckCircleOutlined style={{ color: semantic.success }} /> : undefined,
               status: course.chapter_count > 0 ? 'finish' : 'process',
             },
             {
@@ -373,14 +375,14 @@ function KnowledgePointList({ chapterId, onDelete }: { chapterId: string; onDele
   useEffect(() => { load() }, [chapterId])
 
   if (loading) return <Spin size="small" />
-  if (nodes.length === 0) return <div style={{ color: '#8c8c8c' }}>暂无知识点</div>
+  if (nodes.length === 0) return <div style={{ color: gray[400] }}>暂无知识点</div>
 
   function toTree(items: KnowledgePointTreeNode[]): DataNode[] {
     return items.map(item => {
       const hasChildren = item.children?.length > 0
       return {
         key: item.id,
-        icon: item.kp_type === 'category' ? '📁' : undefined,
+        icon: item.kp_type === 'category' ? <FolderOutlined /> : undefined,
         title: (
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             {item.kp_type !== 'category' ? (
@@ -388,14 +390,14 @@ function KnowledgePointList({ chapterId, onDelete }: { chapterId: string; onDele
                 title={<span style={{ fontSize: 15, fontWeight: 600 }}>{item.title}</span>}
                 content={
                   <div style={{ maxWidth: 420 }}>
-                    {item.description && <p style={{ color: '#333', lineHeight: 1.8, marginBottom: 8 }}>{item.description}</p>}
-                    {item.content && <p style={{ color: '#555', lineHeight: 1.8, marginBottom: 8, borderTop: '1px solid #f0f0f0', paddingTop: 8 }}>{item.content}</p>}
+                    {item.description && <p style={{ color: gray[800], lineHeight: 1.8, marginBottom: 8 }}>{item.description}</p>}
+                    {item.content && <p style={{ color: gray[600], lineHeight: 1.8, marginBottom: 8, borderTop: `1px solid ${gray[200]}`, paddingTop: 8 }}>{item.content}</p>}
                     <Tag color={item.difficulty === 'easy' ? 'green' : item.difficulty === 'medium' ? 'blue' : 'red'}>
                       难度: {item.difficulty === 'easy' ? '简单' : item.difficulty === 'medium' ? '中等' : '困难'}
                     </Tag>
                     {item.linked_pages && item.linked_pages.length > 0 && (
                       <>
-                        <Divider style={{ margin: '12px 0 8px', fontSize: 13, color: '#888' }}>关联页面</Divider>
+                        <Divider style={{ margin: '12px 0 8px', fontSize: 13, color: gray[400] }}>关联页面</Divider>
                         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
                           {item.linked_pages.map((page: LinkedPageInfo) => (
                             <div key={page.page_id} style={{ width: 140, textAlign: 'center' }}>
@@ -404,14 +406,14 @@ function KnowledgePointList({ chapterId, onDelete }: { chapterId: string; onDele
                                 alt={`第 ${page.page_number} 页`}
                                 width={130}
                                 height={90}
-                                style={{ objectFit: 'cover', borderRadius: 4, border: '1px solid #e8e8e8' }}
+                                style={{ objectFit: 'cover', borderRadius: 4, border: `1px solid ${gray[200]}` }}
                                 fallback="data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTMwIiBoZWlnaHQ9IjkwIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciPjxyZWN0IHdpZHRoPSIxMzAiIGhlaWdodD0iOTAiIGZpbGw9IiNmNWY1ZjUiLz48dGV4dCB4PSI2NSIgeT0iNTAiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGZpbGw9IiNjY2MiIGZvbnQtc2l6ZT0iMTIiPuWbvueJh+WKoOi9veWksei0pTwvdGV4dD48L3N2Zz4="
                               />
-                              <div style={{ fontSize: 11, color: '#888', marginTop: 2 }}>
+                              <div style={{ fontSize: 11, color: gray[400], marginTop: 2 }}>
                                 第 {page.page_number} 页
                               </div>
                               {page.summary && (
-                                <div style={{ fontSize: 10, color: '#aaa', marginTop: 1, lineHeight: 1.4, maxHeight: 28, overflow: 'hidden' }}>
+                                <div style={{ fontSize: 10, color: gray[400], marginTop: 1, lineHeight: 1.4, maxHeight: 28, overflow: 'hidden' }}>
                                   {page.summary}
                                 </div>
                               )}

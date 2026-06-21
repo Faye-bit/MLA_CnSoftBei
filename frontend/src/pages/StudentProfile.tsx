@@ -2,6 +2,9 @@
  * 学生画像展示与编辑页 (描述式)
  * 展示从对话中自动积累和合成的 6 个维度学习画像
  * 每个维度为自然语言描述文本, 支持在线编辑
+ *
+ * 设计规范 (MLA Brand v2.0):
+ * - 使用品牌 token 替代硬编码色值
  */
 
 import { useEffect, useState, useCallback } from 'react'
@@ -23,6 +26,7 @@ import {
   getRadarData,
 } from '../services/api'
 import type { StudentProfile as StudentProfileType, RadarDimension } from '../types'
+import { blue, gray, semantic } from '../styles/tokens'
 
 const { Title, Text, Paragraph } = Typography
 
@@ -41,14 +45,11 @@ export default function StudentProfile() {
   const [profile, setProfile] = useState<StudentProfileType | null>(null)
   const [loading, setLoading] = useState(true)
   const [rebuilding, setRebuilding] = useState(false)
-
-  // 雷达图状态
   const [radarDimensions, setRadarDimensions] = useState<RadarDimension[]>([])
   const [radarOverall, setRadarOverall] = useState(0)
   const [radarUpdatedAt, setRadarUpdatedAt] = useState('')
   const [radarLoading, setRadarLoading] = useState(true)
 
-  /** 加载画像 */
   const loadProfile = useCallback(async () => {
     setLoading(true)
     try {
@@ -61,7 +62,6 @@ export default function StudentProfile() {
     }
   }, [])
 
-  /** 加载雷达图 */
   const loadRadar = useCallback(async () => {
     setRadarLoading(true)
     try {
@@ -71,7 +71,6 @@ export default function StudentProfile() {
       setRadarUpdatedAt(data.updated_at || '')
     } catch (err) {
       console.error('雷达图加载失败:', err)
-      // 不阻断页面, 但给用户提示
       const msg = (err as Error).message || String(err)
       if (msg && !msg.includes('401')) {
         message.warning('雷达图加载失败: ' + msg)
@@ -86,7 +85,6 @@ export default function StudentProfile() {
     loadRadar()
   }, [loadProfile, loadRadar])
 
-  /** 手动更新某个维度 (描述式: 直接传字符串) */
   const handleSaveDimension = useCallback(async (dimKey: string, text: string) => {
     try {
       const updated = await updateStudentProfile({
@@ -99,7 +97,6 @@ export default function StudentProfile() {
     }
   }, [])
 
-  /** 触发画像重建 (从记忆合成描述) */
   const handleRebuild = useCallback(async () => {
     setRebuilding(true)
     try {
@@ -113,7 +110,6 @@ export default function StudentProfile() {
     }
   }, [loadProfile])
 
-  /** 重置画像 */
   const handleResetProfile = useCallback(async () => {
     try {
       await deleteProfile()
@@ -170,9 +166,9 @@ export default function StudentProfile() {
           style={{
             marginBottom: 24,
             padding: '12px 16px',
-            background: '#f6ffed',
+            background: semantic.successBg,
             borderRadius: 6,
-            border: '1px solid #b7eb8f',
+            border: '1px solid #BBF7D0',
           }}
         >
           <Text strong>画像摘要: </Text>
@@ -197,16 +193,16 @@ export default function StudentProfile() {
           <div
             style={{
               padding: '12px 16px',
-              background: '#f0f5ff',
+              background: blue[50],
               borderRadius: 6,
-              border: '1px solid #d6e4ff',
+              border: `1px solid ${blue[100]}`,
               maxHeight: 200,
               overflow: 'auto',
             }}
           >
             <ul style={{ margin: 0, paddingLeft: 20, fontSize: 13, lineHeight: 1.8 }}>
               {profile.memories.map((mem, idx) => (
-                <li key={idx} style={{ color: '#333' }}>{mem}</li>
+                <li key={idx} style={{ color: gray[800] }}>{mem}</li>
               ))}
             </ul>
           </div>
@@ -222,9 +218,9 @@ export default function StudentProfile() {
           style={{
             marginBottom: 24,
             padding: '12px 16px',
-            background: '#fffbe6',
+            background: semantic.warningBg,
             borderRadius: 6,
-            border: '1px solid #ffe58f',
+            border: '1px solid #FDE68A',
             fontSize: 13,
           }}
         >

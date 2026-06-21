@@ -4,7 +4,7 @@
  * Phase 3: PDF/PPTX 文档显示页面网格视图, DOCX/MD/TXT 显示切片列表
  */
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useMemo, useCallback } from 'react'
 import { useParams } from 'react-router-dom'
 import { Table, Tag, Typography, Popconfirm, message, Space, Button, Drawer, Select, Alert, Modal, List, Checkbox, Image, Card, Row, Col } from 'antd'
 import { DeleteOutlined, EyeOutlined, LinkOutlined, ThunderboltOutlined, PlusOutlined, FileImageOutlined } from '@ant-design/icons'
@@ -88,6 +88,9 @@ export default function DocumentList() {
   const [pagePreviewOpen, setPagePreviewOpen] = useState(false)
   const [previewPage, setPreviewPage] = useState<DocumentPage | null>(null)
   const [linkingPageId, setLinkingPageId] = useState<string | null>(null)
+
+  /** 图片加载失败的页码集合 (声明式状态管理, 替代命令式 DOM 操作) */
+  const [failedPages, setFailedPages] = useState<Set<number>>(new Set())
 
   /** 加载文档列表 */
   async function loadDocuments(p = 1) {
@@ -279,13 +282,17 @@ export default function DocumentList() {
     }
   }
 
-  /** 获取切片关联的知识点信息 */
-  function getLinkedKp(chunkKpId: string | null): KpOption | undefined {
+  /** 获取切片关联的知识点信息 (useCallback 缓存, 仅 kpOptions 变化时重建) */
+  const getLinkedKp = useCallback((chunkKpId: string | null): KpOption | undefined => {
     if (!chunkKpId) return undefined
     return kpOptions.find((kp) => kp.knowledge_point_id === chunkKpId)
-  }
+  }, [kpOptions])
 
-  const columns = [
+  /**
+   * 表格列配置
+   * useMemo 缓存: 仅当操作回调变化时才重建, 避免 Table 不必要的 re-render (Vercel Rule 5.6)
+   */
+  const columns = useMemo(() => [
     {
       title: '文件名',
       dataIndex: 'filename',
@@ -361,7 +368,7 @@ export default function DocumentList() {
         </Space>
       ),
     },
-  ]
+  ], [handleViewDetail, handleDelete])
 
   return (
     <div>
@@ -433,13 +440,13 @@ export default function DocumentList() {
             </div>
 
             {selectedDoc.error_message && (
-              <div style={{ color: '#ff4d4f', marginBottom: 16, padding: 8, background: '#fff2f0', borderRadius: 4 }}>
+              <div style={{ color: '#DC2626', marginBottom: 16, padding: 8, background: '#FEE2E2', borderRadius: 4 }}>
                 提示: {selectedDoc.error_message}
               </div>
             )}
 
             {/* 关联章节 */}
-            <div style={{ marginBottom: 16, padding: 12, background: '#fafafa', borderRadius: 6, display: 'flex', alignItems: 'center', gap: 12 }}>
+            <div style={{ marginBottom: 16, padding: 12, background: '#F8FAFC', borderRadius: 6, display: 'flex', alignItems: 'center', gap: 12 }}>
               <span style={{ whiteSpace: 'nowrap' }}>关联章节:</span>
               <Select
                 placeholder="选择已有章节"
@@ -483,7 +490,7 @@ export default function DocumentList() {
                   )}
                 </Title>
                 {(!selectedDoc.pages || selectedDoc.pages.length === 0) ? (
-                  <div style={{ color: '#8c8c8c' }}>暂无页面数据</div>
+                  <div style={{ color: '#94A3B8' }}>暂无页面数据</div>
                 ) : (
                   <Row gutter={[12, 12]}>
                     {selectedDoc.pages.map((page) => (
@@ -496,25 +503,19 @@ export default function DocumentList() {
                             setPagePreviewOpen(true)
                           }}
                           cover={
-                            <div style={{ height: 140, overflow: 'hidden', background: '#f5f5f5', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                              <img
-                                src={getPageImageUrl(id!, selectedDoc.id, page.page_number)}
-                                alt={`第 ${page.page_number} 页`}
-                                style={{ width: '100%', objectFit: 'cover' }}
-                                onError={(e) => {
-                                  const target = e.target as HTMLImageElement
-                                  target.style.display = 'none'
-                                  // 显示占位图标
-                                  const parent = target.parentElement
-                                  if (parent && !parent.querySelector('.img-placeholder')) {
-                                    const placeholder = document.createElement('span')
-                                    placeholder.className = 'img-placeholder'
-                                    placeholder.textContent = '🖼️'
-                                    placeholder.style.fontSize = '32px'
-                                    parent.appendChild(placeholder)
-                                  }
-                                }}
-                              />
+                            <div style={{ height: 140, overflow: 'hidden', background: '#F1F5F9', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                              {failedPages.has(page.page_number) ? (
+                                <span style={{ fontSize: 32 }}>🖼️</span>
+                              ) : (
+                                <img
+                                  src={getPageImageUrl(id!, selectedDoc.id, page.page_number)}
+                                  alt={`第 ${page.page_number} 页`}
+                                  style={{ width: '100%', objectFit: 'cover' }}
+                                  onError={() => {
+                                    setFailedPages(prev => new Set(prev).add(page.page_number))
+                                  }}
+                                />
+                              )}
                             </div>
                           }
                         >
@@ -595,7 +596,7 @@ export default function DocumentList() {
                   )}
                 </Title>
                 {selectedDoc.chunks.length === 0 ? (
-                  <div style={{ color: '#8c8c8c' }}>暂无切片</div>
+                  <div style={{ color: '#94A3B8' }}>暂无切片</div>
                 ) : (
                   selectedDoc.chunks.map((chunk) => {
                     const linkedKp = getLinkedKp(chunk.knowledge_point_id)
@@ -605,9 +606,9 @@ export default function DocumentList() {
                         style={{
                           marginBottom: 12,
                           padding: 12,
-                          background: chunk.knowledge_point_id ? '#f6ffed' : '#fafafa',
+                          background: chunk.knowledge_point_id ? '#DCFCE7' : '#F8FAFC',
                           borderRadius: 6,
-                          border: chunk.knowledge_point_id ? '1px solid #b7eb8f' : '1px solid #f0f0f0',
+                          border: chunk.knowledge_point_id ? '1px solid #BBF7D0' : '1px solid #E2E8F0',
                         }}
                       >
                         <div
@@ -647,7 +648,7 @@ export default function DocumentList() {
                             />
                           )}
                         </div>
-                        <div style={{ fontSize: 13, lineHeight: 1.6, color: '#595959' }}>
+                        <div style={{ fontSize: 13, lineHeight: 1.6, color: '#475569' }}>
                           {chunk.content.slice(0, 300)}
                           {chunk.content.length > 300 ? '...' : ''}
                         </div>
@@ -812,7 +813,7 @@ export default function DocumentList() {
                         <Tag>{item.chunk_ids.length} 个关联切片</Tag>
                       )}
                     </Checkbox>
-                    <div style={{ marginLeft: 28, color: '#8c8c8c', fontSize: 13, marginTop: 2 }}>
+                    <div style={{ marginLeft: 28, color: '#94A3B8', fontSize: 13, marginTop: 2 }}>
                       {item.description || '暂无描述'}
                     </div>
                   </div>

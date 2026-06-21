@@ -2,6 +2,9 @@
  * AI 助学入口页 — 卡片网格布局
  * 第一张卡片始终为 "+" 新建卡片，后续卡片为已有学习会话
  * 每行 3-4 张卡片，卡片底部有收藏/下载/删除三个操作按钮
+ *
+ * 设计规范 (MLA Brand v2.0):
+ * - 使用品牌 token 替代硬编码色值
  */
 
 import { useState, useEffect } from 'react'
@@ -21,6 +24,7 @@ import {
 } from '../services/api'
 import { useAuthStore } from '../store'
 import type { Course, LearningSessionListItem } from '../types'
+import { blue, gray, semantic } from '../styles/tokens'
 
 const { Title, Text, Paragraph } = Typography
 
@@ -35,10 +39,8 @@ export default function LearningHub() {
   const [loadingCourses, setLoadingCourses] = useState(true)
   const [loadingSessions, setLoadingSessions] = useState(true)
   const [starting, setStarting] = useState(false)
-  /** 新建课程 Modal 是否打开 */
   const [newModalOpen, setNewModalOpen] = useState(false)
 
-  /** 加载课程列表 */
   async function loadCourses() {
     try {
       const data = await getCourses()
@@ -53,7 +55,6 @@ export default function LearningHub() {
     }
   }
 
-  /** 加载已有学习会话 */
   async function loadSessions() {
     try {
       const data = await getLearningSessions({ page_size: 50 })
@@ -70,7 +71,6 @@ export default function LearningHub() {
     loadSessions()
   }, [])
 
-  /** 开始学习 (创建或恢复会话, 然后跳转) */
   async function handleStartLearning() {
     if (!selectedCourseId) {
       message.warning('请先选择课程')
@@ -95,12 +95,10 @@ export default function LearningHub() {
     }
   }
 
-  /** 点击已有会话卡片进入学习 */
   function handleResumeSession(sessionId: string) {
     navigate(`/learning/${sessionId}`)
   }
 
-  /** 切换收藏 */
   async function handleToggleFavorite(sessionId: string, e: React.MouseEvent) {
     e.stopPropagation()
     try {
@@ -112,7 +110,6 @@ export default function LearningHub() {
     }
   }
 
-  /** 下载会话全部资源 */
   async function handleDownload(sessionId: string, e: React.MouseEvent) {
     e.stopPropagation()
     const url = getDownloadUrl(sessionId)
@@ -139,7 +136,6 @@ export default function LearningHub() {
     }
   }
 
-  /** 删除会话 */
   async function handleDelete(sessionId: string, e: React.MouseEvent | undefined) {
     e?.stopPropagation()
     try {
@@ -151,7 +147,6 @@ export default function LearningHub() {
     }
   }
 
-  /** 获取状态标签 */
   function getStatusTag(status: string) {
     switch (status) {
       case 'active': return <Tag color="blue" style={{ margin: 0 }}>进行中</Tag>
@@ -168,7 +163,7 @@ export default function LearningHub() {
       {/* 页面标题 */}
       <div style={{ marginBottom: 32 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <ExperimentOutlined style={{ fontSize: 28, color: '#1677ff' }} />
+          <ExperimentOutlined style={{ fontSize: 28, color: blue[500] }} />
           <Title level={4} style={{ margin: 0 }}>AI 智能助学</Title>
         </div>
         <Text type="secondary" style={{ marginTop: 4, display: 'block' }}>
@@ -197,9 +192,13 @@ export default function LearningHub() {
             onClick={() => setNewModalOpen(true)}
             style={{
               width: CARD_WIDTH, height: 240, borderRadius: 12,
-              border: '2px dashed #d9d9d9', cursor: 'pointer',
+              border: `2px dashed ${gray[300]}`, cursor: 'pointer',
               display: 'flex', alignItems: 'center', justifyContent: 'center',
-              transition: 'all 0.2s',
+              transition: `
+                border-color 0.25s cubic-bezier(0.16, 1, 0.3, 1),
+                box-shadow 0.25s cubic-bezier(0.16, 1, 0.3, 1),
+                transform 0.25s cubic-bezier(0.16, 1, 0.3, 1)
+              `,
             }}
             styles={{
               body: {
@@ -210,17 +209,26 @@ export default function LearningHub() {
             }}
             onMouseEnter={(e) => {
               const el = e.currentTarget as HTMLElement
-              el.style.borderColor = '#1677ff'
-              el.style.boxShadow = '0 4px 16px rgba(22,119,255,0.12)'
+              el.style.borderColor = blue[500]
+              el.style.boxShadow = `0 6px 20px rgba(59,130,246,0.15)`
+              el.style.transform = 'translateY(-3px)'
             }}
             onMouseLeave={(e) => {
               const el = e.currentTarget as HTMLElement
-              el.style.borderColor = '#d9d9d9'
+              el.style.borderColor = gray[300]
               el.style.boxShadow = 'none'
+              el.style.transform = 'translateY(0)'
             }}
           >
-            <PlusOutlined style={{ fontSize: 40, color: '#1677ff' }} />
-            <Text strong style={{ fontSize: 15, color: '#1677ff' }}>
+            <div style={{
+              width: 56, height: 56, borderRadius: 14,
+              background: blue[50],
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              transition: 'transform 0.25s ease',
+            }}>
+              <PlusOutlined style={{ fontSize: 26, color: blue[500] }} />
+            </div>
+            <Text strong style={{ fontSize: 15, color: blue[500] }}>
               开始新课程
             </Text>
           </Card>
@@ -236,17 +244,22 @@ export default function LearningHub() {
               style={{
                 width: CARD_WIDTH, borderRadius: 12,
                 overflow: 'hidden',
-                border: '1px solid #f0f0f0',
-                transition: 'all 0.2s',
+                border: `1px solid ${gray[200]}`,
+                transition: `
+                  box-shadow 0.25s cubic-bezier(0.16, 1, 0.3, 1),
+                  transform 0.25s cubic-bezier(0.16, 1, 0.3, 1)
+                `,
               }}
               styles={{ body: { padding: '16px 20px' } }}
               onMouseEnter={(e) => {
                 const el = e.currentTarget as HTMLElement
-                el.style.boxShadow = '0 4px 16px rgba(0,0,0,0.1)'
+                el.style.boxShadow = '0 6px 20px rgba(15,23,42,0.1)'
+                el.style.transform = 'translateY(-2px)'
               }}
               onMouseLeave={(e) => {
                 const el = e.currentTarget as HTMLElement
-                el.style.boxShadow = '0 1px 2px rgba(0,0,0,0.06)'
+                el.style.boxShadow = '0 1px 2px rgba(15,23,42,0.04)'
+                el.style.transform = 'translateY(0)'
               }}
             >
               {/* 顶部: 图标 + 课程名 + 状态 */}
@@ -255,9 +268,9 @@ export default function LearningHub() {
                 marginBottom: 12,
               }}>
                 {session.is_favorited ? (
-                  <StarFilled style={{ fontSize: 18, color: '#faad14', marginTop: 2, flexShrink: 0 }} />
+                  <StarFilled style={{ fontSize: 18, color: semantic.warning, marginTop: 2, flexShrink: 0 }} />
                 ) : (
-                  <BookOutlined style={{ fontSize: 18, color: '#1677ff', marginTop: 2, flexShrink: 0 }} />
+                  <BookOutlined style={{ fontSize: 18, color: blue[500], marginTop: 2, flexShrink: 0 }} />
                 )}
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <Text
@@ -278,7 +291,7 @@ export default function LearningHub() {
                 <Progress
                   percent={session.progress_percent}
                   size="small"
-                  strokeColor={session.status === 'completed' ? '#52c41a' : '#1677ff'}
+                  strokeColor={session.status === 'completed' ? semantic.success : blue[500]}
                   style={{ marginBottom: 4 }}
                 />
                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
@@ -286,7 +299,7 @@ export default function LearningHub() {
                     {session.completed_stages}/{session.total_stages} 阶段
                   </Text>
                   {session.status === 'completed' && (
-                    <Text type="secondary" style={{ fontSize: 11, color: '#52c41a' }}>
+                    <Text style={{ fontSize: 11, color: semantic.success }}>
                       全部完成
                     </Text>
                   )}
@@ -298,18 +311,18 @@ export default function LearningHub() {
                 onClick={(e) => e.stopPropagation()}
                 style={{
                   display: 'flex', justifyContent: 'space-around',
-                  paddingTop: 10, borderTop: '1px solid #f5f5f5',
+                  paddingTop: 10, borderTop: `1px solid ${gray[100]}`,
                 }}
               >
                 <Button
                   type="text"
                   size="small"
                   icon={session.is_favorited
-                    ? <StarFilled style={{ color: '#faad14' }} />
+                    ? <StarFilled style={{ color: semantic.warning }} />
                     : <StarOutlined />
                   }
                   onClick={(e) => handleToggleFavorite(session.id, e)}
-                  style={{ color: session.is_favorited ? '#faad14' : undefined }}
+                  style={{ color: session.is_favorited ? semantic.warning : undefined }}
                 >
                   {session.is_favorited ? '已收藏' : '收藏'}
                 </Button>
@@ -348,7 +361,7 @@ export default function LearningHub() {
             </Card>
           ))}
 
-          {/* 空状态: 仅当没有任何会话时显示 */}
+          {/* 空状态 */}
           {sessions.length === 0 && !loadingSessions && (
             <div style={{
               gridColumn: '1 / -1',
@@ -363,13 +376,11 @@ export default function LearningHub() {
         </div>
       )}
 
-      {/* ================================================================ */}
       {/* 新建课程 Modal */}
-      {/* ================================================================ */}
       <Modal
         title={
           <span>
-            <RocketOutlined style={{ marginRight: 8, color: '#1677ff' }} />
+            <RocketOutlined style={{ marginRight: 8, color: blue[500] }} />
             开始新课程
           </span>
         }

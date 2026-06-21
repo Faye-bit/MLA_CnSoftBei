@@ -196,7 +196,7 @@ export default function KnowledgeSearch() {
 
             {/* 相似度阈值滑块 */}
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 260 }}>
-              <FilterOutlined style={{ color: '#8c8c8c' }} />
+              <FilterOutlined style={{ color: '#94A3B8' }} />
               <Text type="secondary" style={{ fontSize: 12, whiteSpace: 'nowrap' }}>
                 最低相似度
               </Text>
@@ -283,7 +283,7 @@ export default function KnowledgeSearch() {
                   >
                     <div style={{ display: 'flex', gap: 16 }}>
                       {/* 页面缩略图 */}
-                      <div style={{ width: 160, minHeight: 120, flexShrink: 0, borderRadius: 4, overflow: 'hidden', background: '#f5f5f5', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      <div style={{ width: 160, minHeight: 120, flexShrink: 0, borderRadius: 4, overflow: 'hidden', background: '#F1F5F9', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                         <Image
                           src={item.image_url}
                           alt={`第 ${item.page_number} 页`}
@@ -301,7 +301,7 @@ export default function KnowledgeSearch() {
                             🎯 {(item.score * 100).toFixed(0)}%
                           </Tag>
                         </Space>
-                        <Text style={{ fontSize: 12, color: '#8c8c8c', display: 'block', marginBottom: 4 }}>
+                        <Text style={{ fontSize: 12, color: '#94A3B8', display: 'block', marginBottom: 4 }}>
                           📄 {item.document_name}
                         </Text>
                         {item.summary && (

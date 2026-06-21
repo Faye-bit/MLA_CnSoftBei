@@ -1,83 +1,399 @@
 /**
- * MLA 多学助手 - 全局样式
- * Tailwind CSS + Ant Design 主题覆盖
+ * MLA 智学引擎 - 全局样式
+ * Tailwind CSS + Ant Design 主题覆盖 + 设计 Token
+ *
+ * @see branding/MLA_BRAND_GUIDELINES.md — 品牌视觉唯一权威来源
+ * @see frontend/src/styles/tokens.ts — TypeScript 设计 Token
  */
 
 @import "tailwindcss";
 
-/* 全局重置 */
+/* ============================================================================
+   设计 Token CSS Variables
+   与 branding/MLA_BRAND_GUIDELINES.md §11.1 保持一致
+   ============================================================================ */
+
+:root {
+  /* === 品牌主色 (克制的蓝) === */
+  --blue-50: #EFF6FF;
+  --blue-100: #DBEAFE;
+  --blue-200: #BFDBFE;
+  --blue-300: #93C5FD;
+  --blue-400: #60A5FA;
+  --blue-500: #3B82F6;   /* 主色 — 主按钮、链接、活跃态 */
+  --blue-600: #2563EB;   /* hover */
+  --blue-700: #1D4ED8;   /* active */
+  --blue-800: #1E40AF;
+  --blue-900: #1E3A8A;
+
+  /* === 中性色 (冷灰 Slate) === */
+  --gray-50: #F8FAFC;    /* 页面背景 */
+  --gray-100: #F1F5F9;   /* 侧边栏背景、卡片次级底色 */
+  --gray-200: #E2E8F0;   /* 边框、分割线 */
+  --gray-300: #CBD5E1;   /* 输入框边框、禁用态边框 */
+  --gray-400: #94A3B8;   /* 禁用文字、占位符 */
+  --gray-500: #64748B;   /* 辅助说明文字 */
+  --gray-600: #475569;   /* 次要正文 */
+  --gray-700: #334155;   /* 正文文字 */
+  --gray-800: #1E293B;   /* 标题文字 */
+  --gray-900: #0F172A;   /* 最深标题、强调文字 */
+
+  /* === 语义色 === */
+  --success: #16A34A;
+  --success-bg: #DCFCE7;
+  --warning: #D97706;      /* 唯一保留的暖色 */
+  --warning-bg: #FEF3C7;
+  --danger: #DC2626;
+  --danger-bg: #FEE2E2;
+  --info: #3B82F6;         /* 与主色一致 */
+  --info-bg: #EFF6FF;
+
+  /* === 字体 === */
+  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont,
+               'PingFang SC', 'Microsoft YaHei', 'Noto Sans SC', sans-serif;
+  --font-mono: 'JetBrains Mono', 'SF Mono', 'Fira Code', 'Consolas', monospace;
+
+  /* === 间距 (4px 基准) === */
+  --space-1: 4px;   --space-2: 8px;   --space-3: 12px;
+  --space-4: 16px;  --space-5: 20px;  --space-6: 24px;
+  --space-8: 32px;  --space-10: 40px; --space-12: 48px;
+
+  /* === 圆角 (外层大、内层小) === */
+  --radius-sm: 6px;   --radius-md: 8px;
+  --radius-lg: 12px;  --radius-xl: 16px;
+  --radius-full: 9999px;
+
+  /* === 阴影 (使用 gray-900 rgba，禁止纯黑) === */
+  --shadow-xs: 0 1px 2px rgba(15,23,42,0.04);
+  --shadow-sm: 0 1px 3px rgba(15,23,42,0.06);
+  --shadow-md: 0 4px 12px rgba(15,23,42,0.08);
+  --shadow-lg: 0 12px 28px rgba(15,23,42,0.10);
+  --shadow-xl: 0 20px 48px rgba(15,23,42,0.12);
+
+  /* === 过渡 === */
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --duration-fast: 150ms;
+  --duration-normal: 200ms;
+  --duration-slow: 300ms;
+
+  /* === 布局 === */
+  --sidebar-width: 232px;
+  --header-height: 56px;
+  --content-max: 1200px;
+}
+
+/* ============================================================================
+   全局重置
+   ============================================================================ */
+
 * {
   margin: 0;
   padding: 0;
   box-sizing: border-box;
 }
 
-/* 页面主体背景 */
+/* ============================================================================
+   页面基础
+   ============================================================================ */
+
 body {
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue",
-    Arial, "Noto Sans", "PingFang SC", "Microsoft YaHei", sans-serif;
+  font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  color: var(--gray-700);
+  background: var(--gray-50);
 }
 
 #root {
   min-height: 100vh;
 }
 
-/* 滚动条样式 */
+/* ============================================================================
+   滚动条样式 (使用 gray token)
+   ============================================================================ */
+
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #d9d9d9;
+  background: var(--gray-300);
   border-radius: 3px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #bfbfbf;
+  background: var(--gray-400);
 }
 
-/* Markdown 内容样式 (用于后续流式输出和内容展示) */
+/* ============================================================================
+   Markdown 内容样式 — 阅读模式 (讲义、拓展阅读等长文本)
+   排版目标: 15px 基准, 1.85 行高, 舒适的段落和标题间距
+   ============================================================================ */
+
+.markdown-body {
+  font-size: 15px;
+  line-height: 1.85;
+  color: var(--gray-700);
+  max-width: 780px;
+  padding: 24px 32px;
+}
+
+/* ====== 标题层级 ====== */
+
+.markdown-body h1 {
+  font-size: 26px;
+  font-weight: 700;
+  line-height: 1.3;
+  letter-spacing: -0.02em;
+  color: var(--gray-900);
+  margin: 36px 0 16px 0;
+}
+
+.markdown-body h2 {
+  font-size: 21px;
+  font-weight: 600;
+  line-height: 1.35;
+  letter-spacing: -0.015em;
+  color: var(--gray-900);
+  margin: 30px 0 14px 0;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--gray-200);
+}
+
+.markdown-body h3 {
+  font-size: 18px;
+  font-weight: 600;
+  line-height: 1.4;
+  color: var(--gray-800);
+  margin: 24px 0 10px 0;
+}
+
+.markdown-body h4 {
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.45;
+  color: var(--gray-800);
+  margin: 20px 0 8px 0;
+}
+
+.markdown-body h5,
+.markdown-body h6 {
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.5;
+  color: var(--gray-600);
+  margin: 16px 0 6px 0;
+}
+
+/* 首个标题不加顶部间距 */
+.markdown-body h1:first-child,
+.markdown-body h2:first-child,
+.markdown-body h3:first-child {
+  margin-top: 0;
+}
+
+/* ====== 段落 ====== */
+
+.markdown-body p {
+  margin: 0 0 14px 0;
+}
+
+/* ====== 列表 ====== */
+
+.markdown-body ul,
+.markdown-body ol {
+  margin: 0 0 14px 0;
+  padding-left: 28px;
+}
+
+.markdown-body li {
+  margin-bottom: 6px;
+  line-height: 1.8;
+}
+
+.markdown-body li > ul,
+.markdown-body li > ol {
+  margin-top: 4px;
+  margin-bottom: 0;
+}
+
+.markdown-body li:last-child {
+  margin-bottom: 0;
+}
+
+/* ====== 强调 ====== */
+
+.markdown-body strong {
+  font-weight: 600;
+  color: var(--gray-800);
+}
+
+/* ====== 分割线 ====== */
+
+.markdown-body hr {
+  margin: 28px 0;
+  border: none;
+  border-top: 1px solid var(--gray-200);
+}
+
+/* ====== 引用块 ====== */
+
+.markdown-body blockquote {
+  margin: 16px 0;
+  padding: 12px 20px;
+  border-left: 4px solid var(--blue-500);
+  background: var(--blue-50);
+  border-radius: 0 6px 6px 0;
+  color: var(--gray-600);
+}
+
+.markdown-body blockquote p:last-child {
+  margin-bottom: 0;
+}
+
+/* ====== 代码块 (已被 React 组件接管, 此处仅作兜底) ====== */
+
+.markdown-body pre {
+  margin: 16px 0;
+}
+
+.markdown-body pre code {
+  font-size: 13px;
+  line-height: 1.65;
+}
+
+/* ====== 行内代码 ====== */
+
+.markdown-body :not(pre) > code {
+  background: var(--gray-50);
+  border: 1px solid var(--gray-200);
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 0.9em;
+  font-family: var(--font-mono);
+  color: var(--gray-800);
+}
+
+/* ====== 表格 ====== */
+
+.markdown-body table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 16px 0;
+  font-size: 14px;
+}
+
+.markdown-body th,
+.markdown-body td {
+  border: 1px solid var(--gray-200);
+  padding: 10px 16px;
+  text-align: left;
+}
+
+.markdown-body th {
+  background: var(--gray-50);
+  color: var(--gray-700);
+  font-weight: 600;
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.markdown-body td {
+  line-height: 1.7;
+}
+
+/* ====== 图片 ====== */
+
+.markdown-body img {
+  max-width: 100%;
+  border-radius: var(--radius-md);
+  margin: 12px 0;
+}
+
+/* ============================================================================
+   Markdown 紧凑模式 (AI 对话消息, 保持简洁)
+   ============================================================================ */
+
+.markdown-body.markdown-compact {
+  font-size: 14px;
+  line-height: 1.7;
+  max-width: none;
+  padding: 0;
+}
+
+.markdown-body.markdown-compact h1 { font-size: 18px; margin: 16px 0 8px 0; }
+.markdown-body.markdown-compact h2 { font-size: 16px; margin: 14px 0 8px 0; border-bottom: none; }
+.markdown-body.markdown-compact h3 { font-size: 14px; margin: 12px 0 6px 0; }
+.markdown-body.markdown-compact h4 { font-size: 14px; margin: 10px 0 4px 0; }
+.markdown-body.markdown-compact h5,
+.markdown-body.markdown-compact h6 { font-size: 13px; margin: 8px 0 4px 0; }
+.markdown-body.markdown-compact p { margin-bottom: 8px; }
+.markdown-body.markdown-compact ul,
+.markdown-body.markdown-compact ol { margin-bottom: 8px; padding-left: 22px; }
+.markdown-body.markdown-compact li { margin-bottom: 3px; line-height: 1.7; }
+.markdown-body.markdown-compact hr { margin: 16px 0; }
+.markdown-body.markdown-compact blockquote { margin: 10px 0; padding: 8px 14px; }
+.markdown-body.markdown-compact table { margin: 10px 0; }
+.markdown-body.markdown-compact th,
+.markdown-body.markdown-compact td { padding: 6px 10px; }
+
+/* ============================================================================
+   兼容旧的 .markdown-content 引用 (保持向后兼容)
+   ============================================================================ */
+
 .markdown-content h1,
 .markdown-content h2,
 .markdown-content h3 {
   margin-top: 1em;
   margin-bottom: 0.5em;
+  color: var(--gray-800);
 }
 
 .markdown-content p {
   margin-bottom: 0.75em;
   line-height: 1.7;
+  color: var(--gray-700);
 }
 
-.markdown-content pre {
-  background: #f5f5f5;
-  padding: 12px 16px;
-  border-radius: 6px;
-  overflow-x: auto;
+/* ============================================================================
+   性能优化: content-visibility
+   浏览器跳过屏幕外内容的布局和绘制 (Vercel Rule 6.2)
+   ============================================================================ */
+
+/* 侧边栏菜单: 菜单项较多时跳过屏幕外渲染 */
+.ant-menu-inline {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 1200px;
 }
 
-.markdown-content code {
-  background: #f0f0f0;
-  padding: 2px 6px;
-  border-radius: 3px;
-  font-size: 0.9em;
+/* 主内容区域: 页面内容较长时跳过屏幕外渲染 */
+.ant-layout-content {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 800px;
 }
 
-.markdown-content table {
-  border-collapse: collapse;
-  width: 100%;
-  margin: 12px 0;
+/* 表格长列表: 超过 20 行时启用 */
+.ant-table-body {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 600px;
 }
 
-.markdown-content th,
-.markdown-content td {
-  border: 1px solid #e8e8e8;
-  padding: 8px 12px;
+/* ============================================================================
+   Phase 4: 表格行 hover & 入场动画
+   ============================================================================ */
+
+/* Ant Design 表格行 hover — 品牌色 */
+.ant-table-row {
+  transition: background-color 0.15s ease !important;
 }
 
-.markdown-content th {
-  background: #fafafa;
+.ant-table-row:hover {
+  background-color: var(--blue-50) !important;
+}
+
+/* 全局入场动画 */
+@keyframes msgFadeIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
 }

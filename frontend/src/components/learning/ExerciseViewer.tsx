@@ -333,11 +333,11 @@ export default function ExerciseViewer({ content, resourceId, resourceMetadata }
                 value={i}
                 style={{
                   padding: '8px 12px', borderRadius: 6,
-                  background: submittedAnswer && i === q.answer ? '#f6ffed'
-                    : submittedAnswer && i === currentAnswer && !isAnswerCorrect(q, i) ? '#fff2f0'
-                    : '#fafafa',
-                  border: submittedAnswer && i === q.answer ? '1px solid #b7eb8f'
-                    : submittedAnswer && i === currentAnswer && !isAnswerCorrect(q, i) ? '1px solid #ffccc7'
+                  background: submittedAnswer && i === q.answer ? '#DCFCE7'
+                    : submittedAnswer && i === currentAnswer && !isAnswerCorrect(q, i) ? '#FEE2E2'
+                    : '#F8FAFC',
+                  border: submittedAnswer && i === q.answer ? '1px solid #BBF7D0'
+                    : submittedAnswer && i === currentAnswer && !isAnswerCorrect(q, i) ? '1px solid #FECACA'
                     : '1px solid transparent',
                   width: '100%',
                 }}
@@ -447,21 +447,21 @@ export default function ExerciseViewer({ content, resourceId, resourceMetadata }
                 return (
                   <div style={{
                     padding: '12px 16px', borderRadius: 8, marginTop: 12,
-                    background: correct ? '#f6ffed' : '#fff2f0',
-                    border: `1px solid ${correct ? '#b7eb8f' : '#ffccc7'}`,
+                    background: correct ? '#DCFCE7' : '#FEE2E2',
+                    border: `1px solid ${correct ? '#BBF7D0' : '#FECACA'}`,
                   }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
                       {correct
-                        ? <CheckCircleOutlined style={{ color: '#52c41a', fontSize: 16 }} />
-                        : <CloseCircleOutlined style={{ color: '#ff4d4f', fontSize: 16 }} />
+                        ? <CheckCircleOutlined style={{ color: '#16A34A', fontSize: 16 }} />
+                        : <CloseCircleOutlined style={{ color: '#DC2626', fontSize: 16 }} />
                       }
-                      <Text strong style={{ color: correct ? '#52c41a' : '#ff4d4f' }}>
+                      <Text strong style={{ color: correct ? '#16A34A' : '#DC2626' }}>
                         {correct ? '回答正确！' : '回答错误'}
                       </Text>
                     </div>
                     {currentQuestion.explanation && (
                       <div style={{ display: 'flex', gap: 8 }}>
-                        <BulbOutlined style={{ color: '#faad14', marginTop: 4 }} />
+                        <BulbOutlined style={{ color: '#D97706', marginTop: 4 }} />
                         <Text style={{ fontSize: 13 }}>{currentQuestion.explanation}</Text>
                       </div>
                     )}
@@ -479,36 +479,36 @@ export default function ExerciseViewer({ content, resourceId, resourceMetadata }
                 const scoreSection = isScoring ? (
                   <div style={{
                     display: 'flex', alignItems: 'center', gap: 8,
-                    padding: '8px 12px', background: '#fffbe6',
+                    padding: '8px 12px', background: '#FEF3C7',
                     borderRadius: 6, marginBottom: 8,
                   }}>
-                    <LoadingOutlined style={{ color: '#faad14' }} />
+                    <LoadingOutlined style={{ color: '#D97706' }} />
                     <Text type="secondary" style={{ fontSize: 12 }}>AI 正在评分中...</Text>
                   </div>
                 ) : currentScore ? (
                   <div style={{
                     padding: '8px 12px', borderRadius: 6, marginBottom: 8,
-                    background: currentScore.score >= 8 ? '#f6ffed'
-                      : currentScore.score >= 5 ? '#fffbe6'
-                      : '#fff2f0',
-                    border: `1px solid ${currentScore.score >= 8 ? '#b7eb8f'
-                      : currentScore.score >= 5 ? '#ffe58f'
-                      : '#ffccc7'}`,
+                    background: currentScore.score >= 8 ? '#DCFCE7'
+                      : currentScore.score >= 5 ? '#FEF3C7'
+                      : '#FEE2E2',
+                    border: `1px solid ${currentScore.score >= 8 ? '#BBF7D0'
+                      : currentScore.score >= 5 ? '#FDE68A'
+                      : '#FECACA'}`,
                   }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                       {currentScore.score >= 0 ? (
                         <>
                           <StarFilled style={{
-                            color: currentScore.score >= 8 ? '#52c41a'
-                              : currentScore.score >= 5 ? '#faad14'
-                              : '#ff4d4f',
+                            color: currentScore.score >= 8 ? '#16A34A'
+                              : currentScore.score >= 5 ? '#D97706'
+                              : '#DC2626',
                             fontSize: 18,
                           }} />
                           <Text strong style={{
                             fontSize: 16,
-                            color: currentScore.score >= 8 ? '#52c41a'
-                              : currentScore.score >= 5 ? '#d48806'
-                              : '#ff4d4f',
+                            color: currentScore.score >= 8 ? '#16A34A'
+                              : currentScore.score >= 5 ? '#B45309'
+                              : '#DC2626',
                           }}>
                             {currentScore.score} / 10 分
                           </Text>
@@ -522,7 +522,7 @@ export default function ExerciseViewer({ content, resourceId, resourceMetadata }
                     {currentScore.feedback && currentScore.score >= 0 && (
                       <Paragraph style={{
                         margin: '4px 0 0 0', fontSize: 12,
-                        color: '#666', fontStyle: 'italic',
+                        color: '#64748B', fontStyle: 'italic',
                       }}>
                         💬 {currentScore.feedback}
                       </Paragraph>
@@ -533,22 +533,22 @@ export default function ExerciseViewer({ content, resourceId, resourceMetadata }
                 return (
                   <div style={{
                     padding: '12px 16px', borderRadius: 8, marginTop: 12,
-                    background: '#e6f7ff', border: '1px solid #91d5ff',
+                    background: '#EFF6FF', border: '1px solid #BFDBFE',
                   }}>
                     {/* AI 评分卡片 */}
                     {scoreSection}
 
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-                      <CheckCircleOutlined style={{ color: '#1677ff', fontSize: 16 }} />
-                      <Text strong style={{ color: '#1677ff' }}>已提交</Text>
+                      <CheckCircleOutlined style={{ color: '#3B82F6', fontSize: 16 }} />
+                      <Text strong style={{ color: '#3B82F6' }}>已提交</Text>
                     </div>
                     <div style={{ display: 'flex', gap: 8 }}>
-                      <BulbOutlined style={{ color: '#1677ff', marginTop: 4 }} />
+                      <BulbOutlined style={{ color: '#3B82F6', marginTop: 4 }} />
                       <Text style={{ fontSize: 13 }}>参考答案：{refAnswer}</Text>
                     </div>
                     {currentQuestion.explanation && (
                       <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
-                        <BulbOutlined style={{ color: '#faad14', marginTop: 4 }} />
+                        <BulbOutlined style={{ color: '#D97706', marginTop: 4 }} />
                         <Text style={{ fontSize: 13 }}>{currentQuestion.explanation}</Text>
                       </div>
                     )}
@@ -561,7 +561,7 @@ export default function ExerciseViewer({ content, resourceId, resourceMetadata }
       {/* 底部导航 */}
       <div style={{
         display: 'flex', justifyContent: 'space-between',
-        marginTop: 16, paddingTop: 16, borderTop: '1px solid #f0f0f0',
+        marginTop: 16, paddingTop: 16, borderTop: '1px solid #E2E8F0',
       }}>
         <Button
           icon={<ArrowLeftOutlined />}

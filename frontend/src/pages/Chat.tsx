@@ -1,61 +1,62 @@
 /**
  * AI 对话主页面
  * 模仿 ChatGPT/Claude 的布局: 左侧对话列表 + 右侧聊天区域
- * 支持 SSE 流式输出、知识库来源引用、对话历史管理
  *
- * 核心设计:
- * - streamingContentRef / streamingSourcesRef: 用 ref 累积流式数据,
- *   避免在 setState 回调中嵌套 setState 导致的重复渲染 bug
- * - streamingContent / streamingSources: 仅用于驱动 UI 渲染,
- *   onDone/onError 从 ref 读取最终值
- * - 用户画像通过后台记忆提取自动累积, 无需手动操作
+ * 滚动模型 (关键):
+ *   - 外层 div overflow:hidden, height 精确匹配可用空间 → 页面不滚动
+ *   - 左侧边栏: 独立的 flex 纵列, 内部 overflow:auto → 对话列表独立滚动
+ *   - 右侧消息区: flex:1 + overflow:auto → 仅消息区滚动
+ *   - 输入栏: flex-shrink:0 → 始终悬浮于底部, 不随消息滚动
+ *
+ * @see branding/MLA_BRAND_GUIDELINES.md
  */
 
 import { useEffect, useState, useRef, useCallback } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { Typography, Spin, Empty, message } from 'antd'
+import { RobotOutlined, ThunderboltOutlined } from '@ant-design/icons'
 import ConversationList from '../components/chat/ConversationList'
 import ChatMessage from '../components/chat/ChatMessage'
 import ChatInput from '../components/chat/ChatInput'
 import {
-  getConversations,
-  getConversationDetail,
-  createConversation,
-  deleteConversation,
-  updateConversation,
-  streamChat,
+  getConversations, getConversationDetail, createConversation,
+  deleteConversation, updateConversation, streamChat,
 } from '../services/api'
 import type { Conversation, Message, ChatSource } from '../types'
+import { blue, gray } from '../styles/tokens'
 
 const { Text } = Typography
+
+/** ====== 欢迎页建议提示词 ====== */
+const SUGGESTIONS = [
+  '这个课程的核心知识点有哪些？',
+  '帮我总结一下已学内容的重点',
+  '用思维导图的方式梳理知识体系',
+  '针对我的薄弱环节出几道练习题',
+  '解释一下最近学的概念，并举一个例子',
+]
 
 export default function Chat() {
   const [searchParams] = useSearchParams()
   const typeParam = searchParams.get('type') as 'chat' | 'profile_collection' | null
 
-  // 对话列表状态
   const [conversations, setConversations] = useState<Conversation[]>([])
   const [conversationsLoading, setConversationsLoading] = useState(true)
-
-  // 当前对话状态
   const [activeConversation, setActiveConversation] = useState<Conversation | null>(null)
   const [messages, setMessages] = useState<Message[]>([])
   const [messagesLoading, setMessagesLoading] = useState(false)
-
-  // SSE 流式状态
   const [streaming, setStreaming] = useState(false)
   const [streamingContent, setStreamingContent] = useState('')
   const [streamingSources, setStreamingSources] = useState<ChatSource[]>([])
   const streamingContentRef = useRef('')
   const streamingSourcesRef = useRef<ChatSource[]>([])
   const abortControllerRef = useRef<AbortController | null>(null)
-
-  // 滚动容器引用
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const messagesContainerRef = useRef<HTMLDivElement>(null)
   const [userScrolledUp, setUserScrolledUp] = useState(false)
+  /** 新建对话后自动聚焦输入框 */
+  const [shouldFocusInput, setShouldFocusInput] = useState(false)
 
-  /** 加载对话列表 */
   const loadConversations = useCallback(async () => {
     setConversationsLoading(true)
     try {
@@ -68,11 +69,33 @@ export default function Chat() {
     }
   }, [typeParam])
 
-  useEffect(() => {
-    loadConversations()
-  }, [loadConversations])
+  useEffect(() => { loadConversations() }, [loadConversations])
 
-  /** 选择对话: 加载消息历史 */
+  /**
+   * 静默刷新对话列表 (不触发 loading 状态)
+   * 用于 SSE 流式完成后的标题/消息数更新, 避免触发 ConversationList 的
+   * loading spinner 导致列表闪烁或意外重渲染
+   *
+   * 同时将更新后的标题同步到 activeConversation, 保证右侧面板立即显示新标题
+   */
+  const silentRefreshConversations = useCallback(async () => {
+    try {
+      const data = await getConversations(1, 50, typeParam || undefined)
+      setConversations(data.items)
+      // 同步更新当前活跃对话的标题 (后端可能已自动生成标题)
+      setActiveConversation((prev) => {
+        if (!prev) return null
+        const updated = data.items.find((c) => c.id === prev.id)
+        if (updated && updated.title !== prev.title) {
+          return { ...prev, title: updated.title, message_count: updated.message_count }
+        }
+        return prev
+      })
+    } catch {
+      // 静默失败, 不影响主流程
+    }
+  }, [typeParam])
+
   const handleSelectConversation = useCallback(async (conv: Conversation) => {
     setActiveConversation(conv)
     setMessagesLoading(true)
@@ -102,162 +125,106 @@ export default function Chat() {
       await loadConversations()
       await handleSelectConversation(conv)
       message.success('对话已创建')
+      /** 标记需要聚焦输入框 */
+      setShouldFocusInput(true)
     } catch (err) {
       message.error('创建对话失败: ' + (err as Error).message)
     }
   }, [loadConversations, handleSelectConversation, typeParam])
 
-  /** 删除对话 */
   const handleDeleteConversation = useCallback(async (id: string) => {
     try {
       await deleteConversation(id)
       message.success('对话已删除')
-      if (activeConversation?.id === id) {
-        setActiveConversation(null)
-        setMessages([])
-      }
+      if (activeConversation?.id === id) { setActiveConversation(null); setMessages([]) }
       await loadConversations()
-    } catch (err) {
-      message.error('删除失败: ' + (err as Error).message)
-    }
+    } catch (err) { message.error('删除失败: ' + (err as Error).message) }
   }, [activeConversation, loadConversations])
 
-  /** 重命名对话 */
   const handleRenameConversation = useCallback(async (id: string, title: string) => {
     try {
       await updateConversation(id, { title })
       await loadConversations()
-      if (activeConversation?.id === id) {
-        setActiveConversation((prev) => prev ? { ...prev, title } : null)
-      }
-    } catch (err) {
-      message.error('重命名失败: ' + (err as Error).message)
-    }
+      if (activeConversation?.id === id) setActiveConversation((prev) => prev ? { ...prev, title } : null)
+    } catch (err) { message.error('重命名失败: ' + (err as Error).message) }
   }, [activeConversation, loadConversations])
 
-  /** 发送消息 (SSE 流式) */
+  /** 发送用户消息后滚动到底部并清除聚焦标记 */
+  const scrollAfterSend = useCallback(() => {
+    setUserScrolledUp(false)
+    setShouldFocusInput(false)
+    setTimeout(() => messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }), 100)
+  }, [])
+
   const handleSendMessage = useCallback(async (content: string, courseId: string | null) => {
     if (!activeConversation) return
 
     const userMsg: Message = {
-      id: 'temp-' + Date.now(),
-      conversation_id: activeConversation.id,
-      role: 'user',
-      content,
-      sources: null,
-      message_metadata: null,
-      created_at: new Date().toISOString(),
+      id: 'temp-' + Date.now(), conversation_id: activeConversation.id,
+      role: 'user', content, sources: null,
+      message_metadata: null, created_at: new Date().toISOString(),
     }
     setMessages((prev) => [...prev, userMsg])
 
-    streamingContentRef.current = ''
-    streamingSourcesRef.current = []
-    setStreaming(true)
-    setStreamingContent('')
-    setStreamingSources([])
+    streamingContentRef.current = ''; streamingSourcesRef.current = []
+    setStreaming(true); setStreamingContent(''); setStreamingSources([])
+    scrollAfterSend()
 
     const conversationSnapshot = activeConversation
+    abortControllerRef.current = streamChat(conversationSnapshot.id, content, courseId, {
+      onContent: (chunk) => { streamingContentRef.current += chunk; setStreamingContent(streamingContentRef.current) },
+      onSources: (sources) => { streamingSourcesRef.current = sources; setStreamingSources(sources) },
+      onDone: (messageId) => {
+        setMessages((prev) => [...prev, { id: messageId, conversation_id: conversationSnapshot.id, role: 'assistant', content: streamingContentRef.current, sources: streamingSourcesRef.current.length > 0 ? streamingSourcesRef.current : null, message_metadata: null, created_at: new Date().toISOString() }])
+        setStreaming(false); setStreamingContent(''); setStreamingSources([])
+        streamingContentRef.current = ''; streamingSourcesRef.current = []
+        silentRefreshConversations()
+      },
+      onError: (error) => {
+        message.error('生成回复失败: ' + error)
+        const partial = streamingContentRef.current
+        if (partial) setMessages((prev) => [...prev, { id: 'error-' + Date.now(), conversation_id: conversationSnapshot.id, role: 'assistant', content: partial + '\n\n[回复生成过程中断: ' + error + ']', sources: streamingSourcesRef.current.length > 0 ? streamingSourcesRef.current : null, message_metadata: null, created_at: new Date().toISOString() }])
+        setStreaming(false); setStreamingContent(''); setStreamingSources([])
+        streamingContentRef.current = ''; streamingSourcesRef.current = []
+      },
+    })
+  }, [activeConversation, silentRefreshConversations, scrollAfterSend])
 
-    abortControllerRef.current = streamChat(
-      conversationSnapshot.id,
-      content,
-      courseId,
-      {
-        onContent: (chunk) => {
-          streamingContentRef.current += chunk
-          setStreamingContent(streamingContentRef.current)
-        },
-        onSources: (sources) => {
-          streamingSourcesRef.current = sources
-          setStreamingSources(sources)
-        },
-        onDone: (messageId) => {
-          const finalContent = streamingContentRef.current
-          const finalSources = streamingSourcesRef.current
-
-          const assistantMsg: Message = {
-            id: messageId,
-            conversation_id: conversationSnapshot.id,
-            role: 'assistant',
-            content: finalContent,
-            sources: finalSources.length > 0 ? finalSources : null,
-            message_metadata: null,
-            created_at: new Date().toISOString(),
-          }
-          setMessages((prev) => [...prev, assistantMsg])
-          setStreaming(false)
-          setStreamingContent('')
-          setStreamingSources([])
-          streamingContentRef.current = ''
-          streamingSourcesRef.current = []
-          loadConversations()
-        },
-        onError: (error) => {
-          message.error('生成回复失败: ' + error)
-          const partialContent = streamingContentRef.current
-          if (partialContent) {
-            const errorMsg: Message = {
-              id: 'error-' + Date.now(),
-              conversation_id: conversationSnapshot.id,
-              role: 'assistant',
-              content: partialContent + '\n\n[回复生成过程中断: ' + error + ']',
-              sources: streamingSourcesRef.current.length > 0 ? streamingSourcesRef.current : null,
-              message_metadata: null,
-              created_at: new Date().toISOString(),
-            }
-            setMessages((prev) => [...prev, errorMsg])
-          }
-          setStreaming(false)
-          setStreamingContent('')
-          setStreamingSources([])
-          streamingContentRef.current = ''
-          streamingSourcesRef.current = []
-        },
-      }
-    )
-  }, [activeConversation, loadConversations])
-
-  /** 停止生成 */
   const handleStopStreaming = useCallback(() => {
     abortControllerRef.current?.abort()
-    const partialContent = streamingContentRef.current
-    if (partialContent && activeConversation) {
-      const partialMsg: Message = {
-        id: 'partial-' + Date.now(),
-        conversation_id: activeConversation.id,
-        role: 'assistant',
-        content: partialContent + '\n\n[已停止生成]',
-        sources: streamingSourcesRef.current.length > 0 ? streamingSourcesRef.current : null,
-        message_metadata: null,
-        created_at: new Date().toISOString(),
-      }
-      setMessages((prev) => [...prev, partialMsg])
+    const partial = streamingContentRef.current
+    if (partial && activeConversation) {
+      setMessages((prev) => [...prev, { id: 'partial-' + Date.now(), conversation_id: activeConversation.id, role: 'assistant', content: partial + '\n\n[已停止生成]', sources: streamingSourcesRef.current.length > 0 ? streamingSourcesRef.current : null, message_metadata: null, created_at: new Date().toISOString() }])
     }
-    setStreaming(false)
-    setStreamingContent('')
-    setStreamingSources([])
-    streamingContentRef.current = ''
-    streamingSourcesRef.current = []
+    setStreaming(false); setStreamingContent(''); setStreamingSources([])
+    streamingContentRef.current = ''; streamingSourcesRef.current = []
   }, [activeConversation])
 
-  /** 自动滚动到底部 */
+  /** 自动滚动 */
   useEffect(() => {
-    if (!userScrolledUp) {
-      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-    }
+    if (!userScrolledUp) messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages, streamingContent, userScrolledUp])
 
-  /** 监听用户滚动 */
   const handleScroll = useCallback(() => {
-    const container = messagesContainerRef.current
-    if (!container) return
-    const distanceFromBottom = container.scrollHeight - container.scrollTop - container.clientHeight
-    setUserScrolledUp(distanceFromBottom > 100)
+    const c = messagesContainerRef.current
+    if (!c) return
+    setUserScrolledUp(c.scrollHeight - c.scrollTop - c.clientHeight > 100)
   }, [])
 
+  // ====================================================================
+  // 判断是否显示欢迎页: 已选中对话 + 无消息 + 不在加载 + 不在流式
+  // ====================================================================
+  const showWelcome = activeConversation && !messagesLoading && messages.length === 0 && !streaming
+
   return (
-    <div style={{ display: 'flex', height: '100%', margin: -24, minHeight: 0 }}>
-      {/* 左侧对话列表 */}
+    <div style={{
+      height: 'calc(100vh - 104px)',  // 精确填充可用空间, 防止外层滚动
+      overflow: 'hidden',
+      display: 'flex',
+    }}>
+      {/* ================================================================ */}
+      {/* 左侧: 对话列表 (独立 overflow, 不受右侧消息区影响) */}
+      {/* ================================================================ */}
       <ConversationList
         conversations={conversations}
         activeId={activeConversation?.id || null}
@@ -268,124 +235,201 @@ export default function Chat() {
         onRename={handleRenameConversation}
       />
 
-      {/* 右侧聊天区域 */}
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
-        {/* 消息列表区域 */}
-        <div
-          ref={messagesContainerRef}
-          onScroll={handleScroll}
-          style={{
-            flex: 1,
-            overflow: 'auto',
-            padding: '16px 24px',
-            background: '#fff',
-          }}
-        >
-          {!activeConversation ? (
+      {/* ================================================================ */}
+      {/* 右侧: 聊天区 — flex 纵列, 仅消息区滚动 */}
+      {/* ================================================================ */}
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, minHeight: 0 }}>
+
+        {/* --- 未选择对话空状态 --- */}
+        {!activeConversation ? (
+          <div style={{
+            flex: 1, display: 'flex', flexDirection: 'column',
+            alignItems: 'center', justifyContent: 'center',
+            background: '#FFFFFF', gap: 20,
+          }}>
+            {/* MLA Logo */}
+            <div style={{
+              width: 72, height: 72, borderRadius: 20,
+              background: blue[500],
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              boxShadow: '0 8px 24px rgba(59,130,246,0.2)',
+            }}>
+              <RobotOutlined style={{ fontSize: 36, color: '#FFFFFF' }} />
+            </div>
+
+            <div style={{ textAlign: 'center' }}>
+              <div style={{ fontSize: 22, fontWeight: 700, color: gray[800], marginBottom: 8 }}>
+                MLA 智学引擎
+              </div>
+              <Text style={{ fontSize: 14, color: gray[500], lineHeight: 1.7 }}>
+                {typeParam === 'profile_collection'
+                  ? '点击左侧「新建对话」开始画像收集，AI 将通过对话了解你的学习情况'
+                  : '选择左侧已有对话继续交流，或点击「新建对话」开始全新的知识探索'}
+              </Text>
+            </div>
+
+            {/* 快速开始按钮 */}
             <div
+              onClick={handleNewConversation}
               style={{
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'center',
-                justifyContent: 'center',
-                height: '100%',
-                gap: 16,
+                marginTop: 8, padding: '10px 28px',
+                background: blue[500], color: '#FFFFFF',
+                borderRadius: 10, cursor: 'pointer',
+                fontSize: 14, fontWeight: 600,
+                display: 'flex', alignItems: 'center', gap: 8,
+                transition: 'background 0.2s, transform 0.2s',
+                boxShadow: '0 2px 8px rgba(59,130,246,0.2)',
+              }}
+              onMouseEnter={(e) => e.currentTarget.style.background = blue[600]}
+              onMouseLeave={(e) => e.currentTarget.style.background = blue[500]}
+            >
+              <ThunderboltOutlined />
+              开始新对话
+            </div>
+          </div>
+        ) : messagesLoading ? (
+          /* --- 加载消息中 --- */
+          <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#FFFFFF' }}>
+            <Spin tip="加载消息中..." />
+          </div>
+        ) : (
+          /* ================================================================ */
+          /* 消息 + 输入 — 仅此区域产生滚动 */
+          /* ================================================================ */
+          <>
+            {/* --- 消息列表 (唯一滚动容器) --- */}
+            <div
+              ref={messagesContainerRef}
+              onScroll={handleScroll}
+              style={{
+                flex: 1, minHeight: 0,
+                overflow: 'auto',
+                padding: showWelcome ? '40px 24px' : '16px 24px',
+                background: '#FFFFFF',
               }}
             >
-              <Empty
-                description={
-                  <div>
-                    <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 8 }}>
-                      MLA 多学助手
+              {/* ======================================================== */}
+              {/* 欢迎页: 新建对话后显示, 类似 ChatGPT 的引导界面 */}
+              {/* ======================================================== */}
+              {showWelcome && (
+                <div style={{
+                  display: 'flex', flexDirection: 'column',
+                  alignItems: 'center', justifyContent: 'center',
+                  minHeight: '100%', gap: 28,
+                  paddingTop: 40, paddingBottom: 40,
+                }}>
+                  {/* Logo */}
+                  <div style={{
+                    width: 64, height: 64, borderRadius: 18,
+                    background: blue[500],
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    boxShadow: '0 6px 20px rgba(59,130,246,0.18)',
+                  }}>
+                    <RobotOutlined style={{ fontSize: 32, color: '#FFFFFF' }} />
+                  </div>
+
+                  <div style={{ textAlign: 'center' }}>
+                    <div style={{ fontSize: 20, fontWeight: 700, color: gray[800], marginBottom: 6 }}>
+                      MLA 智学引擎
                     </div>
-                    <Text type="secondary">
-                      {typeParam === 'profile_collection'
-                        ? '点击左侧「新建对话」开始画像收集, AI 助手将通过对话了解你的学习情况'
-                        : '选择一个对话或创建新对话, 基于课程知识库与 AI 助手交流'}
+                    <Text style={{ fontSize: 14, color: gray[500] }}>
+                      {activeConversation.conversation_type === 'profile_collection'
+                        ? '通过自然对话, AI 将逐步了解你的学习情况并构建画像'
+                        : '基于课程知识库的智能问答, 试试下面的问题或直接输入你的疑问'}
                     </Text>
                   </div>
-                }
-              />
-            </div>
-          ) : messagesLoading ? (
-            <div style={{ textAlign: 'center', padding: 60 }}>
-              <Spin tip="加载消息中..." />
-            </div>
-          ) : (
-            <div>
-              {messages.length === 0 && !streaming && (
-                <div style={{ textAlign: 'center', padding: 40 }}>
-                  <Text type="secondary">
-                    {activeConversation.conversation_type === 'profile_collection'
-                      ? '开始画像收集对话, AI 助手将逐步了解你的学习情况'
-                      : '开始与 AI 助手对话, 可以选择关联课程以启用知识库检索'}
-                  </Text>
+
+                  {/* 建议提示词卡片 */}
+                  {activeConversation.conversation_type === 'chat' && (
+                    <div style={{
+                      display: 'grid',
+                      gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))',
+                      gap: 10, maxWidth: 720, width: '100%',
+                    }}>
+                      {SUGGESTIONS.map((text, idx) => (
+                        <div
+                          key={idx}
+                          onClick={() => handleSendMessage(text, activeConversation.course_id || null)}
+                          style={{
+                            padding: '12px 16px',
+                            border: `1px solid ${gray[200]}`,
+                            borderRadius: 10,
+                            cursor: 'pointer',
+                            fontSize: 13,
+                            color: gray[600],
+                            lineHeight: 1.5,
+                            transition: 'border-color 0.2s, box-shadow 0.2s',
+                            background: '#FFFFFF',
+                          }}
+                          onMouseEnter={(e) => {
+                            e.currentTarget.style.borderColor = blue[500]
+                            e.currentTarget.style.boxShadow = `0 2px 8px rgba(59,130,246,0.08)`
+                          }}
+                          onMouseLeave={(e) => {
+                            e.currentTarget.style.borderColor = gray[200]
+                            e.currentTarget.style.boxShadow = 'none'
+                          }}
+                        >
+                          {text}
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               )}
 
-              {messages.map((msg) => (
-                <ChatMessage
-                  key={msg.id}
-                  role={msg.role}
-                  content={msg.content}
-                  sources={msg.sources}
-                  createdAt={msg.created_at}
-                />
-              ))}
+              {/* --- 已有消息 --- */}
+              {!showWelcome && (
+                <>
+                  {messages.map((msg) => (
+                    <ChatMessage key={msg.id} role={msg.role} content={msg.content}
+                      sources={msg.sources} createdAt={msg.created_at} />
+                  ))}
 
-              {streaming && streamingContent && (
-                <ChatMessage
-                  role="assistant"
-                  content={streamingContent}
-                  sources={streamingSources}
-                />
-              )}
+                  {streaming && streamingContent && (
+                    <ChatMessage role="assistant" content={streamingContent} sources={streamingSources} streaming />
+                  )}
 
-              {streaming && !streamingContent && (
-                <div style={{ textAlign: 'center', padding: 20 }}>
-                  <Spin size="small" /> <Text type="secondary">思考中...</Text>
-                </div>
+                  {streaming && !streamingContent && (
+                    <div style={{ textAlign: 'center', padding: 20 }}>
+                      <Spin size="small" /> <Text type="secondary">思考中...</Text>
+                    </div>
+                  )}
+                </>
               )}
 
               <div ref={messagesEndRef} />
             </div>
-          )}
 
-          {userScrolledUp && (
-            <div
-              onClick={() => {
-                setUserScrolledUp(false)
-                messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-              }}
-              style={{
-                position: 'absolute',
-                bottom: 100,
-                left: '50%',
-                transform: 'translateX(-50%)',
-                background: '#1677ff',
-                color: '#fff',
-                padding: '6px 16px',
-                borderRadius: 20,
-                cursor: 'pointer',
-                fontSize: 13,
-                boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
-                zIndex: 10,
-              }}
-            >
-              回到底部
+            {/* --- 回到底部浮动按钮 --- */}
+            {userScrolledUp && (
+              <div
+                onClick={() => {
+                  setUserScrolledUp(false)
+                  messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+                }}
+                style={{
+                  position: 'fixed', bottom: 108, left: '50%', transform: 'translateX(-50%)',
+                  background: blue[500], color: '#FFFFFF',
+                  padding: '6px 16px', borderRadius: 20, cursor: 'pointer',
+                  fontSize: 13, boxShadow: '0 2px 8px rgba(15,23,42,0.08)', zIndex: 10,
+                }}
+              >
+                回到底部
+              </div>
+            )}
+
+            {/* --- 输入栏: 始终固定于底部 --- */}
+            <div style={{ flexShrink: 0 }}>
+              <ChatInput
+                onSend={handleSendMessage}
+                onStop={handleStopStreaming}
+                streaming={streaming}
+                conversationType={activeConversation.conversation_type}
+                selectedCourseId={activeConversation.course_id}
+              />
             </div>
-          )}
-        </div>
-
-        {/* 输入栏 */}
-        {activeConversation && (
-          <ChatInput
-            onSend={handleSendMessage}
-            onStop={handleStopStreaming}
-            streaming={streaming}
-            conversationType={activeConversation.conversation_type}
-            selectedCourseId={activeConversation.course_id}
-          />
+          </>
         )}
       </div>
     </div>

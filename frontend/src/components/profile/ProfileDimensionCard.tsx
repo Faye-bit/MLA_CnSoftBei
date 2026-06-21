@@ -74,7 +74,7 @@ export default function ProfileDimensionCard({
       }
       style={{
         marginBottom: 12,
-        border: isMissing ? '1px dashed #ff4d4f' : undefined,
+        border: isMissing ? '1px dashed #DC2626' : undefined,
       }}
       size="small"
     >

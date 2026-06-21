@@ -2,71 +2,170 @@
  * Markdown 渲染组件
  * 封装 react-markdown, 支持 GFM 表格、代码高亮、数学公式等
  * 用于 AI 消息和资源内容的统一渲染
+ *
+ * 设计规范 (MLA Brand v2.0):
+ * - 代码块: 浅色背景 gray[50] + gray[200] 边框, 与整体浅色 UI 协调
+ * - 语法高亮: GitHub Light 主题 (highlight.js), 经品牌色微调
+ * - 复制按钮: 图标 (CopyOutlined / CheckOutlined), hover 可见
  */
 
+import { useState } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import remarkMath from 'remark-math'
 import rehypeHighlight from 'rehype-highlight'
 import rehypeKatex from 'rehype-katex'
+import { CopyOutlined, CheckOutlined } from '@ant-design/icons'
+import { blue, gray, semantic } from '../../styles/tokens'
 
-/**
- * mla-resource:// 协议前缀
- * 后端链接注入使用此协议前缀, 前端统一拦截并通过 onNavigateToResource 回调处理
- */
+/** 导入 GitHub Light 语法高亮主题 */
+import 'highlight.js/styles/github.css'
+
+/** mla-resource:// 协议前缀 */
 const MLA_RESOURCE_PROTOCOL = 'mla-resource://'
 
 interface MarkdownRendererProps {
-  /** Markdown 文本内容 */
   content: string
-  /** 是否在紧凑模式下渲染 (减少间距) */
   compact?: boolean
-  /**
-   * 资源导航回调: 当用户点击 mla-resource:// 协议链接时触发
-   * 参数为资源 ID (不含协议前缀)
-   * 如果不提供此回调, mla-resource:// 链接将无操作 (降级兜底)
-   */
   onNavigateToResource?: (resourceId: string) => void
 }
 
-export default function MarkdownRenderer({
-  content, compact = false, onNavigateToResource,
-}: MarkdownRendererProps) {
+/**
+ * 带复制按钮的代码块包装组件
+ * hover 时右上角显示复制图标, 点击复制代码到剪贴板
+ * 语言标签显示在左上角
+ */
+function CodeBlockWithCopy({ code, className, children }: {
+  code: string
+  className?: string
+  children: React.ReactNode
+}) {
+  const [copied, setCopied] = useState(false)
+
+  /** 从 className 中提取语言名 (如 "language-python" → "Python") */
+  const lang = (className?.replace('language-', '') || '').trim()
+  const langLabel = lang ? lang.charAt(0).toUpperCase() + lang.slice(1) : ''
+
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(code)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    } catch {
+      const textarea = document.createElement('textarea')
+      textarea.value = code
+      document.body.appendChild(textarea)
+      textarea.select()
+      document.execCommand('copy')
+      document.body.removeChild(textarea)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    }
+  }
+
+  return (
+    <div style={{ position: 'relative', marginBottom: 8 }} className="code-block-wrapper">
+      {/* 语言标签 */}
+      {langLabel && (
+        <span style={{
+          position: 'absolute', top: 8, left: 12, zIndex: 1,
+          fontSize: 11, fontWeight: 500,
+          color: gray[400], userSelect: 'none',
+          pointerEvents: 'none',
+        }}>
+          {langLabel}
+        </span>
+      )}
+
+      {/* 代码容器 — 浅色背景 + 边框, 匹配整体 UI */}
+      <pre
+        style={{
+          background: gray[50],
+          border: `1px solid ${gray[200]}`,
+          borderRadius: 8,
+          padding: '36px 16px 16px',  // 顶部多留空间装语言标签
+          overflow: 'auto',
+          fontSize: 13,
+          lineHeight: 1.65,
+          margin: 0,
+          // 覆盖 github.css 的 hljs 背景色, 继承此处背景
+        }}
+      >
+        {children}
+      </pre>
+
+      {/* 复制按钮 — 图标, hover 时显示 */}
+      <button
+        onClick={handleCopy}
+        title={copied ? '已复制' : '复制代码'}
+        style={{
+          position: 'absolute',
+          top: 8,
+          right: 8,
+          display: 'flex',
+          alignItems: 'center',
+          gap: 4,
+          background: copied ? semantic.success : gray[100],
+          border: copied ? `1px solid ${semantic.success}` : `1px solid ${gray[200]}`,
+          borderRadius: 6,
+          padding: copied ? '3px 8px' : '3px 6px',
+          cursor: 'pointer',
+          color: copied ? '#FFFFFF' : gray[500],
+          fontSize: 12,
+          opacity: copied ? 1 : 0,
+          transition: 'opacity 0.2s, background 0.2s, border-color 0.2s',
+          lineHeight: 1,
+        }}
+      >
+        {copied ? (
+          <>
+            <CheckOutlined style={{ fontSize: 12 }} />
+            已复制
+          </>
+        ) : (
+          <CopyOutlined style={{ fontSize: 14 }} />
+        )}
+      </button>
+
+      <style>{`
+        .code-block-wrapper:hover button { opacity: 1 !important; }
+        /* 覆盖 github.css 的 hljs 背景, 使用透明继承我们设置的容器背景 */
+        .code-block-wrapper .hljs {
+          background: transparent !important;
+          padding: 0 !important;
+        }
+      `}</style>
+    </div>
+  )
+}
+
+export default function MarkdownRenderer({ content, compact = false, onNavigateToResource }: MarkdownRendererProps) {
   return (
     <div
       className={`markdown-body ${compact ? 'markdown-compact' : ''}`}
-      style={{
-        lineHeight: 1.7,
-        wordBreak: 'break-word',
-      }}
     >
       <ReactMarkdown
         remarkPlugins={[remarkGfm, remarkMath]}
         rehypePlugins={[rehypeHighlight, rehypeKatex]}
-        /**
-         * react-markdown 默认会过滤非标准协议的 URL (如 mla-resource://)
-         * urlTransform 允许我们在过滤前保留自定义协议链接
-         */
         urlTransform={(url) => {
-          if (url.startsWith(MLA_RESOURCE_PROTOCOL)) {
-            return url  // 保留自定义协议, 不被清空
-          }
+          if (url.startsWith(MLA_RESOURCE_PROTOCOL)) return url
           return url
         }}
         components={{
-          // 代码块: 支持语法高亮
           code({ className, children, ...props }) {
             const match = /language-(\w+)/.exec(className || '')
-            const isInline = !match
-            if (isInline) {
+            if (!match) {
+              // 行内代码
               return (
                 <code
                   style={{
-                    background: '#f5f5f5',
+                    background: gray[50],
+                    border: `1px solid ${gray[200]}`,
                     padding: '2px 6px',
                     borderRadius: 4,
                     fontSize: '0.9em',
                     fontFamily: 'monospace',
+                    color: gray[800],
                   }}
                   {...props}
                 >
@@ -74,133 +173,49 @@ export default function MarkdownRenderer({
                 </code>
               )
             }
+            // 代码块 — 带复制按钮 + 语法高亮
             return (
-              <pre
-                style={{
-                  background: '#282c34',
-                  color: '#abb2bf',
-                  padding: 16,
-                  borderRadius: 8,
-                  overflow: 'auto',
-                  fontSize: 13,
-                }}
-              >
-                <code className={className} {...props}>
-                  {children}
-                </code>
-              </pre>
+              <CodeBlockWithCopy code={String(children).replace(/\n$/, '')} className={className}>
+                <code className={className} {...props}>{children}</code>
+              </CodeBlockWithCopy>
             )
           },
-          // 表格: 增加 Ant Design 风格
           table({ children }) {
             return (
-              <div style={{ overflow: 'auto', margin: '8px 0' }}>
-                <table
-                  style={{
-                    borderCollapse: 'collapse',
-                    width: '100%',
-                    border: '1px solid #e8e8e8',
-                  }}
-                >
-                  {children}
-                </table>
+              <div style={{ overflow: 'auto' }}>
+                <table>{children}</table>
               </div>
             )
           },
           th({ children }) {
-            return (
-              <th
-                style={{
-                  background: '#fafafa',
-                  padding: '8px 12px',
-                  border: '1px solid #e8e8e8',
-                  fontWeight: 600,
-                  textAlign: 'left',
-                }}
-              >
-                {children}
-              </th>
-            )
+            return <th>{children}</th>
           },
           td({ children }) {
-            return (
-              <td
-                style={{
-                  padding: '8px 12px',
-                  border: '1px solid #e8e8e8',
-                }}
-              >
-                {children}
-              </td>
-            )
+            return <td>{children}</td>
           },
-          // 链接: 拦截 mla-resource:// 协议, 其余新窗口打开
           a({ href, children, ...props }) {
-            // 自定义协议: 讲义 → 交互动画跳转
-            // 使用 <span role="button"> 而非 <a>, 因为:
-            //   1. 这不是真正的超链接 (没有有效的 href URL)
-            //   2. <a> 无 href 时浏览器行为不可预测
-            //   3. 避免 react-markdown 内部 props 覆盖 onClick
             if (href?.startsWith(MLA_RESOURCE_PROTOCOL)) {
               const resourceId = href.slice(MLA_RESOURCE_PROTOCOL.length)
               return (
-                <span
-                  role="button"
-                  tabIndex={0}
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    if (onNavigateToResource) {
-                      onNavigateToResource(resourceId)
-                    }
-                  }}
+                <span role="button" tabIndex={0}
+                  onClick={(e) => { e.stopPropagation(); onNavigateToResource?.(resourceId) }}
                   onKeyDown={(e) => {
                     if (e.key === 'Enter' || e.key === ' ') {
-                      e.preventDefault()
-                      e.stopPropagation()
-                      if (onNavigateToResource) {
-                        onNavigateToResource(resourceId)
-                      }
+                      e.preventDefault(); e.stopPropagation(); onNavigateToResource?.(resourceId)
                     }
                   }}
-                  style={{
-                    color: '#1677ff',
-                    cursor: 'pointer',
-                    textDecoration: 'underline',
-                    textUnderlineOffset: '3px',
-                  }}
-                  title={`跳转到交互动画 (ID: ${resourceId.slice(0, 8)}...)`}
-                >
+                  style={{ color: blue[500], cursor: 'pointer', textDecoration: 'underline', textUnderlineOffset: '3px' }}
+                  title={`跳转到交互动画 (ID: ${resourceId.slice(0, 8)}...)`}>
                   {children}
                 </span>
               )
             }
-            // 普通链接: 新窗口打开
-            return (
-              <a href={href} target="_blank" rel="noopener noreferrer" style={{ color: '#1677ff' }} {...props}>
-                {children}
-              </a>
-            )
+            return <a href={href} target="_blank" rel="noopener noreferrer" style={{ color: blue[500] }} {...props}>{children}</a>
           },
-          // 引用块
           blockquote({ children }) {
-            return (
-              <blockquote
-                style={{
-                  borderLeft: '4px solid #1677ff',
-                  paddingLeft: 16,
-                  margin: '8px 0',
-                  color: '#666',
-                  background: '#f0f5ff',
-                  padding: '8px 16px',
-                  borderRadius: '0 4px 4px 0',
-                }}
-              >
-                {children}
-              </blockquote>
-            )
+            return <blockquote>{children}</blockquote>
           },
-        }}
-      >
+        }}>
         {content}
       </ReactMarkdown>
     </div>

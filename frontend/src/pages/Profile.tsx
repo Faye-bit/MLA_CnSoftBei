@@ -1,15 +1,23 @@
 /**
  * 个人中心页面
  * 头像上传 + 个人资料编辑
+ *
+ * 设计规范 (MLA Brand v2.0):
+ * - 使用品牌 token 替代硬编码色值
+ * - 禁止 Emoji
  */
 
 import { useState } from 'react'
 import { Card, Form, Input, Button, Avatar, Upload, message, Typography, Descriptions, Spin } from 'antd'
-import { UserOutlined, UploadOutlined, MailOutlined, ClockCircleOutlined, SafetyCertificateOutlined } from '@ant-design/icons'
+import {
+  UserOutlined, UploadOutlined, MailOutlined, ClockCircleOutlined,
+  SafetyCertificateOutlined, CheckCircleOutlined, CloseCircleOutlined,
+} from '@ant-design/icons'
 import { updateProfile, uploadAvatar, getAvatarUrl } from '../services/api'
 import { useAuthStore } from '../store'
 import type { UserProfileUpdate } from '../types'
 import type { RcFile } from 'antd/es/upload'
+import { blue, gray } from '../styles/tokens'
 
 const { Title } = Typography
 
@@ -71,7 +79,7 @@ export default function Profile() {
     } finally {
       setUploading(false)
     }
-    return false  // 阻止 Upload 组件自动发送请求
+    return false
   }
 
   const avatarUrl = getAvatarUrl(user.avatar)
@@ -90,13 +98,13 @@ export default function Profile() {
           >
             <div style={{ position: 'relative', cursor: 'pointer' }}>
               <Avatar src={avatarUrl} icon={<UserOutlined />} size={80}
-                style={{ backgroundColor: '#1677ff' }} />
+                style={{ backgroundColor: blue[500] }} />
               <div style={{
                 position: 'absolute', bottom: 0, right: 0,
-                background: '#1677ff', color: '#fff',
+                background: blue[500], color: '#FFFFFF',
                 borderRadius: '50%', width: 26, height: 26,
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
-                border: '2px solid #fff',
+                border: '2px solid #FFFFFF',
               }}>
                 <UploadOutlined style={{ fontSize: 12 }} />
               </div>
@@ -107,7 +115,7 @@ export default function Profile() {
             <div style={{ fontSize: 20, fontWeight: 600 }}>
               {user.nickname || user.username}
             </div>
-            <div style={{ color: '#888', marginTop: 4 }}>
+            <div style={{ color: gray[400], marginTop: 4 }}>
               {user.role === 'admin' ? '管理员' : user.role === 'teacher' ? '教师' : '学生'}
             </div>
           </div>
@@ -120,7 +128,9 @@ export default function Profile() {
           <Descriptions.Item label={<><MailOutlined /> 邮箱</>}>{user.email}</Descriptions.Item>
           <Descriptions.Item label={<><UserOutlined /> 用户名</>}>{user.username}</Descriptions.Item>
           <Descriptions.Item label={<><SafetyCertificateOutlined /> 邮箱验证</>}>
-            {user.email_verified ? '✅ 已验证' : '❌ 未验证'}
+            {user.email_verified
+              ? <span style={{ color: 'green' }}><CheckCircleOutlined /> 已验证</span>
+              : <span style={{ color: 'red' }}><CloseCircleOutlined /> 未验证</span>}
           </Descriptions.Item>
           <Descriptions.Item label={<><ClockCircleOutlined /> 注册时间</>}>
             {user.created_at ? new Date(user.created_at).toLocaleDateString('zh-CN') : '-'}

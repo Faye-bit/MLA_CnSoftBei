@@ -10,7 +10,9 @@ RAG 对话流程:
 5. 调用 LLM 流式生成回复
 6. 逐 token SSE 推送给前端
 7. 保存完整 AI 回复到数据库
-8. 后台异步提取用户信息记忆 (静默, 不阻塞对话)
+8. 首次对话时自动生成标题 (仅第一句, 在 done 之前)
+9. 提取用户信息记忆
+10. 发送 done SSE 事件 (此时标题和记忆已就绪)
 """
 
 import uuid
@@ -30,10 +32,10 @@ from loguru import logger
 # RAG 知识库对话 System Prompt
 # ============================================================================
 
-RAG_CHAT_SYSTEM_PROMPT = """你是 MLA (Multiple Learning Agent) 多学助手，一个专业的课程学习助手，专门为高校学生提供课程辅导。
+RAG_CHAT_SYSTEM_PROMPT = """你是 MLA (Multiple Learning Agent) 智学引擎，一个专业的课程学习助手，专门为高校学生提供课程辅导。
 
 你的身份:
-- 你的名字是 MLA 多学助手，由 CnSoftBei 团队开发
+- 你的名字是 MLA 智学引擎，由 AAAgent 团队开发
 
 重要规则:
 1. 回答必须优先基于提供的「知识库参考资料」。如果知识库中有相关内容，请引用来回答。
@@ -50,7 +52,7 @@ RAG_CHAT_SYSTEM_PROMPT = """你是 MLA (Multiple Learning Agent) 多学助手，
 # 画像收集 System Prompt 模板 (专用收集模式，暂时保留)
 # ============================================================================
 
-PROFILE_COLLECTION_SYSTEM_PROMPT = """你是一个友好、专业的学生画像收集助手，名为 MLA (Multiple Learning Agent) 多学助手。
+PROFILE_COLLECTION_SYSTEM_PROMPT = """你是一个友好、专业的学生画像收集助手，名为 MLA (Multiple Learning Agent) 智学引擎。
 你的任务是通过自然对话的方式了解学生的学习情况，逐步收集以下信息用于构建个性化学习画像。
 
 需要收集的 6 个维度:
@@ -167,11 +169,26 @@ async def generate_conversation_title(
     根据用户的首条消息自动生成对话标题 (模仿 ChatGPT 做法)
     该调用极轻量 (max_tokens=30), 静默失败不影响对话
 
+    关键约束:
+    - 仅当对话中只有 1 条用户消息 (即本次) 时才生成 → 每个对话只生成一次
+    - 仅当标题仍为默认值"新对话"时才覆盖 → 双重保护, 防止重复生成
+
     :param conversation_id: 对话 ID
-    :param first_user_message: 用户的第一条消息
+    :param first_user_message: 用户的第一条消息 (用于概括)
     :param db: 数据库会话
     """
     try:
+        # 严格校验: 只有第一条用户消息才触发标题生成
+        user_msg_count = await db.scalar(
+            select(func.count()).select_from(Message).where(
+                Message.conversation_id == conversation_id,
+                Message.role == "user",
+            )
+        )
+        if user_msg_count is None or user_msg_count > 1:
+            logger.debug(f"标题生成跳过: 已有 {user_msg_count} 条用户消息, 非首次对话")
+            return
+
         client = _create_llm_client()
         model = get_config_value("llm_model")
 
@@ -193,7 +210,7 @@ async def generate_conversation_title(
             if conversation and conversation.title == "新对话":
                 conversation.title = title
                 await db.commit()
-                logger.info(f"对话标题已自动生成: {title}")
+                logger.info(f"对话标题已自动生成 (来自首条消息): {title}")
 
     except Exception as e:
         logger.debug(f"标题生成失败 (静默): {e}")
@@ -424,10 +441,14 @@ async def chat_stream(
         await db.commit()
         await db.refresh(assistant_msg)
 
-        # 发送完成事件
-        yield _sse_event("done", {"message_id": str(assistant_msg.id)})
+        # 8. 首次对话时自动生成标题 (必须在 done 之前, 确保前端收到 done 后能获取到新标题)
+        if conversation.title == "新对话":
+            try:
+                await generate_conversation_title(conversation_id, user_message, db)
+            except Exception as e:
+                logger.warning(f"自动标题生成失败 (已忽略): {e}")
 
-        # 8. 后台异步提取用户信息记忆 (done 之后, 静默执行)
+        # 9. 后台异步提取用户信息记忆 (也移到 done 之前, 避免阻塞 UI 刷新)
         try:
             await extract_memories_from_exchange(
                 user_id=conversation.user_id,
@@ -437,12 +458,8 @@ async def chat_stream(
         except Exception as e:
             logger.warning(f"后台记忆提取失败 (已忽略): {e}")
 
-        # 9. 首次对话时自动生成标题 (静默)
-        if conversation.title == "新对话":
-            try:
-                await generate_conversation_title(conversation_id, user_message, db)
-            except Exception as e:
-                logger.warning(f"自动标题生成失败 (已忽略): {e}")
+        # 发送完成事件 (标题和记忆已就绪, 前端 reload 列表时能看到最新数据)
+        yield _sse_event("done", {"message_id": str(assistant_msg.id)})
 
     except Exception as e:
         error_msg = str(e)

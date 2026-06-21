@@ -1,17 +1,19 @@
 /**
- * 登录页面
- * 邮箱+密码登录, 登录成功后跳转首页
+ * 登录页面 — 双栏布局
+ * 左侧品牌展示区 + 右侧登录表单
+ *
+ * @see branding/MLA_BRAND_GUIDELINES.md
  */
 
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { Form, Input, Button, Card, message, Typography, Space } from 'antd'
+import { Form, Input, Button, message, Space } from 'antd'
 import { MailOutlined, LockOutlined } from '@ant-design/icons'
 import { login as loginApi } from '../services/api'
 import { useAuthStore } from '../store'
 import type { LoginRequest } from '../types'
-
-const { Title, Text } = Typography
+import AuthLayout from '../components/auth/AuthLayout'
+import { gray } from '../styles/tokens'
 
 export default function Login() {
   const [loading, setLoading] = useState(false)
@@ -35,48 +37,53 @@ export default function Login() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center" style={{ background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' }}>
-      <Card style={{ width: 420, borderRadius: 12, boxShadow: '0 8px 40px rgba(0,0,0,0.12)' }}>
-        <div style={{ textAlign: 'center', marginBottom: 32 }}>
-          <Title level={2} style={{ color: '#1677ff', marginBottom: 4 }}>MLA 多学助手</Title>
-          <Text type="secondary">面向高校的个性化学习资源智能平台</Text>
-        </div>
+    <AuthLayout
+      title="登录"
+      subtitle="欢迎回来，请登录你的 MLA 账号"
+    >
+      <Form form={form} onFinish={handleSubmit} size="large" layout="vertical">
+        <Form.Item
+          name="email"
+          rules={[
+            { required: true, message: '请输入邮箱地址' },
+            { type: 'email', message: '请输入有效的邮箱地址' },
+          ]}
+        >
+          <Input
+            prefix={<MailOutlined style={{ color: gray[400] }} />}
+            placeholder="邮箱地址"
+            autoComplete="email"
+          />
+        </Form.Item>
 
-        <Form form={form} onFinish={handleSubmit} size="large" layout="vertical">
-          <Form.Item
-            name="email"
-            rules={[
-              { required: true, message: '请输入邮箱地址' },
-              { type: 'email', message: '请输入有效的邮箱地址' },
-            ]}
-          >
-            <Input prefix={<MailOutlined />} placeholder="邮箱地址" autoComplete="email" />
-          </Form.Item>
+        <Form.Item
+          name="password"
+          rules={[
+            { required: true, message: '请输入密码' },
+            { min: 6, message: '密码至少6位' },
+          ]}
+        >
+          <Input.Password
+            prefix={<LockOutlined style={{ color: gray[400] }} />}
+            placeholder="登录密码"
+            autoComplete="current-password"
+          />
+        </Form.Item>
 
-          <Form.Item
-            name="password"
-            rules={[
-              { required: true, message: '请输入密码' },
-              { min: 6, message: '密码至少6位' },
-            ]}
-          >
-            <Input.Password prefix={<LockOutlined />} placeholder="登录密码" autoComplete="current-password" />
-          </Form.Item>
+        <Form.Item style={{ marginBottom: 12 }}>
+          <Button type="primary" htmlType="submit" loading={loading} block size="large"
+            style={{ height: 44, borderRadius: 8, fontSize: 15, fontWeight: 600 }}>
+            登 录
+          </Button>
+        </Form.Item>
+      </Form>
 
-          <Form.Item>
-            <Button type="primary" htmlType="submit" loading={loading} block>
-              登 录
-            </Button>
-          </Form.Item>
-        </Form>
-
-        <div style={{ textAlign: 'center' }}>
-          <Space split={<span style={{ color: '#d9d9d9' }}>|</span>}>
-            <Link to="/reset-password" style={{ fontSize: 13 }}>忘记密码?</Link>
-            <Link to="/register" style={{ fontSize: 13 }}>注册新账号</Link>
-          </Space>
-        </div>
-      </Card>
-    </div>
+      <div style={{ textAlign: 'center' }}>
+        <Space split={<span style={{ color: gray[300] }}>|</span>}>
+          <Link to="/reset-password" style={{ fontSize: 13 }}>忘记密码?</Link>
+          <Link to="/register" style={{ fontSize: 13 }}>注册新账号</Link>
+        </Space>
+      </div>
+    </AuthLayout>
   )
 }

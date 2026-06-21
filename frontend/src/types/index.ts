@@ -1,5 +1,5 @@
 /**
- * MLA 多学助手 - 全局类型定义
+ * MLA 智学引擎 - 全局类型定义
  * 与后端 API 响应结构对齐
  */
 
@@ -214,6 +214,13 @@ export interface RetrievalResponse {
 
 export interface CourseCreate {
   name: string
+  description?: string
+  cover_image?: string
+}
+
+/** 更新课程请求 (所有字段可选) */
+export interface CourseUpdate {
+  name?: string
   description?: string
   cover_image?: string
 }
@@ -663,4 +670,89 @@ export interface RadarResponse {
   overall_score: number
   updated_at: string
   data_available: boolean
+}
+
+// ==================== 仪表盘增强统计 ====================
+
+/** 待办来源类型: 自动从学习阶段生成 or 用户自定义 */
+export type TodoSource = 'learning_stage' | 'custom'
+
+/** 统一待办项 (双源合并) */
+export interface TodoItem {
+  source: TodoSource
+  // learning_stage 专属字段
+  stage_id?: string
+  session_id?: string
+  course_name?: string
+  description?: string
+  order_index?: number
+  // custom 专属字段
+  todo_id?: string
+  // 公共字段
+  title: string
+  is_completed: boolean
+}
+
+/** 今日待办响应 */
+export interface TodayStatsResponse {
+  today_messages: number
+  today_completed_stages: number
+  items: TodoItem[]
+}
+
+/** 每日学习活动统计 */
+export interface DailyActivity {
+  date: string
+  day_name: string
+  message_count: number
+  stage_count: number
+  activity_score: number
+}
+
+/** 本周学习情况响应 */
+export interface WeeklyStatsResponse {
+  days: DailyActivity[]
+  week_total_messages: number
+  week_total_stages: number
+}
+
+/** 收藏项 */
+export interface FavoriteItem {
+  session_id: string
+  course_id: string
+  course_name: string | null
+  status: string
+  current_stage_index: number
+  total_stages: number
+  completed_stages: number
+  progress_percent: number
+  updated_at: string | null
+}
+
+/** 收藏列表响应 */
+export interface FavoritesResponse {
+  favorites: FavoriteItem[]
+}
+
+// ==================== 自定义待办 ====================
+
+/** 自定义待办 */
+export interface Todo {
+  id: string
+  title: string
+  is_completed: boolean
+  completed_at: string | null
+  created_at: string | null
+  updated_at: string | null
+}
+
+/** 创建待办请求 */
+export interface TodoCreate {
+  title: string
+}
+
+/** 更新待办请求 */
+export interface TodoUpdate {
+  title?: string
+  is_completed?: boolean
 }

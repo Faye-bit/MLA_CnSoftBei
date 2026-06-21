@@ -3,15 +3,21 @@
  * 包含可折叠的侧边栏、顶部导航和内容区域
  * 所有页面通过此布局组件的 Outlet 渲染
  *
- * 新增: Token 过期自动登出定时器
- * - 组件挂载时校验 token, 过期则立即登出
- * - 设置 setTimeout 在 token 到期时自动清理登录状态
- * - 每 30 秒轮询一次作为安全兜底
+ * 设计规范 (MLA Brand v2.0 §9.1-9.2):
+ * - Header: 毛玻璃效果, sticky 吸附, 内容滚动时从背后穿过可见模糊
+ * - 内容区: gray-50 背景, 占满全部可用区域, 不由外层卡片限制
+ * - 侧边栏: gray-100 背景, 1px gray-200 右侧边框
+ *
+ * 滚动模型 (关键):
+ * - 外两栏 flex, 不可滚动
+ * - 内层 Layout overflow:auto 作为滚动容器
+ * - Header sticky:top 吸附在该滚动容器顶部
+ * - Content 自然撑高, 内容滚动时穿过半透明 Header 后方 — 毛玻璃效果显现
  */
 
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useMemo, useCallback, lazy, Suspense } from 'react'
 import { Outlet, useNavigate } from 'react-router-dom'
-import { Layout, Button, Avatar, Dropdown, Space, Typography, theme, message } from 'antd'
+import { Layout, Button, Avatar, Dropdown, Space, Typography, message } from 'antd'
 import {
   MenuFoldOutlined,
   MenuUnfoldOutlined,
@@ -20,12 +26,14 @@ import {
 } from '@ant-design/icons'
 import type { MenuProps } from 'antd'
 import Sidebar from './Sidebar'
-import FloatingChat from '../common/FloatingChat'
+import MLALogo from '../common/MLALogo'
+/** 悬浮聊天组件按需加载: 用户点击时才加载聊天模块 */
+const FloatingChat = lazy(() => import('../common/FloatingChat'))
 import { useAuthStore } from '../../store'
 import { logout as logoutApi, getAvatarUrl } from '../../services/api'
 import { getTokenRemainingSeconds } from '../../utils/jwt'
+import { gray, blue } from '../../styles/tokens'
 
-const { Header, Content } = Layout
 const { Text } = Typography
 
 /**
@@ -38,21 +46,26 @@ function HeaderUserMenu() {
   const logout = useAuthStore((s) => s.logout)
 
   /** 退出登录 */
-  const handleLogout = async () => {
+  const handleLogout = useCallback(async () => {
     await logoutApi()
     logout()
     message.success('已退出登录')
     navigate('/login', { replace: true })
-  }
+  }, [logout, navigate])
 
-  /** 下拉菜单项 */
-  const dropdownItems: MenuProps['items'] = [
+  /**
+   * 下拉菜单项
+   * useMemo 缓存: 仅当用户信息或退出回调变化时才重建
+   */
+  const dropdownItems: MenuProps['items'] = useMemo(() => [
     {
       key: 'user-info',
       label: (
         <div style={{ padding: '4px 0' }}>
-          <div style={{ fontWeight: 600, fontSize: 14 }}>{user?.nickname || user?.username || '用户'}</div>
-          <Text type="secondary" style={{ fontSize: 12 }}>{user?.email || ''}</Text>
+          <div style={{ fontWeight: 600, fontSize: 14, color: gray[800] }}>
+            {user?.nickname || user?.username || '用户'}
+          </div>
+          <Text style={{ fontSize: 12, color: gray[500] }}>{user?.email || ''}</Text>
         </div>
       ),
       disabled: true,
@@ -71,7 +84,7 @@ function HeaderUserMenu() {
       label: '退出登录',
       onClick: handleLogout,
     },
-  ]
+  ], [user?.nickname, user?.username, user?.email, handleLogout, navigate])
 
   return (
     <Dropdown menu={{ items: dropdownItems }} trigger={['click']} placement="bottomRight">
@@ -80,9 +93,18 @@ function HeaderUserMenu() {
           src={getAvatarUrl(user?.avatar)}
           icon={<UserOutlined />}
           size="small"
-          style={{ flexShrink: 0, backgroundColor: '#1677ff' }}
+          style={{ flexShrink: 0, backgroundColor: blue[500] }}
         />
-        <Text style={{ fontSize: 13, maxWidth: 100, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+        <Text
+          style={{
+            fontSize: 13,
+            maxWidth: 100,
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
+            color: gray[700],
+          }}
+        >
           {user?.nickname || user?.username || '用户'}
         </Text>
       </Space>
@@ -92,7 +114,6 @@ function HeaderUserMenu() {
 
 export default function AppLayout() {
   const [collapsed, setCollapsed] = useState(false)
-  const { token } = theme.useToken()
   const navigate = useNavigate()
 
   // 保存定时器引用, 用于清理
@@ -102,14 +123,13 @@ export default function AppLayout() {
   useEffect(() => {
     /**
      * 检查 token 并设置自动登出定时器
-     * - 在 token 过期前 5 秒自动登出 (留一点缓冲)
-     * - 每 30 秒轮询一次, 避免因系统休眠等原因漏掉定时器
+     * - 在 token 过期前 5 秒自动登出
+     * - 每 30 秒轮询一次, 作为安全兜底
      */
     const setupTokenExpiryCheck = () => {
       const storeToken = useAuthStore.getState().token
 
       if (!storeToken) {
-        // Token 不存在 (已在别处登出), 跳转登录页
         navigate('/login', { replace: true })
         return
       }
@@ -117,14 +137,13 @@ export default function AppLayout() {
       const remainingSec = getTokenRemainingSeconds(storeToken)
 
       if (remainingSec <= 0) {
-        // Token 已过期, 立即登出
         useAuthStore.getState().logout()
         message.warning('登录已过期，请重新登录')
         navigate('/login', { replace: true })
         return
       }
 
-      // 清除旧的定时器, 设置新的过期定时器 (提前 5 秒触发, 避免刚好在请求中过期)
+      // 清除旧定时器, 设置新过期定时器 (提前 5 秒触发)
       if (expiryTimerRef.current) clearTimeout(expiryTimerRef.current)
       const timeoutMs = Math.max((remainingSec - 5) * 1000, 0)
       expiryTimerRef.current = setTimeout(() => {
@@ -137,10 +156,10 @@ export default function AppLayout() {
     // 初次检查
     setupTokenExpiryCheck()
 
-    // 每 30 秒轮询一次, 作为安全兜底
+    // 每 30 秒轮询兜底
     pollIntervalRef.current = setInterval(setupTokenExpiryCheck, 30000)
 
-    // 组件卸载时清理所有定时器
+    // 组件卸载时清理
     return () => {
       if (expiryTimerRef.current) clearTimeout(expiryTimerRef.current)
       if (pollIntervalRef.current) clearInterval(pollIntervalRef.current)
@@ -149,55 +168,85 @@ export default function AppLayout() {
 
   return (
     <Layout style={{ height: '100vh', overflow: 'hidden' }}>
-      {/* 侧边栏 */}
+      {/* === 侧边栏 === */}
       <Sidebar collapsed={collapsed} />
 
-      {/* 主内容区域 */}
-      <Layout style={{ height: '100vh', overflow: 'hidden' }}>
-        {/* 顶栏 */}
-        <Header
+      {/* ==================================================================== */}
+      {/* 右侧: 普通 div flex 纵列 — 完全控制滚动模型 */}
+      {/*                                                                      */}
+      {/* 布局逻辑:                                                              */}
+      {/*   [outer Layout] ─ horizontal flex, height: 100vh, overflow:hidden     */}
+      {/*     ├─ Sidebar                                                        */}
+      {/*     └─ [right div] ─ flex: 1, minHeight:0, 纵列                       */}
+      {/*          ├─ [scrollContent div] ─ flex: 1, overflow: auto ← 滚动容器    */}
+      {/*          │   ├─ [header div] ─ sticky: top:0 ← 在滚动容器内吸附         */}
+      {/*          │   └─ [page div] ─ padding, <Outlet />                      */}
+      {/*          │                                                            */}
+      {/*   关键: sticky header 必须在 overflow:auto 的容器内部才能生效            */}
+      {/* ==================================================================== */}
+      <div
+        style={{
+          flex: 1,
+          minHeight: 0,
+          display: 'flex',
+          flexDirection: 'column',
+          background: gray[50],
+        }}
+      >
+        {/* === 滚动容器 (sticky header 在此内部吸附) === */}
+        <div
           style={{
-            padding: '0 24px',
-            background: token.colorBgContainer,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            borderBottom: `1px solid ${token.colorBorderSecondary}`,
-            flexShrink: 0,
-          }}
-        >
-          {/* 左侧: 折叠按钮 + 标题 */}
-          <div style={{ display: 'flex', alignItems: 'center' }}>
-            <Button
-              type="text"
-              icon={collapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
-              onClick={() => setCollapsed(!collapsed)}
-              style={{ fontSize: 16, width: 40, height: 40 }}
-            />
-            <span style={{ marginLeft: 16, fontSize: 16, fontWeight: 500 }}>
-              {collapsed ? '' : '面向高校的个性化学习资源智能平台'}
-            </span>
-          </div>
-
-          {/* 右侧: 用户头像下拉 */}
-          <HeaderUserMenu />
-        </Header>
-
-        {/* 内容区域 */}
-        <Content
-          style={{
-            margin: 24,
-            padding: 24,
-            background: token.colorBgContainer,
-            borderRadius: token.borderRadiusLG,
             flex: 1,
+            minHeight: 0,
             overflow: 'auto',
           }}
         >
-          <Outlet />
-        </Content>
-      </Layout>
-      <FloatingChat />
+          {/* === 顶栏 — 毛玻璃 sticky === */}
+          <div
+            style={{
+              position: 'sticky',
+              top: 0,
+              zIndex: 100,
+              height: 56,
+              padding: '0 24px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              // 毛玻璃核心: 半透明白色底色 + 背景模糊
+              background: 'rgba(255,255,255,0.72)',
+              backdropFilter: 'blur(12px) saturate(180%)',
+              WebkitBackdropFilter: 'blur(12px) saturate(180%)',
+              borderBottom: `1px solid ${gray[200]}`,
+            }}
+          >
+            {/* 左侧: 折叠按钮 + 横排 Logo */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+              <Button
+                type="text"
+                icon={collapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
+                onClick={() => setCollapsed(!collapsed)}
+                style={{ fontSize: 16, width: 40, height: 40, color: gray[600] }}
+              />
+              {!collapsed && (
+                <MLALogo variant="horizontal" />
+              )}
+            </div>
+
+            {/* 右侧: 用户头像下拉 */}
+            <HeaderUserMenu />
+          </div>
+
+          {/* === 页面内容区 === */}
+          <div style={{ padding: 24, background: gray[50] }}>
+            <Outlet />
+          </div>
+        </div>
+      </div>
+
+      {/* 按需加载的悬浮聊天组件 */}
+      <Suspense fallback={null}>
+        <FloatingChat />
+      </Suspense>
     </Layout>
   )
 }

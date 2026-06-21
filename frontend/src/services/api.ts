@@ -104,6 +104,12 @@ export async function createCourse(data: CourseCreate) {
   return res.data.data!
 }
 
+/** 更新课程 */
+export async function updateCourse(courseId: string, data: { name?: string; description?: string }) {
+  const res = await api.put<ApiResponse<Course>>(`/courses/${courseId}`, data)
+  return res.data.data!
+}
+
 /** 删除课程 */
 export async function deleteCourse(courseId: string) {
   await api.delete(`/courses/${courseId}`)
@@ -419,7 +425,7 @@ export async function getConversations(
   pageSize = 20,
   type?: 'chat' | 'profile_collection'
 ) {
-  const params: Record<string, string | number> = { page, pageSize }
+  const params: Record<string, string | number> = { page, page_size: pageSize }
   if (type) params.type = type
   const res = await api.get<ApiResponse<PaginatedResponse<Conversation>>>('/chat/conversations', { params })
   return res.data.data!
@@ -965,4 +971,56 @@ export async function scoreExerciseAnswer(
 export async function getRadarData() {
   const res = await api.get<ApiResponse<import('../types').RadarResponse>>('/profile/radar')
   return res.data.data!
+}
+
+// ==================== 仪表盘增强统计 API ====================
+
+import type {
+  TodayStatsResponse, WeeklyStatsResponse, FavoritesResponse,
+  Todo, TodoCreate, TodoUpdate,
+} from '../types'
+
+/** 获取今日待办数据 (双源合并: 学习阶段 + 自定义待办) */
+export async function getTodayStats() {
+  const res = await api.get<ApiResponse<TodayStatsResponse>>('/stats/today')
+  return res.data.data!
+}
+
+/** 获取本周学习情况统计 */
+export async function getWeeklyStats() {
+  const res = await api.get<ApiResponse<WeeklyStatsResponse>>('/stats/weekly')
+  return res.data.data!
+}
+
+/** 获取收藏的学习会话列表 */
+export async function getFavorites() {
+  const res = await api.get<ApiResponse<FavoritesResponse>>('/stats/favorites')
+  return res.data.data!
+}
+
+// ==================== 自定义待办 API ====================
+
+/** 创建自定义待办 */
+export async function createTodo(data: TodoCreate) {
+  const res = await api.post<ApiResponse<Todo>>('/todos/', data)
+  return res.data.data!
+}
+
+/** 获取自定义待办列表 */
+export async function getTodos(isCompleted?: boolean) {
+  const params: Record<string, string> = {}
+  if (isCompleted !== undefined) params.is_completed = String(isCompleted)
+  const res = await api.get<ApiResponse<Todo[]>>('/todos/', { params })
+  return res.data.data!
+}
+
+/** 更新自定义待办 (修改标题或切换完成状态) */
+export async function updateTodo(todoId: string, data: TodoUpdate) {
+  const res = await api.put<ApiResponse<Todo>>(`/todos/${todoId}`, data)
+  return res.data.data!
+}
+
+/** 删除自定义待办 */
+export async function deleteTodo(todoId: string) {
+  await api.delete(`/todos/${todoId}`)
 }

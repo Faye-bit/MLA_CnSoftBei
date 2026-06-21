@@ -1,165 +1,176 @@
 /**
- * 首页仪表盘
- * 展示课程统计、文档统计和系统状态概览
+ * 首页仪表盘 (品牌 v2.0 + Phase 4 视觉提升)
+ *
+ * Bento Grid 布局, 展示学习全貌:
+ * Row 1: 四个统计概览卡片 (课程/文档/切片/今日消息)
+ * Row 2: 本周学习活动图表 (宽) + 今日待办 (窄)
+ * Row 3: 学习进度概览 + 学习画像雷达图 + 我的收藏
+ * Row 4: 快捷操作入口
+ *
+ * Phase 4 提升:
+ * - 卡片 hover 时上浮 translateY(-2px) + 阴影 + 边框色过渡
+ * - 标题图标使用品牌语义色, 增强视觉识别
+ * - 统计卡片入场数字递增动画
+ *
+ * @see branding/MLA_BRAND_GUIDELINES.md
  */
 
-import { useEffect, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
-import { Row, Col, Card, Statistic, Typography, Space } from 'antd'
+import { lazy, Suspense } from 'react'
+import { Row, Col, Skeleton } from 'antd'
 import {
-  BookOutlined,
-  FileTextOutlined,
-  DatabaseOutlined,
-  SearchOutlined,
+  BarChartOutlined,
+  OrderedListOutlined,
+  StarOutlined,
+  ThunderboltOutlined,
 } from '@ant-design/icons'
-import { getDashboardStats } from '../services/api'
+import StatsOverview from '../components/dashboard/StatsOverview'
+import TodayTasks from '../components/dashboard/TodayTasks'
+import FavoritesList from '../components/dashboard/FavoritesList'
+import LearningProgress from '../components/dashboard/LearningProgress'
+import RadarOverview from '../components/dashboard/RadarOverview'
+import QuickActions from '../components/dashboard/QuickActions'
+import { gray, radius, typography, blue, semantic } from '../styles/tokens'
 
-const { Title } = Typography
+const WeeklyChart = lazy(() => import('../components/dashboard/WeeklyChart'))
 
-/** 系统统计数据 */
-interface Stats {
-  courseCount: number
-  totalDocuments: number
-  totalChunks: number
-  systemStatus: string
+/** 卡片容器 — hover 上浮 + 阴影 + 边框 */
+const CARD_STYLE: React.CSSProperties = {
+  background: '#FFFFFF',
+  borderRadius: radius.lg,
+  border: `1px solid ${gray[200]}`,
+  overflow: 'hidden',
+  transition: `
+    box-shadow 0.2s cubic-bezier(0.16, 1, 0.3, 1),
+    border-color 0.2s cubic-bezier(0.16, 1, 0.3, 1),
+    transform 0.2s cubic-bezier(0.16, 1, 0.3, 1)
+  `,
+}
+
+/** 卡片标题 */
+const CARD_TITLE_STYLE: React.CSSProperties = {
+  padding: '16px 24px 0',
+  fontSize: typography.h3.fontSize,
+  fontWeight: typography.h3.fontWeight,
+  color: gray[800],
+  display: 'flex',
+  alignItems: 'center',
+  gap: 8,
 }
 
 export default function Dashboard() {
-  const navigate = useNavigate()
-  const [stats, setStats] = useState<Stats>({
-    courseCount: 0,
-    totalDocuments: 0,
-    totalChunks: 0,
-    systemStatus: 'running',
-  })
-  const [loading, setLoading] = useState(true)
-
-  /** 加载统计数据 */
-  useEffect(() => {
-    async function loadStats() {
-      try {
-        const data = await getDashboardStats()
-        setStats({
-          courseCount: data.course_count,
-          totalDocuments: data.document_count,
-          totalChunks: data.chunk_count,
-          systemStatus: 'running',
-        })
-      } catch {
-        // 后端未启动时使用默认值
-        setStats({
-          courseCount: 0,
-          totalDocuments: 0,
-          totalChunks: 0,
-          systemStatus: 'offline',
-        })
-      } finally {
-        setLoading(false)
-      }
-    }
-    loadStats()
-  }, [])
-
-  /** 快捷导航卡片配置 */
-  const quickLinks = [
-    {
-      title: '课程管理',
-      icon: <BookOutlined style={{ fontSize: 32, color: '#1677ff' }} />,
-      description: '创建和管理课程、章节、知识点',
-      path: '/courses',
-    },
-    {
-      title: '知识检索',
-      icon: <SearchOutlined style={{ fontSize: 32, color: '#52c41a' }} />,
-      description: '基于课程知识库的语义搜索',
-      path: '/knowledge',
-    },
-  ]
-
   return (
-    <div>
-      <Title level={3} style={{ marginBottom: 24 }}>
-        仪表盘
-      </Title>
+    <div style={{ maxWidth: 1200, margin: '0 auto' }}>
+      {/* Row 1: 统计概览 — hover 效果由 StatsOverview 内部处理 */}
+      <StatsOverview />
 
-      {/* 统计卡片 */}
-      <Row gutter={[16, 16]}>
-        <Col xs={24} sm={12} lg={6}>
-          <Card loading={loading}>
-            <Statistic
-              title="课程数量"
-              value={stats.courseCount}
-              prefix={<BookOutlined />}
-              valueStyle={{ color: '#1677ff' }}
-            />
-          </Card>
+      {/* Row 2: 图表 + 待办 */}
+      <Row gutter={[16, 16]} style={{ marginTop: 16 }}>
+        <Col xs={24} lg={14}>
+          <div
+            style={CARD_STYLE}
+            onMouseEnter={hoverIn}
+            onMouseLeave={hoverOut}
+          >
+            <div style={CARD_TITLE_STYLE}>
+              <BarChartOutlined style={{ color: blue[500], fontSize: 16 }} />
+              <span>本周学习活动</span>
+            </div>
+            <Suspense fallback={
+              <div style={{ padding: '16px 24px 24px' }}>
+                <Skeleton active paragraph={{ rows: 6 }} title={false} />
+              </div>
+            }>
+              <WeeklyChart />
+            </Suspense>
+          </div>
         </Col>
-        <Col xs={24} sm={12} lg={6}>
-          <Card loading={loading}>
-            <Statistic
-              title="文档数量"
-              value={stats.totalDocuments}
-              prefix={<FileTextOutlined />}
-              valueStyle={{ color: '#52c41a' }}
-            />
-          </Card>
-        </Col>
-        <Col xs={24} sm={12} lg={6}>
-          <Card loading={loading}>
-            <Statistic
-              title="知识切片"
-              value={stats.totalChunks}
-              prefix={<DatabaseOutlined />}
-              valueStyle={{ color: '#faad14' }}
-            />
-          </Card>
-        </Col>
-        <Col xs={24} sm={12} lg={6}>
-          <Card loading={loading}>
-            <Statistic
-              title="系统状态"
-              value={stats.systemStatus === 'running' ? '运行中' : '离线'}
-              prefix={
-                <span
-                  style={{
-                    display: 'inline-block',
-                    width: 8,
-                    height: 8,
-                    borderRadius: '50%',
-                    background: stats.systemStatus === 'running' ? '#52c41a' : '#ff4d4f',
-                  }}
-                />
-              }
-            />
-          </Card>
+
+        <Col xs={24} lg={10}>
+          <div
+            style={CARD_STYLE}
+            onMouseEnter={hoverIn}
+            onMouseLeave={hoverOut}
+          >
+            <div style={CARD_TITLE_STYLE}>
+              <OrderedListOutlined style={{ color: semantic.success, fontSize: 16 }} />
+              <span>今日待办</span>
+            </div>
+            <div style={{ padding: '12px 20px 16px' }}>
+              <TodayTasks />
+            </div>
+          </div>
         </Col>
       </Row>
 
-      {/* 快捷导航 */}
-      <Title level={4} style={{ marginTop: 32, marginBottom: 16 }}>
-        快捷导航
-      </Title>
-      <Row gutter={[16, 16]}>
-        {quickLinks.map((link) => (
-          <Col xs={24} sm={12} key={link.path}>
-            <Card
-              hoverable
-              onClick={() => navigate(link.path)}
-              style={{ cursor: 'pointer' }}
-            >
-              <Space align="start" size={16}>
-                {link.icon}
-                <div>
-                  <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 4 }}>
-                    {link.title}
-                  </div>
-                  <div style={{ color: '#8c8c8c' }}>{link.description}</div>
-                </div>
-              </Space>
-            </Card>
-          </Col>
-        ))}
+      {/* Row 3: 进度 + 雷达 + 收藏 */}
+      <Row gutter={[16, 16]} style={{ marginTop: 16 }}>
+        <Col xs={24} md={8}>
+          <div
+            style={CARD_STYLE}
+            onMouseEnter={hoverIn}
+            onMouseLeave={hoverOut}
+          >
+            <LearningProgress />
+          </div>
+        </Col>
+
+        <Col xs={24} md={8}>
+          <div
+            style={CARD_STYLE}
+            onMouseEnter={hoverIn}
+            onMouseLeave={hoverOut}
+          >
+            <RadarOverview />
+          </div>
+        </Col>
+
+        <Col xs={24} md={8}>
+          <div
+            style={CARD_STYLE}
+            onMouseEnter={hoverIn}
+            onMouseLeave={hoverOut}
+          >
+            <div style={CARD_TITLE_STYLE}>
+              <StarOutlined style={{ color: semantic.warning, fontSize: 16 }} />
+              <span>我的收藏</span>
+            </div>
+            <div style={{ padding: '12px 20px 16px' }}>
+              <FavoritesList />
+            </div>
+          </div>
+        </Col>
       </Row>
+
+      {/* Row 4: 快捷操作 */}
+      <div style={{ marginTop: 16, marginBottom: 24 }}>
+        <div
+          style={CARD_STYLE}
+          onMouseEnter={hoverIn}
+          onMouseLeave={hoverOut}
+        >
+          <div style={{ ...CARD_TITLE_STYLE, paddingBottom: 0 }}>
+            <ThunderboltOutlined style={{ color: '#7C3AED', fontSize: 16 }} />
+            <span>快捷操作</span>
+          </div>
+          <div style={{ padding: '8px 16px 12px' }}>
+            <QuickActions />
+          </div>
+        </div>
+      </div>
     </div>
   )
+}
+
+// ── 共享 hover 回调 ──────────────────────────────────────
+
+function hoverIn(e: React.MouseEvent<HTMLDivElement>) {
+  e.currentTarget.style.boxShadow = '0 4px 12px rgba(15,23,42,0.08)'
+  e.currentTarget.style.borderColor = '#CBD5E1'
+  e.currentTarget.style.transform = 'translateY(-1px)'
+}
+
+function hoverOut(e: React.MouseEvent<HTMLDivElement>) {
+  e.currentTarget.style.boxShadow = 'none'
+  e.currentTarget.style.borderColor = '#E2E8F0'
+  e.currentTarget.style.transform = 'translateY(0)'
 }

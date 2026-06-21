@@ -45,7 +45,7 @@ export default function ResourceViewer({
     return (
       <div style={{
         display: 'flex', justifyContent: 'center', alignItems: 'center',
-        minHeight: 400, flexDirection: 'column', gap: 12,
+        height: '100%', flexDirection: 'column', gap: 12,
       }}>
         <Spin indicator={<LoadingOutlined style={{ fontSize: 32 }} spin />} />
         <Text type="secondary">加载资源内容...</Text>
@@ -57,7 +57,7 @@ export default function ResourceViewer({
     return (
       <div style={{
         display: 'flex', justifyContent: 'center', alignItems: 'center',
-        minHeight: 400,
+        height: '100%',
       }}>
         <Empty description="请从左侧选择资源" />
       </div>
@@ -110,28 +110,21 @@ export default function ResourceViewer({
   const typeLabel = TYPE_LABELS[resource.resource_type] || resource.resource_type
 
   return (
-    <div>
-      {/* 资源标题栏 */}
+    <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+      {/* 资源标题栏 (居中) */}
       <div style={{
         padding: '12px 24px',
-        borderBottom: '1px solid #f0f0f0',
-        display: 'flex', alignItems: 'center', gap: 12,
+        borderBottom: '1px solid #E2E8F0',
+        display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12,
+        flexShrink: 0,
       }}>
         <Title level={5} style={{ margin: 0 }}>
           {resource.title}
         </Title>
-        <Tag>{typeLabel}</Tag>
       </div>
 
-      {/* 资源描述 (如果有) */}
-      {resource.description && (
-        <div style={{ padding: '8px 24px', background: '#fafafa' }}>
-          <Text type="secondary" style={{ fontSize: 13 }}>{resource.description}</Text>
-        </div>
-      )}
-
       {/* 资源正文 */}
-      <div style={{ minHeight: 400 }}>
+      <div style={{ flex: 1, minHeight: 0, overflow: 'auto' }}>
         {renderContent()}
       </div>
     </div>
