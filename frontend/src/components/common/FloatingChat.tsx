@@ -12,7 +12,7 @@ import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { Button, Spin, Typography, message } from 'antd'
 import {
   MessageOutlined, CloseOutlined, SendOutlined, StopOutlined,
-  RobotOutlined, ExpandOutlined, MinusOutlined, DeleteOutlined, PlusOutlined,
+  ExpandOutlined, MinusOutlined, DeleteOutlined, PlusOutlined,
 } from '@ant-design/icons'
 import ChatMessage from '../chat/ChatMessage'
 import { getConversations, getConversationDetail, createConversation, deleteConversation, streamChat } from '../../services/api'
@@ -47,6 +47,8 @@ export default function FloatingChat() {
   const abortControllerRef = useRef<AbortController | null>(null)
   /** IME 组合状态: 输入法激活时 Enter 只选词不发送 */
   const isComposingRef = useRef(false)
+  /** 输入框 DOM 引用 — 用于自适应高度 */
+  const textareaRef = useRef<HTMLTextAreaElement>(null)
 
   useEffect(() => { return () => { abortControllerRef.current?.abort() } }, [])
 
@@ -93,6 +95,9 @@ export default function FloatingChat() {
 
     const userMsg: Message = { id: 'temp-' + Date.now(), conversation_id: conversation.id, role: 'user', content, sources: null, message_metadata: null, created_at: new Date().toISOString() }
     setMessages((prev) => [...prev, userMsg]); setInputValue('')
+    /** 发送后重置输入框高度 */
+    const el = textareaRef.current
+    if (el) { el.style.height = 'auto' }
 
     streamingContentRef.current = ''; streamingSourcesRef.current = []
     setStreaming(true); setStreamingContent(''); setStreamingSources([])
@@ -119,6 +124,15 @@ export default function FloatingChat() {
     const partial = streamingContentRef.current
     if (partial && conversation) setMessages((prev) => [...prev, { id: 'partial-' + Date.now(), conversation_id: conversation.id, role: 'assistant', content: partial + '\n\n[已停止]', sources: streamingSourcesRef.current.length > 0 ? streamingSourcesRef.current : null, message_metadata: null, created_at: new Date().toISOString() }])
     setStreaming(false); setStreamingContent(''); setStreamingSources([]); streamingContentRef.current = ''; streamingSourcesRef.current = []
+  }
+
+  /**
+   * 输入框自适应高度 — 根据文字内容自动伸缩
+   * 最小 1 行高度 (≈34px), 最大不超过 120px
+   */
+  const autoResize = () => {
+    const el = textareaRef.current
+    if (el) { el.style.height = 'auto'; el.style.height = Math.min(el.scrollHeight, 120) + 'px' }
   }
 
   // Drag handlers
@@ -178,7 +192,7 @@ export default function FloatingChat() {
           {/* 标题栏 — 纯色品牌蓝, 禁止渐变 */}
           <div onMouseDown={handleDragStart} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 12px', background: blue[500], color: '#FFFFFF', cursor: dragging ? 'grabbing' : 'grab', flexShrink: 0, userSelect: 'none' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <RobotOutlined style={{ fontSize: 16 }} />
+              <img src="/brand/字母标Logo.svg" alt="MLA" style={{ width: 18, height: 18 }} />
               <span style={{ fontWeight: 600, fontSize: 14 }}>{conversation?.title || 'AI 助手'}</span>
             </div>
             <div style={{ display: 'flex', gap: 2 }}>
@@ -193,7 +207,7 @@ export default function FloatingChat() {
               <div style={{ textAlign: 'center', padding: 40 }}><Spin size="small" /></div>
             ) : messages.length === 0 && !streaming ? (
               <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', gap: 8, opacity: 0.6 }}>
-                <RobotOutlined style={{ fontSize: 40, color: blue[500] }} />
+                <img src="/brand/字母标Logo.svg" alt="MLA 智学引擎" style={{ width: 80, height: 80, opacity: 0.85 }} />
                 <Text type="secondary" style={{ fontSize: 13 }}>基于课程知识库的 AI 助手</Text>
                 <Text type="secondary" style={{ fontSize: 12 }}>输入你的问题, 我会在资料中寻找答案</Text>
               </div>
@@ -210,12 +224,13 @@ export default function FloatingChat() {
           {/* 输入区域 */}
           <div style={{ borderTop: `1px solid ${gray[200]}`, padding: '8px 10px', background: '#FFFFFF', flexShrink: 0 }}>
             <div style={{ display: 'flex', gap: 6, alignItems: 'flex-end' }}>
-              <textarea value={inputValue} onChange={(e) => setInputValue(e.target.value)}
+              <textarea ref={textareaRef} value={inputValue}
+                onChange={(e) => { setInputValue(e.target.value); autoResize() }}
                 onKeyDown={(e) => { if (e.key === 'Enter' && !isComposingRef.current && !e.shiftKey) { e.preventDefault(); handleSend() } }}
                 onCompositionStart={() => { isComposingRef.current = true }}
                 onCompositionEnd={() => { isComposingRef.current = false }}
                 placeholder="输入问题, Enter 发送, Shift+Enter 换行" rows={1} disabled={streaming}
-                style={{ flex: 1, resize: 'none', border: `1px solid ${gray[300]}`, borderRadius: 8, padding: '8px 10px', fontSize: 13, lineHeight: 1.4, outline: 'none', fontFamily: 'inherit', maxHeight: 80, minHeight: 34 }}
+                style={{ flex: 1, resize: 'none', border: `1px solid ${gray[300]}`, borderRadius: 8, padding: '8px 10px', fontSize: 13, lineHeight: 1.4, outline: 'none', fontFamily: 'inherit', maxHeight: 120, minHeight: 34 }}
                 onFocus={(e) => { e.target.style.borderColor = blue[500]; e.target.style.boxShadow = '0 0 0 3px rgba(59,130,246,0.15)' }}
                 onBlur={(e) => { e.target.style.borderColor = gray[300]; e.target.style.boxShadow = 'none' }} />
               {streaming ? (
