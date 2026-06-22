@@ -11,6 +11,7 @@ from fastapi.staticfiles import StaticFiles
 from app.core.config import settings
 from app.core.database import init_db, close_db
 from app.api.v1.router import api_v1_router
+from app.models import LearningSession, LearningStage, GeneratedResource, AgentTask  # noqa: F401  确保建表
 from loguru import logger
 
 

@@ -267,6 +267,7 @@ async def send_message_stream(
             user_message=body.content,
             course_id=body.course_id,
             db=db,
+            system_prompt=body.system_prompt,
         ),
         media_type="text/event-stream",
         headers={

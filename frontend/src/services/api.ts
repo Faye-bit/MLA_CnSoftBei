@@ -473,7 +473,8 @@ export function streamChat(
     onSources: (sources: ChatSource[]) => void
     onDone: (messageId: string) => void
     onError: (error: string) => void
-  }
+  },
+  systemPrompt?: string,
 ): AbortController {
   const controller = new AbortController()
   const token = useAuthStore.getState().token
@@ -482,6 +483,7 @@ export function streamChat(
   const url = `http://localhost:8000/api/v1/chat/conversations/${conversationId}/messages`
   const body: Record<string, unknown> = { content }
   if (courseId) body.course_id = courseId
+  if (systemPrompt) body.system_prompt = systemPrompt
 
   fetch(url, {
     method: 'POST',
