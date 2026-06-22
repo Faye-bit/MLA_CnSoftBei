@@ -49,6 +49,27 @@ RAG_CHAT_SYSTEM_PROMPT = """你是 MLA (Multiple Learning Agent) 智学引擎，
 
 
 # ============================================================================
+# 虚拟形象伙伴对话 System Prompt (Live2D 聊天)
+# ============================================================================
+
+COMPANION_SYSTEM_PROMPT = """你是 MLA 多学助手的虚拟学习伙伴，以亲切友好的方式和学生互动。
+
+你的身份:
+- 你的名字叫 Haru，是学生的 AI 学习伙伴
+
+重要规则:
+1. 用轻松自然的语气，像朋友一样交谈，多说鼓励的话。
+2. 最多回复 2-3 句话，保持简短。
+3. 不要用 Markdown 格式，用纯文本。
+4. 可以适当使用语气词 (呢、啦、哦、呀) 和表情 (^_^, ~, !)。
+5. 如果学生问学习相关的问题，给出简洁实用的建议而非长篇解释。
+6. 如果学生闲聊或表达情绪，用共情的方式回应。
+7. 多夸夸学生，关心他们的学习状态。
+
+{memories_section}"""
+
+
+# ============================================================================
 # 画像收集 System Prompt 模板 (专用收集模式，暂时保留)
 # ============================================================================
 
@@ -167,7 +188,7 @@ async def generate_conversation_title(
 ):
     """
     根据用户的首条消息自动生成对话标题 (模仿 ChatGPT 做法)
-    该调用极轻量 (max_tokens=30), 静默失败不影响对话
+    优先用 LLM 生成, 失败时降级为用户消息截断
 
     关键约束:
     - 仅当对话中只有 1 条用户消息 (即本次) 时才生成 → 每个对话只生成一次
@@ -177,6 +198,12 @@ async def generate_conversation_title(
     :param first_user_message: 用户的第一条消息 (用于概括)
     :param db: 数据库会话
     """
+    # 先确认对话存在且标题需要更新
+    conversation = await db.get(Conversation, conversation_id)
+    if not conversation or conversation.title not in ("新对话", "快速问答"):
+        return
+
+    title = ""
     try:
         # 严格校验: 只有第一条用户消息才触发标题生成
         user_msg_count = await db.scalar(
@@ -202,18 +229,26 @@ async def generate_conversation_title(
             max_tokens=30,
         )
         title = (response.choices[0].message.content or "").strip()
-        # 清理: 去掉可能的引号和多余空格
         title = title.strip('"\'').strip()
-
         if title and len(title) <= 50:
             conversation = await db.get(Conversation, conversation_id)
-            if conversation and conversation.title == "新对话":
+            if conversation and conversation.title in ("新对话", "快速问答"):
                 conversation.title = title
                 await db.commit()
                 logger.info(f"对话标题已自动生成 (来自首条消息): {title}")
 
     except Exception as e:
-        logger.debug(f"标题生成失败 (静默): {e}")
+        logger.warning(f"LLM 标题生成失败, 降级为消息截断: {e}")
+
+    # 降级: LLM 失败或返回空时, 用消息前 15 字
+    if not title or len(title) > 50:
+        clean = first_user_message.strip().replace("\n", " ")
+        title = clean[:15] + ("…" if len(clean) > 15 else "")
+
+    if title:
+        conversation.title = title
+        await db.commit()
+        logger.info(f"对话标题已更新: {title}")
 
 
 # ============================================================================
@@ -320,6 +355,7 @@ async def chat_stream(
     user_message: str,
     course_id: Optional[uuid.UUID],
     db: AsyncSession,
+    system_prompt: Optional[str] = None,
 ) -> AsyncGenerator[str, None]:
     """
     SSE 流式对话生成器
@@ -374,7 +410,10 @@ async def chat_stream(
     # 5. 构建 messages 数组 (LLM API 格式)
     llm_messages: list[dict] = []
 
-    if conversation.conversation_type == "profile_collection":
+    if system_prompt:
+        # 前端传来的自定义 prompt (如 Live2D 伙伴聊天)
+        system_prompt_text = system_prompt.format(memories_section=memories_section)
+    elif conversation.conversation_type == "profile_collection":
         stage_hint = get_stage_hint(conversation.profile_collection_stage)
         collected_info = "（新对话, 开始收集信息）"
         system_prompt = PROFILE_COLLECTION_SYSTEM_PROMPT.format(
@@ -448,18 +487,24 @@ async def chat_stream(
             except Exception as e:
                 logger.warning(f"自动标题生成失败 (已忽略): {e}")
 
-        # 9. 后台异步提取用户信息记忆 (也移到 done 之前, 避免阻塞 UI 刷新)
+        # 后台异步提取用户信息记忆 (也移到 done 之前, 避免阻塞 UI 刷新)
+        # 传入 AI 回复, 让 LLM 从对话上下文中推断用户信息
         try:
             await extract_memories_from_exchange(
                 user_id=conversation.user_id,
                 user_message=user_message,
                 db=db,
+                assistant_message=full_content,
             )
         except Exception as e:
             logger.warning(f"后台记忆提取失败 (已忽略): {e}")
 
-        # 发送完成事件 (标题和记忆已就绪, 前端 reload 列表时能看到最新数据)
-        yield _sse_event("done", {"message_id": str(assistant_msg.id)})
+        # 首次对话时自动生成标题 (静默)
+        if conversation.title in ("新对话", "快速问答"):
+            try:
+                await generate_conversation_title(conversation_id, user_message, db)
+            except Exception as e:
+                logger.warning(f"自动标题生成失败 (已忽略): {e}")
 
     except Exception as e:
         error_msg = str(e)

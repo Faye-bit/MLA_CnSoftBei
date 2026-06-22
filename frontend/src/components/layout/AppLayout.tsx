@@ -16,7 +16,7 @@
  */
 
 import { useState, useEffect, useRef, useMemo, useCallback, lazy, Suspense } from 'react'
-import { Outlet, useNavigate } from 'react-router-dom'
+import { Outlet, useNavigate, useLocation } from 'react-router-dom'
 import { Layout, Button, Avatar, Dropdown, Space, Typography, message } from 'antd'
 import {
   MenuFoldOutlined,
@@ -29,6 +29,11 @@ import Sidebar from './Sidebar'
 import MLALogo from '../common/MLALogo'
 /** 悬浮聊天组件按需加载: 用户点击时才加载聊天模块 */
 const FloatingChat = lazy(() => import('../common/FloatingChat'))
+import Live2DStage from '../avatar/Live2DStage'
+import Live2DChat from '../avatar/Live2DChat'
+import AvatarBubble from '../avatar/AvatarBubble'
+import { startIdleDetection, timeGreeting, dispatchAvatarEvent, setCurrentRoute, dismissBubble } from '../avatar/AvatarEventBus'
+import { getLive2DEnabled } from '../../pages/Settings'
 import { useAuthStore } from '../../store'
 import { logout as logoutApi, getAvatarUrl } from '../../services/api'
 import { getTokenRemainingSeconds } from '../../utils/jwt'
@@ -115,6 +120,31 @@ function HeaderUserMenu() {
 export default function AppLayout() {
   const [collapsed, setCollapsed] = useState(false)
   const navigate = useNavigate()
+  const location = useLocation()
+  const [live2dVisible, setLive2dVisible] = useState(getLive2DEnabled)
+
+  // 追踪路由变化 → 页面气泡
+  useEffect(() => {
+    setCurrentRoute(location.pathname)
+    const t = setTimeout(() => dispatchAvatarEvent('page_change'), 2000)
+    return () => clearTimeout(t)
+  }, [location.pathname])
+
+  // 监听 Live2D 开关
+  useEffect(() => {
+    const h = (e: Event) => setLive2dVisible((e as CustomEvent).detail)
+    window.addEventListener('mla-live2d-toggle', h)
+    return () => window.removeEventListener('mla-live2d-toggle', h)
+  }, [])
+
+  // 智能气泡系统 + 拖动关闭
+  useEffect(() => {
+    startIdleDetection(); timeGreeting(); dispatchAvatarEvent('welcome')
+    const onDrag = () => dismissBubble()
+    window.addEventListener('mla-live2d-drag-start', onDrag)
+    return () => window.removeEventListener('mla-live2d-drag-start', onDrag)
+  }, [])
+  useEffect(() => { if (!live2dVisible) dismissBubble() }, [live2dVisible])
 
   // 保存定时器引用, 用于清理
   const expiryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -247,6 +277,9 @@ export default function AppLayout() {
       <Suspense fallback={null}>
         <FloatingChat />
       </Suspense>
+      <Live2DStage visible={live2dVisible} />
+      <Live2DChat />
+      <AvatarBubble />
     </Layout>
   )
 }

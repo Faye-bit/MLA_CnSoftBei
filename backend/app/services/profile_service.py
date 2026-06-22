@@ -80,23 +80,26 @@ PROFILE_REBUILD_PROMPT = """你是一个学生画像构建助手。请根据以�
 # 记忆提取 (ChatGPT 式后台记忆)
 # ============================================================================
 
-MEMORY_EXTRACTION_PROMPT = """你是一个学生信息识别助手。分析以下对话片段中的学生发言, 判断是否包含值得记录的、关于学生个人的信息。
+MEMORY_EXTRACTION_PROMPT = """你是一个学生信息识别助手。分析以下对话片段中的学生发言和 AI 回复, 判断是否包含或可以推断出关于学生个人的信息。
 
 可识别的信息类型:
 - 专业背景: 专业、年级、学历层次
-- 知识基础: 已学知识、当前水平
+- 知识基础: 已学知识、当前水平 (从学生提问的问题领域和深度推断)
 - 学习目标: 考试、项目、科研、就业、当前在学内容
 - 学习偏好: 喜欢的资源类型、学习方式
 - 薄弱知识点: 遇到的困难、不理解的概念
-- 兴趣方向: 感兴趣的应用方向、行业
+- 兴趣方向: 感兴趣的应用方向、行业 (从连续提问的主题推断)
 
-如果有值得记录的新信息, 提取为不超过 2 条简短的记忆片段, 用自然语言表达。
+提示: 即使学生没有直接说出个人信息, 从他们提问的话题、深度、频率等也可以合理推断出知识水平和兴趣方向。
+例如学生反复问某个领域的问题 → 可以推断学生对该领域感兴趣或正在学习该领域。
+
+如果有值得记录的信息, 提取为不超过 2 条简短的记忆片段, 用自然语言表达。
 例如:
 - "学生是计算机科学专业大三学生"
 - "学生对反向传播算法的推导有困难"
-- "学生每周可投入大约 10 小时学习"
+- "学生对机器学习领域表现出浓厚兴趣, 多次提问相关概念"
 
-如果学生消息中没有值得记录的个人信息, 直接回复: SKIP
+如果对话中确实没有任何值得记录的信息, 直接回复: SKIP
 
 只回复记忆片段(每条一行)或SKIP, 不要包含其他任何内容。"""
 
@@ -105,6 +108,7 @@ async def extract_memories_from_exchange(
     user_id: uuid.UUID,
     user_message: str,
     db: AsyncSession,
+    assistant_message: str = "",
 ):
     """
     从单轮对话中异步提取用户信息记忆
@@ -113,8 +117,10 @@ async def extract_memories_from_exchange(
     :param user_id: 用户 ID
     :param user_message: 学生发送的消息
     :param db: 数据库会话
+    :param assistant_message: AI 助手的回复 (用于理解对话上下文)
     """
-    if len(user_message.strip()) < 10:
+    # 降低阈值: 中文短句如"帮我学Python"(7字)也能触发提取
+    if len(user_message.strip()) < 4:
         return
 
     try:
@@ -124,11 +130,16 @@ async def extract_memories_from_exchange(
 
         client = AsyncOpenAI(api_key=api_key, base_url=api_base)
 
+        # 构建上下文: 学生消息 + AI 回复 (帮助 LLM 理解对话主题和用户背景)
+        context = f"学生消息:\n{user_message}"
+        if assistant_message.strip():
+            context += f"\n\nAI 回复:\n{assistant_message[:500]}"
+
         response = await client.chat.completions.create(
             model=model,
             messages=[
                 {"role": "system", "content": MEMORY_EXTRACTION_PROMPT},
-                {"role": "user", "content": f"学生消息:\n{user_message}"},
+                {"role": "user", "content": context},
             ],
             temperature=0.2,
             max_tokens=200,

@@ -15,11 +15,24 @@ import {
   Spin,
   Alert,
   Tag,
+  Switch,
 } from 'antd'
 import { SaveOutlined, ReloadOutlined } from '@ant-design/icons'
 import { getApiConfig, updateApiConfig } from '../services/api'
 
 const { Title, Text } = Typography
+
+/** Live2D 开关 localStorage key */
+const LIVE2D_ENABLED_KEY = 'mla-live2d-enabled'
+
+/** 获取/设置 Live2D 开关状态 (全局工具函数) */
+export function getLive2DEnabled(): boolean {
+  return localStorage.getItem(LIVE2D_ENABLED_KEY) !== 'false'
+}
+export function setLive2DEnabled(enabled: boolean) {
+  localStorage.setItem(LIVE2D_ENABLED_KEY, String(enabled))
+  window.dispatchEvent(new CustomEvent('mla-live2d-toggle', { detail: enabled }))
+}
 
 /** 配置项定义 */
 interface ConfigItem {
@@ -143,6 +156,35 @@ export default function Settings() {
           <Form.Item name="embedding_model" label="模型名称">
             <Input placeholder="text-embedding-3-small" />
           </Form.Item>
+        </Card>
+
+        {/* Live2D 虚拟形象 */}
+        <Card
+          title={
+            <Space>
+              <Tag color="pink">虚拟形象</Tag>
+              <span>AI 虚拟助教 (Live2D)</span>
+              <Text type="secondary" style={{ fontSize: 12 }}>
+                (页面右下角悬浮的交互式虚拟角色)
+              </Text>
+            </Space>
+          }
+          style={{ marginBottom: 24 }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <div>
+              <Text strong>启用虚拟形象</Text>
+              <br />
+              <Text type="secondary" style={{ fontSize: 12 }}>
+                开启后在页面右下角显示 Live2D 虚拟助教, 可点击互动。
+                关闭后立即隐藏。
+              </Text>
+            </div>
+            <Switch
+              defaultChecked={getLive2DEnabled()}
+              onChange={(checked) => setLive2DEnabled(checked)}
+            />
+          </div>
         </Card>
 
         {/* 文档解析模型配置 */}

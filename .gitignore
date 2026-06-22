@@ -18,6 +18,10 @@ backend/chroma_data/*
 !backend/uploads/.gitkeep
 !backend/chroma_data/.gitkeep
 
+# Live2D 模型和 SDK (二进制资源)
+frontend/public/models/*
+frontend/public/CubismSdkForWeb-5-r.5/*
+
 # Node
 node_modules/
 frontend/dist/

@@ -271,13 +271,60 @@ async def _score_practice_intensity(
     user_id: uuid.UUID, db: AsyncSession
 ) -> float:
     """
-    刷题巩固强度评分
-    当前接口已预留, 习题系统完善后自动启用
-    数据来源 (待实现): AI 习题生成量、作答完成率、错题重做率
+    刷题巩固强度评分 (加权: 习题生成量 60% + Agent 完成率 40%)
+
+    数据来源:
+      - generated_resources: resource_type in ('exercise','code_practice','assessment')
+      - agent_tasks: agent_name in ('exercise','coding_practice','assessment')
+      - 通过 learning_sessions.user_id 关联到当前用户
     """
-    # TODO: 关联 AI 习题生成表, 统计有效习题数、作答率、错题重做率
-    # 暂时返回默认中间值
-    return 5.0
+    from app.models.learning import LearningSession, LearningStage, GeneratedResource, AgentTask
+
+    since = _now_utc() - timedelta(days=DAYS_WINDOW)
+
+    # 1. 习题生成量 (60%): 近 30 天生成的习题资源数
+    ex_stmt = (
+        select(func.count(GeneratedResource.id))
+        .join(LearningStage, GeneratedResource.stage_id == LearningStage.id)
+        .join(LearningSession, LearningStage.session_id == LearningSession.id)
+        .where(
+            LearningSession.user_id == user_id,
+            GeneratedResource.resource_type.in_(("exercise", "code_practice", "assessment")),
+            GeneratedResource.created_at >= since,
+        )
+    )
+    ex_result = await db.execute(ex_stmt)
+    exercise_count = ex_result.scalar() or 0
+
+    # 8 道题 → 满分
+    exercise_score = min(10.0, (exercise_count / 8.0) * 10.0)
+
+    # 2. Agent 完成率 (40%): 习题相关 Agent 任务的成功比例
+    agent_stmt = (
+        select(AgentTask.status, func.count(AgentTask.id))
+        .join(LearningSession, AgentTask.session_id == LearningSession.id)
+        .where(
+            LearningSession.user_id == user_id,
+            AgentTask.agent_name.in_(("exercise", "coding_practice", "assessment")),
+            AgentTask.created_at >= since,
+        )
+        .group_by(AgentTask.status)
+    )
+    agent_result = await db.execute(agent_stmt)
+    agent_rows = agent_result.all()
+
+    total_tasks = 0
+    completed_tasks = 0
+    for row in agent_rows:
+        status, cnt = row[0], row[1]
+        total_tasks += cnt
+        if status == "completed":
+            completed_tasks += cnt
+
+    agent_score = (completed_tasks / total_tasks) * 10.0 if total_tasks > 0 else 0.0
+
+    score = exercise_score * 0.6 + agent_score * 0.4
+    return round(min(10.0, max(0.0, score)), 1)
 
 
 async def _score_review_habit(
