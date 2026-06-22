@@ -70,7 +70,7 @@ async def send_verification_email(to_email: str, code: str, purpose: str) -> boo
     html_body = f"""
     <div style="max-width:480px;margin:0 auto;padding:20px;font-family:Arial,sans-serif;
                 border:1px solid #e0e0e0;border-radius:8px;">
-        <h2 style="color:#1677ff;text-align:center;">MLA 多学助手</h2>
+        <h2 style="color:#1677ff;text-align:center;">MLA 智学引擎</h2>
         <p style="font-size:16px;">您正在{purpose_text}, 验证码如下：</p>
         <div style="background:#f5f5f5;padding:20px;text-align:center;border-radius:6px;margin:16px 0;">
             <span style="font-size:32px;font-weight:bold;letter-spacing:8px;color:#1677ff;">{code}</span>

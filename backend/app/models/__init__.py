@@ -14,6 +14,7 @@ from app.models.audit_log import AuditLog
 from app.models.conversation import Conversation, Message
 from app.models.profile import StudentProfile
 from app.models.learning import LearningSession, LearningStage, GeneratedResource, AgentTask
+from app.models.todo import Todo
 
 # 所有模型列表, 供 alembic 和 init_db 使用
 __all__ = [
@@ -36,4 +37,5 @@ __all__ = [
     "LearningStage",
     "GeneratedResource",
     "AgentTask",
+    "Todo",
 ]

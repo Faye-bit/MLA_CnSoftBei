@@ -66,7 +66,17 @@ class Settings(BaseSettings):
     smtp_user: str = "744585348@qq.com"
     smtp_password: str = ""
     smtp_from: str = "744585348@qq.com"
-    smtp_from_name: str = "MLA 多学助手"
+    smtp_from_name: str = "MLA 智学引擎"
+
+    # ============ TTS 语音合成配置 (火山引擎 seed-tts-2.0) ============
+    # 新版 API Key (推荐): 在 https://console.volcengine.com/speech/new/setting/apikeys 获取
+    tts_api_key: str = ""
+    # 旧版 App ID + Access Token (兼容): 在语音控制台获取
+    tts_app_id: str = ""
+    tts_access_token: str = ""
+    # 公共配置
+    tts_voice: str = "zh-female-warm"  # 支持别名 (zh-female-warm) 或原生 ID (zh_female_vv_uranus_bigtts)
+    tts_speed: float = 1.0
 
     # ============ 验证码配置 ============
     verification_code_expire_minutes: int = 5

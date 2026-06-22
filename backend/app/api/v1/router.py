@@ -15,6 +15,8 @@ from app.api.v1.stats import router as stats_router
 from app.api.v1.chat import router as chat_router
 from app.api.v1.profile import router as profile_router
 from app.api.v1.learning import router as learning_router
+from app.api.v1.todos import router as todos_router
+from app.api.v1.tts import router as tts_router
 
 # 创建 v1 版本聚合路由
 api_v1_router = APIRouter(prefix="/api/v1")
@@ -31,3 +33,5 @@ api_v1_router.include_router(stats_router)
 api_v1_router.include_router(chat_router)
 api_v1_router.include_router(profile_router)
 api_v1_router.include_router(learning_router)
+api_v1_router.include_router(todos_router)
+api_v1_router.include_router(tts_router)

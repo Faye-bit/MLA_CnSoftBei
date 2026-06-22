@@ -29,3 +29,8 @@ from app.schemas.learning import (
     RegenerateResourceRequest, ExerciseProgressRequest,
     AgentTaskResponse, FavoriteToggleResponse,
 )
+from app.schemas.todo import TodoCreate, TodoUpdate, TodoResponse
+from app.schemas.stats import (
+    TodoItem, TodayStatsResponse, DailyActivity, WeeklyStatsResponse,
+    FavoriteItem, FavoritesResponse,
+)

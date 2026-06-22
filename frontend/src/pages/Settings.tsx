@@ -236,6 +236,72 @@ export default function Settings() {
           </Form.Item>
         </Card>
 
+        {/* TTS 语音合成配置 */}
+        <Card
+          title={
+            <Space>
+              <Tag color="orange">TTS</Tag>
+              <span>语音合成配置</span>
+              <Text type="secondary" style={{ fontSize: 12 }}>
+                (火山引擎 seed-tts-2.0, Live2D 伙伴语音)
+              </Text>
+            </Space>
+          }
+          style={{ marginBottom: 24 }}
+        >
+          <Alert
+            message={
+              <span>
+                🔊 使用火山引擎豆包大模型进行中文语音合成, 音色自然、语气丰富。
+                请前往{' '}
+                <a href="https://console.volcengine.com/speech/service/tts" target="_blank" rel="noopener noreferrer">
+                  火山引擎语音控制台
+                </a>
+                {' '}开通 seed-tts-2.0 服务。
+                <br/>新版控制台填写 API Key；旧版控制台填写 App ID + Access Token。
+              </span>
+            }
+            type="warning"
+            showIcon={false}
+            style={{ marginBottom: 16 }}
+          />
+          <Form.Item
+            name="tts_api_key"
+            label="API Key (新版)"
+            tooltip="火山引擎新版统一 API Key, 在 https://console.volcengine.com/speech/new/setting/apikeys 获取"
+          >
+            <Input.Password placeholder="新版 API Key (优先使用)" />
+          </Form.Item>
+          <Form.Item
+            name="tts_app_id"
+            label="App ID (旧版)"
+            tooltip="火山引擎旧版语音 App ID, 与 Access Token 配合使用"
+          >
+            <Input placeholder="旧版 App ID" />
+          </Form.Item>
+          <Form.Item
+            name="tts_access_token"
+            label="Access Token (旧版)"
+            tooltip="火山引擎旧版语音 Access Token, 与 App ID 配合使用"
+          >
+            <Input.Password placeholder="旧版 Access Token" />
+          </Form.Item>
+          <Form.Item
+            name="tts_voice"
+            label="默认音色"
+            tooltip="可选: zh-female-warm (温暖女声), zh-female-assistant (助手女声), zh-male-storyteller (说书人男声) 等"
+          >
+            <Input placeholder="zh-female-warm" />
+          </Form.Item>
+          <Form.Item
+            name="tts_speed"
+            label="语速倍率"
+            tooltip="范围 0.5 ~ 2.0, 1.0 为正常语速"
+          >
+            <Input placeholder="1.0" />
+          </Form.Item>
+        </Card>
+
         <Space>
           <Button
             type="primary"

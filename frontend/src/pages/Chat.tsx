@@ -14,7 +14,7 @@
 import { useEffect, useState, useRef, useCallback } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { Typography, Spin, Empty, message } from 'antd'
-import { RobotOutlined, ThunderboltOutlined } from '@ant-design/icons'
+import { ThunderboltOutlined } from '@ant-design/icons'
 import ConversationList from '../components/chat/ConversationList'
 import ChatMessage from '../components/chat/ChatMessage'
 import ChatInput from '../components/chat/ChatInput'
@@ -248,19 +248,13 @@ export default function Chat() {
             background: '#FFFFFF', gap: 20,
           }}>
             {/* MLA Logo */}
-            <div style={{
-              width: 72, height: 72, borderRadius: 20,
-              background: blue[500],
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              boxShadow: '0 8px 24px rgba(59,130,246,0.2)',
-            }}>
-              <RobotOutlined style={{ fontSize: 36, color: '#FFFFFF' }} />
-            </div>
+            <img
+              src="/brand/字母标Logo.svg"
+              alt="MLA 智学引擎"
+              style={{ width: 144, height: 144 }}
+            />
 
             <div style={{ textAlign: 'center' }}>
-              <div style={{ fontSize: 22, fontWeight: 700, color: gray[800], marginBottom: 8 }}>
-                MLA 智学引擎
-              </div>
               <Text style={{ fontSize: 14, color: gray[500], lineHeight: 1.7 }}>
                 {typeParam === 'profile_collection'
                   ? '点击左侧「新建对话」开始画像收集，AI 将通过对话了解你的学习情况'
@@ -319,19 +313,13 @@ export default function Chat() {
                   paddingTop: 40, paddingBottom: 40,
                 }}>
                   {/* Logo */}
-                  <div style={{
-                    width: 64, height: 64, borderRadius: 18,
-                    background: blue[500],
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    boxShadow: '0 6px 20px rgba(59,130,246,0.18)',
-                  }}>
-                    <RobotOutlined style={{ fontSize: 32, color: '#FFFFFF' }} />
-                  </div>
+                  <img
+                    src="/brand/字母标Logo.svg"
+                    alt="MLA 智学引擎"
+                    style={{ width: 128, height: 128 }}
+                  />
 
                   <div style={{ textAlign: 'center' }}>
-                    <div style={{ fontSize: 20, fontWeight: 700, color: gray[800], marginBottom: 6 }}>
-                      MLA 智学引擎
-                    </div>
                     <Text style={{ fontSize: 14, color: gray[500] }}>
                       {activeConversation.conversation_type === 'profile_collection'
                         ? '通过自然对话, AI 将逐步了解你的学习情况并构建画像'

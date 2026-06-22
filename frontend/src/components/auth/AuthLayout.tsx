@@ -113,30 +113,30 @@ export default function AuthLayout({ title, subtitle, children }: AuthLayoutProp
           }}
         >
           {/* ============================================================ */}
-          {/* 第一层: 品牌 — 纯文字标识, 居中, 占据主导 */}
+          {/* 第一层: 品牌 — 图形 Logo + 毛玻璃底, 居中 */}
           {/* ============================================================ */}
-          <div style={{ textAlign: 'center', marginBottom: 4, ...fadeIn('0s') }}>
+          <div style={{ alignSelf: 'center', marginBottom: 4, ...fadeIn('0s') }}>
             <div
               style={{
-                fontSize: 56,
-                fontWeight: 800,
-                letterSpacing: '-0.03em',
-                color: '#FFFFFF',
-                lineHeight: 1,
-                marginBottom: 10,
+                width: 200,
+                height: 200,
+                borderRadius: 36,
+                background: 'rgba(255,255,255,0.20)',
+                backdropFilter: 'blur(24px)',
+                WebkitBackdropFilter: 'blur(24px)',
+                border: '2px solid rgba(255,255,255,0.25)',
+                boxShadow: '0 8px 40px rgba(0,0,0,0.15)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                padding: 4,
               }}
             >
-              MLA
-            </div>
-            <div
-              style={{
-                fontSize: 18,
-                fontWeight: 500,
-                letterSpacing: '0.16em',
-                color: 'rgba(255,255,255,0.50)',
-              }}
-            >
-              智学引擎
+              <img
+                src="/brand/字母标Logo.svg"
+                alt="MLA 智学引擎"
+                style={{ width: '100%', height: '100%', objectFit: 'contain' }}
+              />
             </div>
           </div>
 

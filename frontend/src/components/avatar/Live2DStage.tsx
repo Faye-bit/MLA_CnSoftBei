@@ -9,6 +9,8 @@
  *   - CSS transform 拖动 (不破坏 l2d-widget 内部 fixed 定位)
  *   - 鼠标头部跟随 + 点击互动
  *   - 系统设置页开关控制显示/隐藏
+ *   - 上半身裁剪 (clip-path 裁掉下半身, 避免遮挡内容)
+ *   - 暴露 Widget 引用给全局朗读系统做口型同步
  *
  * 技术要点:
  *   - l2d-widget 的 DOM 追加到 body 后, 我们找到这些元素并附加拖动事件
@@ -38,10 +40,35 @@ const MODELS = [
 /** 画布尺寸 */
 const CANVAS_SIZE = { width: 300, height: 380 }
 
+/** 下半身裁剪比例 (裁掉底部 35%, 只保留上半身) */
+const CLIP_BOTTOM_RATIO = 0.35
+
 /** 组件 props */
 interface Live2DStageProps {
   /** 是否可见 (由 AppLayout 根据系统设置控制) */
   visible?: boolean
+}
+
+// ============================================================================
+// Widget 引用暴露 (供 Live2DSpeechProvider 做口型同步)
+// ============================================================================
+
+/**
+ * l2d-widget 的 Widget 接口类型 (简化版)
+ * 只暴露口型同步所需的方法
+ */
+export interface L2DWidgetRef {
+  l2d: {
+    setParams: (params: Record<string, number>) => void
+  }
+}
+
+/** 模块级 widget 引用, 由 Live2DStage 初始化, 供 Live2DSpeechProvider 读取 */
+let _widget: L2DWidgetRef | null = null
+
+/** 获取当前 Live2D Widget 引用 (供口型同步使用) */
+export function getL2DWidget(): L2DWidgetRef | null {
+  return _widget
 }
 
 // ============================================================================
@@ -70,24 +97,16 @@ export default function Live2DStage({ visible = true }: Live2DStageProps) {
       if (cancelled || !guardRef.current) return
 
       // ---- 创建 widget ----
-      createWidget({
+      const widget = createWidget({
         model: MODELS,
         position: 'bottom-right',
         size: CANVAS_SIZE,
         primaryColor: '#1677ff',
         transitionDuration: 0,
-        menus: {
-          extraItems: [{
-            icon: 'mdi:chat-outline',
-            label: '聊天',
-            onClick: () => {
-              const visible = localStorage.getItem('mla-live2d-chat-visible') !== 'true'
-              localStorage.setItem('mla-live2d-chat-visible', String(visible))
-              window.dispatchEvent(new CustomEvent('mla-live2d-chat-toggle', { detail: visible }))
-            },
-          }],
-        },
       })
+      // 保存 widget 引用供全局朗读系统做口型同步
+      _widget = widget as unknown as L2DWidgetRef
+      console.log('[Live2D] Widget 引用已保存, 可供口型同步使用')
 
       // 等待 l2d-widget 完成 DOM 渲染
       await new Promise(r => setTimeout(r, 1000))
@@ -103,6 +122,18 @@ export default function Live2DStage({ visible = true }: Live2DStageProps) {
       }
       if (widgetEls.length === 0) return
       widgetElsRef.current = widgetEls
+
+      // ---- 上半身裁剪: 裁掉下半身, 避免遮挡内容 ----
+      widgetEls.forEach(w => {
+        if (window.getComputedStyle(w).position === 'fixed') {
+          // 找到最外层的 l2d 容器并应用 clip-path
+          const l2dContainer = w.querySelector('[class*="l2d"]') || w.querySelector('canvas')?.parentElement
+          const target = (l2dContainer || w) as HTMLElement
+          const clipValue = `inset(0 0 ${CLIP_BOTTOM_RATIO * 100}% 0)`
+          target.style.clipPath = clipValue
+          target.style.setProperty('clip-path', clipValue)
+        }
+      })
 
       // ---- 隐藏不需要的 UI ("正在加载"/"正在休息"/"About") ----
       const hideTexts = ['正在加载', '正在休息', 'About', '关于']
@@ -201,7 +232,7 @@ export default function Live2DStage({ visible = true }: Live2DStageProps) {
         }
       })
 
-      console.log(`[Live2D] 就绪, ${MODELS.length} 个模型`)
+      console.log(`[Live2D] 就绪, ${MODELS.length} 个模型, 上半身裁剪: ${CLIP_BOTTOM_RATIO * 100}%`)
     }
 
     init()
@@ -209,6 +240,7 @@ export default function Live2DStage({ visible = true }: Live2DStageProps) {
     // ---- 清理 (销毁所有 l2d-widget 的 DOM 和事件) ----
     return () => {
       cancelled = true
+      _widget = null  // 清除全局引用
       // 断开事件 + 移除 DOM
       const els = widgetElsRef.current
       els.forEach(el => {

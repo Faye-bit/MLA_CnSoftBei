@@ -638,7 +638,7 @@ async def build_download_content(
 
     lines: list[str] = []
     lines.append(f"# {course_name} — 个性化学习资源")
-    lines.append(f"\n> 由 MLA 多学助手生成 | {session.created_at.strftime('%Y-%m-%d') if session.created_at else ''}\n")
+    lines.append(f"\n> 由 MLA 智学引擎生成 | {session.created_at.strftime('%Y-%m-%d') if session.created_at else ''}\n")
 
     # 收集需要导出的阶段
     stages_to_export = []

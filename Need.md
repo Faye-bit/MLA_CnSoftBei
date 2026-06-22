@@ -1,4 +1,4 @@
-# MLA-多学助手
+# MLA-智学引擎
 
 ## 0. 概述
 
@@ -44,21 +44,20 @@
 - 实现画像抽取 Prompt 和结构化存储（见4.2 对话式学生画像模块）
 - 实现画像展示与编辑（见4.2 对话式学生画像模块）
 
-### 第三阶段：多智能体资源生成（进行中）
+### 第三阶段：多智能体资源生成（已完成）
 
 - 搭建智能体编排流程（见 4.4 多智能体协同模块）。
-- 完成个性化资源生成模块（见 4.5 个性化资源生成模块）.
+- 完成个性化资源生成模块（见 4.5 个性化资源生成模块）。
 
-### 第四阶段：智能辅导
-
-- 全局浮动的AI虚拟形象助手。
-
-
-
-### 第四阶段：学习路径与智能辅导
+### 第四阶段：智能辅导与界面优化（进行中）
 
 - 全局浮动的AI虚拟形象助手，拥有语音朗读功能，当用户点击某一段话的朗读按钮时（设计参考豆包），这个形象可以朗读当前对话。
-
+- 对“对首页仪表盘”进行优化：
+  - 添加今日待办看板，可以展示今天的学习任务；
+  - 添加本周学习情况看板，用柱状图表示本周的学习时长等信息；
+  - 添加“我的收藏”，可以显示收藏的课程学习；
+- 设计 MLA 品牌形象、图标。
+- “AI对话”页面需要优化，在新建对话后，页面中存在大量空白，这样不美观，可以添加对用户的引导，就像ChatGPT的对话界面那样。
 
 ### 第五阶段：评估、安全与展示优化
 
@@ -86,16 +85,15 @@
 
 ### 2.2 AI 与智能体技术栈
 
-- 大模型接口：OpenAI API / 科大讯飞星火Spark-X / DeepSeek / 本地 Ollama 模型
-- 智能体编排：LangGraph / AutoGen / CrewAI
+- 大模型接口：OpenAI API / 科大讯飞星火Spark-X / DeepSeek
+- 智能体编排：LangGraph
 - RAG 框架：LlamaIndex / LangChain
-- Embedding 模型：text-embedding-3-small、bge-m3、gte-large-zh 等
+- Embedding 模型：text-embedding-3-small
 - 重排序模型：bge-reranker / Cohere Rerank / Jina Reranker
 - 多模态生成：
-  - PPT 生成：python-pptx / PptxGenJS
-  - 图解和流程图：Mermaid / Graphviz
-  - 视频/动画：生成脚本 + Manim / MoviePy / 前端动画模板
-  - 代码案例：LLM 生成 + 沙箱执行/单元测试校验
+  - 图解和流程图：Mermaid
+  - 视频/动画：生成HTML脚本
+  - 代码案例：LLM 生成
 - 内容安全与事实校验：
   - 基于课程知识库的引用溯源
   - 敏感词和违规内容过滤
@@ -114,8 +112,8 @@
 - UI 组件：Ant Design / Arco Design / shadcn-ui 三选一
 - 样式方案：Tailwind CSS 或 CSS Modules
 - Markdown 渲染：react-markdown + remark-gfm + rehype-highlight
-- 图表可视化：ECharts / AntV
-- 思维导图展示：markmap / mermaid / React Flow
+- 图表可视化：ECharts
+- 思维导图展示：mermaid
 - 流式输出：Server-Sent Events 或 WebSocket
 - 状态管理：Zustand / Redux Toolkit
 - 文件上传：支持 PDF、DOCX、PPTX、Markdown、TXT、代码文件等课程资料上传
@@ -132,7 +130,7 @@
 
 - 业务数据库：PostgreSQL
 - 缓存与任务状态：Redis
-- 向量数据库：Milvus / Qdrant / Chroma
+- 向量数据库：Chroma
 - 对象存储：MinIO / 本地文件存储
 - 搜索增强：Elasticsearch / PostgreSQL 全文检索，可选
 
@@ -148,7 +146,7 @@
 ### 2.5 部署与工程化
 
 - 容器化：Docker + Docker Compose
-- 后端服务：Uvicorn / Gunicorn
+- 后端服务：Uvicorn
 - 前端部署：Nginx
 - 日志监控：Loguru + Prometheus + Grafana，可选
 - 测试：

@@ -1,6 +1,6 @@
 /**
  * 学习会话页面 — Phase 3 核心页面
- * 布局: 顶部路线图抽屉 + 左侧资源目录树 + 右侧资源查看器 + 底部阶段完成栏
+ * 布局: 顶部路线图抽屉(含阶段完成操作) + 左侧资源目录树 + 右侧资源查看器
  *
  * 两种模式:
  * 1. 新会话 (URL 带 ?new=true): 先显示 SSE 生成进度, 完成后加载资源
@@ -22,10 +22,11 @@ import {
   toggleFavorite, deleteLearningSession, getDownloadUrl,
 } from '../services/api'
 import { useAuthStore } from '../store'
+import { gray } from '../styles/tokens'
 import LearningPathDrawer from '../components/learning/LearningPathDrawer'
 import ResourceTree from '../components/learning/ResourceTree'
 import ResourceViewer from '../components/learning/ResourceViewer'
-import StageCompletionBar from '../components/learning/StageCompletionBar'
+
 import GenerationProgress from '../components/learning/GenerationProgress'
 import type {
   LearningSessionDetail, GeneratedResource, GeneratedResourceDetail,
@@ -491,7 +492,7 @@ export default function LearningSessionPage() {
   const resources = currentStage?.resources || []
 
   return (
-    <Layout style={{ height: 'calc(100vh - 64px)', background: '#fff' }}>
+    <Layout style={{ height: 'calc(100vh - 64px)', background: '#FFFFFF' }}>
       {/* SSE 生成进度弹窗 */}
       <GenerationProgress
         open={showProgress}
@@ -504,21 +505,23 @@ export default function LearningSessionPage() {
         onStartLearning={handleStartLearning}
       />
 
-      {/* 顶部: 学习路线图抽屉 */}
-      {stages.length > 0 && (
-        <LearningPathDrawer
-          stages={stages.map((s, i) => ({
-            ...s,
-            status: i < currentIndex ? 'completed'
-              : i === currentIndex ? 'active'
-              : 'pending',
-          }))}
-          currentStageIndex={currentIndex}
-        />
-      )}
+      {/* 顶部: 学习路线图抽屉 (含阶段完成操作) */}
+      <LearningPathDrawer
+        stages={stages.map((s, i) => ({
+          ...s,
+          status: i < currentIndex ? 'completed'
+            : i === currentIndex ? 'active'
+            : 'pending',
+        }))}
+        currentStageIndex={currentIndex}
+        totalStages={stages.length || session.stages?.length || 1}
+        isLastStage={currentIndex >= (stages.length || session.stages?.length || 1) - 1}
+        generating={generatingNext}
+        onComplete={handleCompleteStage}
+      />
 
       {/* 主体: 左侧资源树 + 右侧资源查看器 */}
-      <Layout style={{ background: '#fff', flex: 1, overflow: 'hidden' }}>
+      <Layout style={{ background: '#FFFFFF', flex: 1, overflow: 'hidden' }}>
         {/* 左侧边栏: 资源目录 (可折叠) */}
         <Sider
           width={260}
@@ -528,8 +531,8 @@ export default function LearningSessionPage() {
           onCollapse={setSiderCollapsed}
           trigger={null}
           style={{
-            background: '#fafafa',
-            borderRight: siderCollapsed ? 'none' : '1px solid #f0f0f0',
+            background: gray[50],
+            borderRight: siderCollapsed ? 'none' : `1px solid ${gray[200]}`,
             overflow: 'auto',
           }}
         >
@@ -537,7 +540,7 @@ export default function LearningSessionPage() {
           <div style={{
             padding: '8px 16px', display: 'flex',
             justifyContent: 'space-between', alignItems: 'center',
-            borderBottom: '1px solid #f0f0f0',
+            borderBottom: `1px solid ${gray[200]}`,
           }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <Button
@@ -569,7 +572,10 @@ export default function LearningSessionPage() {
         </Sider>
 
         {/* 右侧: 资源查看器 */}
-        <Content style={{ overflow: 'auto', background: '#fff', position: 'relative' }}>
+        <Content style={{
+          overflow: 'hidden', background: '#FFFFFF', position: 'relative',
+          display: 'flex', flexDirection: 'column',
+        }}>
           {/* 侧栏折叠时显示展开按钮 */}
           {siderCollapsed && (
             <div style={{
@@ -593,15 +599,6 @@ export default function LearningSessionPage() {
           />
         </Content>
       </Layout>
-
-      {/* 底部: 阶段完成栏 */}
-      <StageCompletionBar
-        currentStageIndex={currentIndex}
-        totalStages={stages.length || session.stages?.length || 1}
-        isLastStage={currentIndex >= (stages.length || 1) - 1}
-        generating={generatingNext}
-        onComplete={handleCompleteStage}
-      />
     </Layout>
   )
 }

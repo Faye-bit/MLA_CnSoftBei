@@ -62,6 +62,10 @@ api.interceptors.request.use(
 // 响应拦截器: 统一处理 ApiResponse 和 401 Token 过期
 api.interceptors.response.use(
   (response) => {
+    // 跳过非 JSON 响应 (如 blob/arraybuffer 等二进制数据)
+    if (response.config.responseType === 'blob' || response.config.responseType === 'arraybuffer') {
+      return response
+    }
     const body = response.data as ApiResponse<unknown>
     if (body.code !== 0) {
       return Promise.reject(new Error(body.message || '请求失败'))
@@ -1025,4 +1029,30 @@ export async function updateTodo(todoId: string, data: TodoUpdate) {
 /** 删除自定义待办 */
 export async function deleteTodo(todoId: string) {
   await api.delete(`/todos/${todoId}`)
+}
+
+// ============================================================================
+// TTS 语音合成
+// ============================================================================
+
+/**
+ * 调用后端 TTS 服务合成语音
+ * 使用火山引擎 seed-tts-2.0 大模型, 将文本合成为 MP3 音频
+ * @param text 待合成的文本 (上限 500 字符)
+ * @param voice 可选音色 ID, 不传则使用后端默认音色
+ * @param speed 可选语速倍率 (0.5 ~ 2.0)
+ * @returns MP3 音频 Blob
+ */
+export async function synthesizeTTS(
+  text: string,
+  voice?: string,
+  speed?: number,
+): Promise<Blob> {
+  // 使用单独的 axios 调用来获取 blob 响应
+  const res = await api.post<Blob>(
+    '/tts/synthesize',
+    { text, voice, speed },
+    { responseType: 'blob' },
+  )
+  return res.data
 }

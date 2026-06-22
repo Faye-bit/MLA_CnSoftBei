@@ -10,6 +10,7 @@
 import { Avatar, Tag, Space, Typography } from 'antd'
 import { UserOutlined, RobotOutlined, FileTextOutlined, FileImageOutlined, LinkOutlined } from '@ant-design/icons'
 import MarkdownRenderer from '../common/MarkdownRenderer'
+import SpeakButton from '../common/SpeakButton'
 import type { ChatSource } from '../../types'
 import { blue, gray, semantic } from '../../styles/tokens'
 
@@ -24,10 +25,21 @@ interface ChatMessageProps {
   streaming?: boolean
 }
 
+/** 去除 AI 回复中的内联参考来源 (下方有专门的 Tag 来源区) */
+function stripInlineReferences(content: string): string {
+  return content
+    .replace(/\n*参考来源[:：].*$/s, '')
+    .replace(/\n*\*参考来源\*[:：].*$/s, '')
+    .trim()
+}
+
 export default function ChatMessage({ role, content, sources, createdAt, streaming = false }: ChatMessageProps) {
   if (role === 'system') return null
 
   const isUser = role === 'user'
+
+  /** AI 回复: 去除末尾内联参考来源, 保留纯文本供朗读 */
+  const displayContent = !isUser ? stripInlineReferences(content) : content
 
   return (
     <div style={{
@@ -53,7 +65,7 @@ export default function ChatMessage({ role, content, sources, createdAt, streami
         <div style={{
           background: isUser ? blue[500] : gray[50],
           color: isUser ? '#FFFFFF' : gray[800],
-          padding: '12px 16px',
+          padding: isUser ? '12px 16px' : '12px 16px 34px 16px',
           borderRadius: isUser ? '12px 4px 12px 12px' : '4px 12px 12px 12px',
           lineHeight: 1.7, wordBreak: 'break-word',
           position: 'relative',
@@ -62,7 +74,7 @@ export default function ChatMessage({ role, content, sources, createdAt, streami
             <div style={{ whiteSpace: 'pre-wrap' }}>{content}</div>
           ) : (
             <span>
-              <MarkdownRenderer content={content} compact />
+              <MarkdownRenderer content={displayContent} compact />
               {/* 流式输出闪烁光标 */}
               {streaming && (
                 <span
@@ -80,9 +92,16 @@ export default function ChatMessage({ role, content, sources, createdAt, streami
               )}
             </span>
           )}
+
+          {/* 朗读按钮 — 气泡右下角 */}
+          {!isUser && !streaming && content && (
+            <div style={{ position: 'absolute', right: 8, bottom: 6 }}>
+              <SpeakButton text={displayContent} size="small" />
+            </div>
+          )}
         </div>
 
-        {/* 知识库来源引用 */}
+        {/* 知识库来源引用 (Tag 标签区) */}
         {!isUser && !streaming && sources && sources.length > 0 && (
           <div style={{
             marginTop: 8, padding: '8px 12px',

@@ -23,6 +23,11 @@ CONFIG_KEYS = [
     "doc_parser_api_key",
     "doc_parser_api_base",
     "doc_parser_model",
+    "tts_api_key",
+    "tts_app_id",
+    "tts_access_token",
+    "tts_voice",
+    "tts_speed",
 ]
 
 # 各配置项的标签 (前端展示用)
@@ -36,6 +41,11 @@ CONFIG_LABELS: dict[str, str] = {
     "doc_parser_api_key": "文档解析 API Key",
     "doc_parser_api_base": "文档解析 API 地址",
     "doc_parser_model": "文档解析 模型名称",
+    "tts_api_key": "TTS API Key (新版)",
+    "tts_app_id": "TTS App ID (旧版)",
+    "tts_access_token": "TTS Access Token (旧版)",
+    "tts_voice": "TTS 音色",
+    "tts_speed": "TTS 语速",
 }
 
 # .env 静态默认值 (启动时加载, 不会变)
@@ -49,6 +59,11 @@ ENV_DEFAULTS: dict[str, str] = {
     "doc_parser_api_key": settings.doc_parser_api_key,
     "doc_parser_api_base": settings.doc_parser_api_base,
     "doc_parser_model": settings.doc_parser_model,
+    "tts_api_key": settings.tts_api_key,
+    "tts_app_id": settings.tts_app_id,
+    "tts_access_token": settings.tts_access_token,
+    "tts_voice": settings.tts_voice,
+    "tts_speed": str(settings.tts_speed),
 }
 
 # 内存缓存: 用户通过前端修改后立即更新

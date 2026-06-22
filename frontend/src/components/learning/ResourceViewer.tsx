@@ -14,6 +14,7 @@ import MindMapViewer from './MindMapViewer'
 import AnimationViewer from './AnimationViewer'
 import ExerciseViewer from './ExerciseViewer'
 import CodePracticeViewer from './CodePracticeViewer'
+import SpeakButton from '../common/SpeakButton'
 import type { GeneratedResourceDetail, ResourceType } from '../../types'
 
 const { Title, Text } = Typography
@@ -26,6 +27,28 @@ const TYPE_LABELS: Record<ResourceType, string> = {
   reading: '拓展阅读',
   coding_practice: '编程练习',
   video_script: '交互动画',
+}
+
+/** 朗读不可用的资源类型 (非连续文本) */
+const NO_SPEAK_TYPES: ResourceType[] = ['mindmap', 'exercise']
+
+/** 从资源内容中提取纯文本供朗读使用 */
+function extractPlainText(resource: GeneratedResourceDetail): string {
+  const { resource_type, content } = resource
+  if (NO_SPEAK_TYPES.includes(resource_type)) return ''
+
+  if (resource_type === 'video_script') {
+    // 从 HTML 中提取纯文本
+    try {
+      const doc = new DOMParser().parseFromString(content, 'text/html')
+      return doc.body.textContent || ''
+    } catch {
+      return content.replace(/<[^>]+>/g, '').replace(/&[^;]+;/g, '')
+    }
+  }
+
+  // Markdown/讲义/阅读/编程练习: 去 Markdown 标记
+  return content
 }
 
 interface ResourceViewerProps {
@@ -111,7 +134,7 @@ export default function ResourceViewer({
 
   return (
     <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
-      {/* 资源标题栏 (居中) */}
+      {/* 资源标题栏 */}
       <div style={{
         padding: '12px 24px',
         borderBottom: '1px solid #E2E8F0',
@@ -121,6 +144,10 @@ export default function ResourceViewer({
         <Title level={5} style={{ margin: 0 }}>
           {resource.title}
         </Title>
+        {/* 朗读按钮 (非连续文本类型不显示) */}
+        {!NO_SPEAK_TYPES.includes(resource.resource_type) && (
+          <SpeakButton text={extractPlainText(resource)} size="small" />
+        )}
       </div>
 
       {/* 资源正文 */}

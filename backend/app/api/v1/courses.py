@@ -290,8 +290,33 @@ async def delete_chapter(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """ 删除章节及关联知识点, 仅章节所属课程的所有者可操作 """
+    """
+    删除章节及关联知识点, 仅章节所属课程的所有者可操作
+
+    注意: 知识点存在自引用关系 (prerequisite_kp_id, parent_kp_id),
+    SQLAlchemy 无法自动处理循环依赖, 需要先解除引用再删除。
+    """
     chapter = await _get_owned_chapter(chapter_id, current_user, db)
+
+    # 1. 加载章节下所有知识点
+    stmt = select(KnowledgePoint).where(KnowledgePoint.chapter_id == chapter_id)
+    result = await db.execute(stmt)
+    kps = result.scalars().all()
+
+    # 2. 先解除自引用关系 (前置依赖 + 父子关系), 避免循环依赖
+    for kp in kps:
+        kp.prerequisite_kp_id = None
+        kp.parent_kp_id = None
+
+    await db.flush()
+
+    # 3. 删除知识点 (cascade 会处理与 DocumentPage 的多对多关系)
+    for kp in kps:
+        await db.delete(kp)
+
+    await db.flush()
+
+    # 4. 删除章节
     await db.delete(chapter)
     await db.flush()
     return ApiResponse(message="章节已删除")

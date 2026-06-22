@@ -82,6 +82,20 @@ export const useAuthStore = create<AuthState>()(
     }),
     {
       name: 'mla-auth-storage',
+      /** localStorage 版本号: UserInfo 字段变更时递增 (Vercel Rule 4.4) */
+      version: 1,
+      /**
+       * 版本迁移函数: 处理 localStorage 中旧版本数据
+       * 当 UserInfo 类型变更时, 在此添加迁移逻辑
+       */
+      migrate: (persistedState: unknown, version: number) => {
+        // 当前版本, 无需迁移
+        if (version === 0) {
+          // v0 -> v1: 初始版本化, 直接返回
+          return persistedState as AuthState
+        }
+        return persistedState as AuthState
+      },
       partialize: (state) => ({
         token: state.token,
         user: state.user,

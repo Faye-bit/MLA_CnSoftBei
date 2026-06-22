@@ -26,12 +26,12 @@ import {
 } from '@ant-design/icons'
 import type { MenuProps } from 'antd'
 import Sidebar from './Sidebar'
-import MLALogo from '../common/MLALogo'
+
 /** 悬浮聊天组件按需加载: 用户点击时才加载聊天模块 */
 const FloatingChat = lazy(() => import('../common/FloatingChat'))
 import Live2DStage from '../avatar/Live2DStage'
-import Live2DChat from '../avatar/Live2DChat'
 import AvatarBubble from '../avatar/AvatarBubble'
+import Live2DSpeechProvider from '../avatar/Live2DSpeechProvider'
 import { startIdleDetection, timeGreeting, dispatchAvatarEvent, setCurrentRoute, dismissBubble } from '../avatar/AvatarEventBus'
 import { getLive2DEnabled } from '../../pages/Settings'
 import { useAuthStore } from '../../store'
@@ -197,89 +197,87 @@ export default function AppLayout() {
   }, [navigate])
 
   return (
-    <Layout style={{ height: '100vh', overflow: 'hidden' }}>
-      {/* === 侧边栏 === */}
-      <Sidebar collapsed={collapsed} />
+    <Live2DSpeechProvider>
+      <Layout style={{ height: '100vh', overflow: 'hidden' }}>
+        {/* === 侧边栏 === */}
+        <Sidebar collapsed={collapsed} />
 
-      {/* ==================================================================== */}
-      {/* 右侧: 普通 div flex 纵列 — 完全控制滚动模型 */}
-      {/*                                                                      */}
-      {/* 布局逻辑:                                                              */}
-      {/*   [outer Layout] ─ horizontal flex, height: 100vh, overflow:hidden     */}
-      {/*     ├─ Sidebar                                                        */}
-      {/*     └─ [right div] ─ flex: 1, minHeight:0, 纵列                       */}
-      {/*          ├─ [scrollContent div] ─ flex: 1, overflow: auto ← 滚动容器    */}
-      {/*          │   ├─ [header div] ─ sticky: top:0 ← 在滚动容器内吸附         */}
-      {/*          │   └─ [page div] ─ padding, <Outlet />                      */}
-      {/*          │                                                            */}
-      {/*   关键: sticky header 必须在 overflow:auto 的容器内部才能生效            */}
-      {/* ==================================================================== */}
-      <div
-        style={{
-          flex: 1,
-          minHeight: 0,
-          display: 'flex',
-          flexDirection: 'column',
-          background: gray[50],
-        }}
-      >
-        {/* === 滚动容器 (sticky header 在此内部吸附) === */}
+        {/* ==================================================================== */}
+        {/* 右侧: 普通 div flex 纵列 — 完全控制滚动模型 */}
+        {/*                                                                      */}
+        {/* 布局逻辑:                                                              */}
+        {/*   [outer Layout] ─ horizontal flex, height: 100vh, overflow:hidden     */}
+        {/*     ├─ Sidebar                                                        */}
+        {/*     └─ [right div] ─ flex: 1, minHeight:0, 纵列                       */}
+        {/*          ├─ [scrollContent div] ─ flex: 1, overflow: auto ← 滚动容器    */}
+        {/*          │   ├─ [header div] ─ sticky: top:0 ← 在滚动容器内吸附         */}
+        {/*          │   └─ [page div] ─ padding, <Outlet />                      */}
+        {/*          │                                                            */}
+        {/*   关键: sticky header 必须在 overflow:auto 的容器内部才能生效            */}
+        {/* ==================================================================== */}
         <div
           style={{
             flex: 1,
             minHeight: 0,
-            overflow: 'auto',
+            display: 'flex',
+            flexDirection: 'column',
+            background: gray[50],
           }}
         >
-          {/* === 顶栏 — 毛玻璃 sticky === */}
+          {/* === 滚动容器 (sticky header 在此内部吸附) === */}
           <div
             style={{
-              position: 'sticky',
-              top: 0,
-              zIndex: 100,
-              height: 56,
-              padding: '0 24px',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              // 毛玻璃核心: 半透明白色底色 + 背景模糊
-              background: 'rgba(255,255,255,0.72)',
-              backdropFilter: 'blur(12px) saturate(180%)',
-              WebkitBackdropFilter: 'blur(12px) saturate(180%)',
-              borderBottom: `1px solid ${gray[200]}`,
+              flex: 1,
+              minHeight: 0,
+              overflow: 'auto',
             }}
           >
-            {/* 左侧: 折叠按钮 + 横排 Logo */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-              <Button
-                type="text"
-                icon={collapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
-                onClick={() => setCollapsed(!collapsed)}
-                style={{ fontSize: 16, width: 40, height: 40, color: gray[600] }}
-              />
-              {!collapsed && (
-                <MLALogo variant="horizontal" />
-              )}
+            {/* === 顶栏 — 毛玻璃 sticky === */}
+            <div
+              style={{
+                position: 'sticky',
+                top: 0,
+                zIndex: 100,
+                height: 56,
+                padding: '0 24px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                // 毛玻璃核心: 半透明白色底色 + 背景模糊
+                background: 'rgba(255,255,255,0.72)',
+                backdropFilter: 'blur(12px) saturate(180%)',
+                WebkitBackdropFilter: 'blur(12px) saturate(180%)',
+                borderBottom: `1px solid ${gray[200]}`,
+              }}
+            >
+              {/* 左侧: 折叠按钮 + 横排 Logo */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+                <Button
+                  type="text"
+                  icon={collapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
+                  onClick={() => setCollapsed(!collapsed)}
+                  style={{ fontSize: 16, width: 40, height: 40, color: gray[600] }}
+                />
+              </div>
+
+              {/* 右侧: 用户头像下拉 */}
+              <HeaderUserMenu />
             </div>
 
-            {/* 右侧: 用户头像下拉 */}
-            <HeaderUserMenu />
-          </div>
-
-          {/* === 页面内容区 === */}
-          <div style={{ padding: 24, background: gray[50] }}>
-            <Outlet />
+            {/* === 页面内容区 === */}
+            <div style={{ padding: 24, background: gray[50] }}>
+              <Outlet />
+            </div>
           </div>
         </div>
-      </div>
 
-      {/* 按需加载的悬浮聊天组件 */}
-      <Suspense fallback={null}>
-        <FloatingChat />
-      </Suspense>
-      <Live2DStage visible={live2dVisible} />
-      <Live2DChat />
-      <AvatarBubble />
-    </Layout>
+        {/* 按需加载的悬浮聊天组件 */}
+        <Suspense fallback={null}>
+          <FloatingChat />
+        </Suspense>
+        <Live2DStage visible={live2dVisible} />
+        <AvatarBubble />
+      </Layout>
+    </Live2DSpeechProvider>
   )
 }

@@ -365,7 +365,7 @@ def _create_llm_client() -> AsyncOpenAI:
 # Agent System Prompts
 # ============================================================================
 
-COORDINATOR_SYSTEM_PROMPT = """你是 MLA 多学助手的 Coordinator (协调者) Agent, 负责为学生的学习路径做整体规划。
+COORDINATOR_SYSTEM_PROMPT = """你是 MLA 智学引擎的 Coordinator (协调者) Agent, 负责为学生的学习路径做整体规划。
 
 你的任务:
 1. 根据课程章节结构和学生画像, 将课程内容合理划分为 3-6 个学习阶段
@@ -421,7 +421,7 @@ def _shorten_title(title: str, max_len: int = 8) -> str:
     return cleaned[:max_len]
 
 
-PROFILE_SYSTEM_PROMPT = """你是 MLA 多学助手的 Profile Agent, 负责分析学生学习画像并为下游 Agent 提供参考。
+PROFILE_SYSTEM_PROMPT = """你是 MLA 智学引擎的 Profile Agent, 负责分析学生学习画像并为下游 Agent 提供参考。
 
 请根据学生的画像数据, 用自然语言总结以下信息:
 1. 学生的知识基础水平 (初学者/有一定基础/较扎实)
@@ -432,7 +432,7 @@ PROFILE_SYSTEM_PROMPT = """你是 MLA 多学助手的 Profile Agent, 负责分�
 请输出一段 100-200 字的自然语言总结, 直接输出文本即可。"""
 
 
-RETRIEVAL_SYSTEM_PROMPT = """你是 MLA 多学助手的 Knowledge Retrieval Agent, 负责从知识库中检索相关资料并整合。
+RETRIEVAL_SYSTEM_PROMPT = """你是 MLA 智学引擎的 Knowledge Retrieval Agent, 负责从知识库中检索相关资料并整合。
 
 请根据检索到的知识库内容, 以自然语言总结当前阶段的关键知识点:
 1. 核心概念和定义
@@ -443,7 +443,7 @@ RETRIEVAL_SYSTEM_PROMPT = """你是 MLA 多学助手的 Knowledge Retrieval Agen
 请输出一段 150-300 字的总结, 供下游资源生成 Agent 参考。"""
 
 
-TEACHING_DESIGN_SYSTEM_PROMPT = """你是 MLA 多学助手的 Teaching Design Agent, 负责为每个学习阶段设计教学方案。
+TEACHING_DESIGN_SYSTEM_PROMPT = """你是 MLA 智学引擎的 Teaching Design Agent, 负责为每个学习阶段设计教学方案。
 
 你的任务是根据阶段主题、知识内容和学生画像, 确定该阶段应生成哪些类型的资源, 以及每种资源的具体主题。
 
@@ -452,7 +452,7 @@ TEACHING_DESIGN_SYSTEM_PROMPT = """你是 MLA 多学助手的 Teaching Design Ag
 - mindmap: 思维导图 (推荐, 展示知识结构)
 - exercise: 练习题 (推荐, 巩固学习)
 - reading: 拓展阅读 (可选, 深化理解)
-- coding_practice: 编程实操 (面向编程相关知识点)
+- coding_practice: 编程实操 (强烈推荐, 每个阶段都应包含。即使是理论性课程如操作系统、计算机网络等, 也可将核心算法或原理转化为代码实操, 例如: 进程调度算法模拟、页面置换算法实现、内存分配可视化、银行家算法等)
 - video_script: 交互动画 (面向难以直观理解的单个重要知识点, 生成 HTML 动态页面)
 
 输出格式 (严格 JSON):
@@ -470,7 +470,7 @@ TEACHING_DESIGN_SYSTEM_PROMPT = """你是 MLA 多学助手的 Teaching Design Ag
 }"""
 
 
-FACT_CHECK_SYSTEM_PROMPT = """你是 MLA 多学助手的安全与事实核查 Agent, 负责检查生成内容的质量。
+FACT_CHECK_SYSTEM_PROMPT = """你是 MLA 智学引擎的安全与事实核查 Agent, 负责检查生成内容的质量。
 
 请对以下生成的学习资源进行审核:
 1. 事实准确性: 资源中的定义、原理、例子是否与知识库内容一致
@@ -773,6 +773,7 @@ async def teaching_design_node(state: LearningState, config: RunnableConfig) -> 
         {"type": "handout", "title": f"{stage_title} 讲义", "priority": "required"},
         {"type": "mindmap", "title": f"{stage_title} 思维导图", "priority": "recommended"},
         {"type": "exercise", "title": f"{stage_title} 练习题", "priority": "recommended"},
+        {"type": "coding_practice", "title": f"{stage_title} 编程实操", "priority": "recommended"},
         {"type": "reading", "title": f"{stage_title} 拓展阅读", "priority": "optional"},
         {"type": "video_script", "title": f"{stage_title} 交互动画", "priority": "optional"},
     ]
@@ -1390,6 +1391,7 @@ async def _run_stage_generation_with_progress(
         {"type": "handout", "title": f"{stage.get('title', '')} 讲义", "priority": "required"},
         {"type": "mindmap", "title": f"{stage.get('title', '')} 思维导图", "priority": "recommended"},
         {"type": "exercise", "title": f"{stage.get('title', '')} 练习题", "priority": "recommended"},
+        {"type": "coding_practice", "title": f"{stage.get('title', '')} 编程实操", "priority": "recommended"},
         {"type": "reading", "title": f"{stage.get('title', '')} 拓展阅读", "priority": "optional"},
         {"type": "video_script", "title": f"{stage.get('title', '')} 交互动画", "priority": "optional"},
     ]
@@ -1454,11 +1456,19 @@ async def _run_stage_generation_with_progress(
         db.add(stage_obj)
         await db.flush()
     else:
+        # 阶段已存在 (可能是 stats/today 预创建的 pending 行),
+        # 清除旧资源并更新状态为 completed
         from sqlalchemy import delete as sqla_delete
         del_stmt = sqla_delete(GeneratedResource).where(
             GeneratedResource.stage_id == stage_obj.id
         )
         await db.execute(del_stmt)
+        stage_obj.status = "completed"
+        stage_obj.title = stage.get("title", stage_obj.title)
+        stage_obj.stage_metadata = {
+            **(stage_obj.stage_metadata or {}),
+            "total_resources": len(resources),
+        }
 
     await _save_resources_with_unique_titles(db, stage_obj.id, resources)
     await _inject_animation_links(db, stage_obj.id)
@@ -1478,7 +1488,7 @@ async def _run_stage_generation_with_progress(
     await db.commit()
     logger.info(
         f"_run_stage_generation_with_progress: "
-        f"阶段 {stage_index} 完成 ({len(resources)} 个资源)"
+        f"阶段 {stage_index} 完成 ({len(resources)} 个资源), status=completed"
     )
 
 
@@ -1559,6 +1569,7 @@ async def _generate_stage_resources(
         {"type": "handout", "title": f"{stage.get('title', '')} 讲义", "priority": "required"},
         {"type": "mindmap", "title": f"{stage.get('title', '')} 思维导图", "priority": "recommended"},
         {"type": "exercise", "title": f"{stage.get('title', '')} 练习题", "priority": "recommended"},
+        {"type": "coding_practice", "title": f"{stage.get('title', '')} 编程实操", "priority": "recommended"},
         {"type": "reading", "title": f"{stage.get('title', '')} 拓展阅读", "priority": "optional"},
         {"type": "video_script", "title": f"{stage.get('title', '')} 交互动画", "priority": "optional"},
     ]
@@ -1610,13 +1621,19 @@ async def _generate_stage_resources(
         db.add(stage_obj)
         await db.flush()
     else:
-        # stage 已存在但资源为空 (前次生成中途失败)
-        # 清除可能存在的孤儿资源后重新生成
+        # stage 已存在 (stats/today 预创建的 pending 行或前次失败),
+        # 清除孤儿资源, 更新标题和状态
         from sqlalchemy import delete as sqla_delete
         del_stmt = sqla_delete(GeneratedResource).where(
             GeneratedResource.stage_id == stage_obj.id
         )
         await db.execute(del_stmt)
+        stage_obj.status = "completed"
+        stage_obj.title = stage.get("title", stage_obj.title)
+        stage_obj.stage_metadata = {
+            **(stage_obj.stage_metadata or {}),
+            "total_resources": len(resources),
+        }
 
     # 持久化资源 (自动给重名资源添加序号)
     await _save_resources_with_unique_titles(db, stage_obj.id, resources)
@@ -1855,7 +1872,7 @@ def _summarize_node_output(node_name: str, output: dict) -> str:
 # 主观题 AI 打分 (填空题 / 简答题)
 # ============================================================================
 
-EXERCISE_SCORING_SYSTEM_PROMPT = """你是 MLA 多学助手的 AI 评分教师, 负责对学生的填空题和简答题答案进行智能评分。
+EXERCISE_SCORING_SYSTEM_PROMPT = """你是 MLA 智学引擎的 AI 评分教师, 负责对学生的填空题和简答题答案进行智能评分。
 
 评分规则:
 1. 满分 10 分, 最低 0 分

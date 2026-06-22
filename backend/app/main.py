@@ -1,5 +1,5 @@
 """
-MLA (Multiple Learning Agent) 多学助手 - FastAPI 应用入口
+MLA (Multiple Learning Agent) 智学引擎 - FastAPI 应用入口
 启动: uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 """
 
@@ -37,7 +37,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title=f"{settings.app_name} - 多学助手",
+    title=f"{settings.app_name} - 智学引擎",
     description="面向高校专业课程的个性化学习资源生成与智能辅导平台",
     version=settings.app_version,
     lifespan=lifespan,

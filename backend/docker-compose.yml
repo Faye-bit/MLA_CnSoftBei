@@ -1,4 +1,4 @@
-# MLA 多学助手 - 开发环境基础设施
+# MLA 智学引擎 - 开发环境基础设施
 # 启动: docker-compose up -d
 # 停止: docker-compose down -v
 
