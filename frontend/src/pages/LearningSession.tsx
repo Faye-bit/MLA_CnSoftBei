@@ -82,6 +82,8 @@ export default function LearningSessionPage() {
 
   // 资源目录折叠状态
   const [siderCollapsed, setSiderCollapsed] = useState(false)
+  // 用户选择的阶段索引 (可自由切换到已完成阶段复习, 独立于 session.current_stage_index)
+  const [viewStageIndex, setViewStageIndex] = useState<number | null>(null)
 
   /** 标记: 已完成首次 SSE 生成, 防止 useEffect 重复触发 */
   const generationDoneRef = useRef(false)
@@ -259,6 +261,7 @@ export default function LearningSessionPage() {
   function handleCompleteStage() {
     if (!id || !session) return
 
+    setViewStageIndex(null) // 重置复习模式, 回到当前进度
     const stages = session.learning_path?.stages || []
     const currentIndex = session.current_stage_index
 
@@ -486,7 +489,8 @@ export default function LearningSessionPage() {
   if (!session) return null
 
   const stages: LearningPathStage[] = session.learning_path?.stages || []
-  const currentIndex = session.current_stage_index
+  const dbCurrentIndex = session.current_stage_index
+  const currentIndex = viewStageIndex !== null ? viewStageIndex : dbCurrentIndex
   const currentStage = session.stages?.find(s => s.order_index === currentIndex)
     || session.stages?.[0]
   const resources = currentStage?.resources || []
@@ -509,8 +513,8 @@ export default function LearningSessionPage() {
       <LearningPathDrawer
         stages={stages.map((s, i) => ({
           ...s,
-          status: i < currentIndex ? 'completed'
-            : i === currentIndex ? 'active'
+          status: i < dbCurrentIndex ? 'completed'
+            : i === dbCurrentIndex ? 'active'
             : 'pending',
         }))}
         currentStageIndex={currentIndex}
@@ -518,6 +522,17 @@ export default function LearningSessionPage() {
         isLastStage={currentIndex >= (stages.length || session.stages?.length || 1) - 1}
         generating={generatingNext}
         onComplete={handleCompleteStage}
+        onNavigateStage={(stageIndex) => {
+          // 切换到阶段查看 (不调后端, session.stages 已有全部数据)
+          if (stageIndex === dbCurrentIndex) {
+            setViewStageIndex(null)
+          } else {
+            setViewStageIndex(stageIndex)
+          }
+          // 消除前一个阶段的选中状态, 强制用户重新选择资源
+          setSelectedResourceId(null)
+          setSelectedResource(null)
+        }}
       />
 
       {/* 主体: 左侧资源树 + 右侧资源查看器 */}

@@ -261,13 +261,30 @@ async def list_user_sessions(
 
     items = []
     for session in sessions:
-        # 计算进度
-        stages = session.learning_path.get("stages", [])
-        total_stages = len(stages)
-        completed_stages = sum(
-            1 for s in stages
-            if s.get("status") == "completed"
+        # 计算进度: 总数从 learning_path 规划取, 完成数从 learning_stages 表取
+        planned = session.learning_path.get("stages", [])
+        total_stages = len(planned)
+        if total_stages == 0:
+            # 兜底: 用 learning_stages 表记录数
+            from app.models.learning import LearningStage
+            stage_count_stmt = (
+                select(func.count(LearningStage.id))
+                .where(LearningStage.session_id == session.id)
+            )
+            total_result = await db.execute(stage_count_stmt)
+            total_stages = total_result.scalar() or 0
+
+        from app.models.learning import LearningStage
+        completed_stmt = (
+            select(func.count(LearningStage.id))
+            .where(
+                LearningStage.session_id == session.id,
+                LearningStage.status == "completed",
+            )
         )
+        completed_result = await db.execute(completed_stmt)
+        completed_stages = completed_result.scalar() or 0
+
         progress = int(completed_stages / total_stages * 100) if total_stages > 0 else 0
 
         # 获取课程名称
