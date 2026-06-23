@@ -27,14 +27,7 @@ import { useEffect, useRef } from 'react'
 
 /** 模型列表 (来自 Cubism 5 SDK Samples/Resources/) */
 const MODELS = [
-  { path: '/models/haru/Haru.model3.json',     tips: false as const },
-  { path: '/models/hiyori/Hiyori.model3.json', tips: false as const },
-  { path: '/models/mao/Mao.model3.json',       tips: false as const },
-  { path: '/models/natori/Natori.model3.json', tips: false as const },
-  { path: '/models/rice/Rice.model3.json',     tips: false as const },
-  { path: '/models/ren/Ren.model3.json',       tips: false as const },
-  { path: '/models/wanko/Wanko.model3.json',   tips: false as const },
-  { path: '/models/mark/Mark.model3.json',     tips: false as const },
+  { path: '/models/haru/Haru.model3.json', tips: false as const },
 ]
 
 /** 画布尺寸 */
@@ -96,10 +89,15 @@ export default function Live2DStage({ visible = true }: Live2DStageProps) {
       const { createWidget } = await import('l2d-widget')
       if (cancelled || !guardRef.current) return
 
+      // ---- 预注入裁剪样式 (创建 widget 前, 避免加载闪烁) ----
+      const preClipStyle = document.createElement('style')
+      preClipStyle.textContent = `body>div[style*="fixed"] canvas{clip-path:inset(0 0 ${CLIP_BOTTOM_RATIO * 100}% 0)!important}`
+      document.head.appendChild(preClipStyle)
+
       // ---- 创建 widget ----
       const widget = createWidget({
         model: MODELS,
-        position: 'bottom-right',
+        position: 'bottom-left',
         size: CANVAS_SIZE,
         primaryColor: '#1677ff',
         transitionDuration: 0,
@@ -123,20 +121,10 @@ export default function Live2DStage({ visible = true }: Live2DStageProps) {
       if (widgetEls.length === 0) return
       widgetElsRef.current = widgetEls
 
-      // ---- 上半身裁剪: 裁掉下半身, 避免遮挡内容 ----
-      widgetEls.forEach(w => {
-        if (window.getComputedStyle(w).position === 'fixed') {
-          // 找到最外层的 l2d 容器并应用 clip-path
-          const l2dContainer = w.querySelector('[class*="l2d"]') || w.querySelector('canvas')?.parentElement
-          const target = (l2dContainer || w) as HTMLElement
-          const clipValue = `inset(0 0 ${CLIP_BOTTOM_RATIO * 100}% 0)`
-          target.style.clipPath = clipValue
-          target.style.setProperty('clip-path', clipValue)
-        }
-      })
+      // ---- 上半身裁剪 (CSS 预注入, 无需重复设置) ----
 
       // ---- 隐藏不需要的 UI ("正在加载"/"正在休息"/"About") ----
-      const hideTexts = ['正在加载', '正在休息', 'About', '关于']
+      const hideTexts = ['正在加载', '正在休息', 'About', '关于', '切换模型']
       const hideStatusTexts = () => {
         widgetEls.forEach(w => {
           w.querySelectorAll('*').forEach(el => {

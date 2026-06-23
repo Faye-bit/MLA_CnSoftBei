@@ -8,9 +8,11 @@
  */
 
 import { Avatar, Tag, Space, Typography } from 'antd'
-import { UserOutlined, RobotOutlined, FileTextOutlined, FileImageOutlined, LinkOutlined } from '@ant-design/icons'
+import { FileTextOutlined, FileImageOutlined, LinkOutlined } from '@ant-design/icons'
 import MarkdownRenderer from '../common/MarkdownRenderer'
 import SpeakButton from '../common/SpeakButton'
+import { getAvatarUrl } from '../../services/api'
+import { useAuthStore } from '../../store'
 import type { ChatSource } from '../../types'
 import { blue, gray, semantic } from '../../styles/tokens'
 
@@ -33,6 +35,16 @@ function stripInlineReferences(content: string): string {
     .trim()
 }
 
+/** 用户头像 (取自个人中心上传的头像) */
+function UserAvatar() {
+  const user = useAuthStore(s => s.user)
+  const avatarUrl = getAvatarUrl(user?.avatar)
+  if (avatarUrl) {
+    return <Avatar src={avatarUrl} style={{ flexShrink: 0 }} size={36} />
+  }
+  return <Avatar style={{ backgroundColor: blue[500], flexShrink: 0 }} size={36}>{user?.nickname?.[0] || user?.username?.[0] || 'U'}</Avatar>
+}
+
 export default function ChatMessage({ role, content, sources, createdAt, streaming = false }: ChatMessageProps) {
   if (role === 'system') return null
 
@@ -50,14 +62,15 @@ export default function ChatMessage({ role, content, sources, createdAt, streami
       animation: 'msgFadeIn 0.3s ease-out',
     }}>
       {/* 头像 */}
-      <Avatar
-        icon={isUser ? <UserOutlined /> : <RobotOutlined />}
-        style={{
-          backgroundColor: isUser ? blue[500] : semantic.success,
-          flexShrink: 0,
-        }}
-        size={36}
-      />
+      {isUser ? (
+        <UserAvatar />
+      ) : (
+        <Avatar
+          src="/brand/Agent形象.svg"
+          style={{ backgroundColor: 'transparent', flexShrink: 0 }}
+          size={36}
+        />
+      )}
 
       {/* 消息主体 */}
       <div style={{ maxWidth: '75%', minWidth: 60 }}>

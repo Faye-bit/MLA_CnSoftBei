@@ -25,6 +25,8 @@ interface LearningPathDrawerProps {
   isLastStage: boolean
   generating: boolean
   onComplete: () => void
+  /** 点击已完成阶段时回调, 用于切换到该阶段查看/复习 */
+  onNavigateStage?: (stageIndex: number) => void
 }
 
 function CompleteButton({ isLastStage, generating, onComplete }: {
@@ -50,7 +52,7 @@ function CompleteButton({ isLastStage, generating, onComplete }: {
 }
 
 export default function LearningPathDrawer({
-  stages, currentStageIndex, totalStages, isLastStage, generating, onComplete,
+  stages, currentStageIndex, totalStages, isLastStage, generating, onComplete, onNavigateStage,
 }: LearningPathDrawerProps) {
   const [collapsed, setCollapsed] = useState(false)
 
@@ -103,11 +105,22 @@ export default function LearningPathDrawer({
         <CompleteButton isLastStage={isLastStage} generating={generating} onComplete={onComplete} />
       </div>
 
-      {/* 展开: 水平 Steps */}
+      {/* 展开: 水平 Steps (已完成阶段可点击回看) */}
       {!collapsed && effectiveStages.length > 0 && (
         <div style={{ padding: '16px 40px', overflowX: 'auto' }}>
-          <Steps current={currentStageIndex} size="small" items={stepItems}
-            style={{ minWidth: effectiveStages.length * 120 }} />
+          <Steps
+            current={currentStageIndex}
+            size="small"
+            items={stepItems}
+            onChange={(clickedIndex) => {
+              // 允许点击已完成阶段、当前活跃阶段 (无法跳到未开始阶段)
+              const status = effectiveStages[clickedIndex]?.status
+              if (status === 'completed' || status === 'active' || status === 'process') {
+                onNavigateStage?.(clickedIndex)
+              }
+            }}
+            style={{ minWidth: effectiveStages.length * 120, cursor: 'pointer' }}
+          />
         </div>
       )}
     </div>

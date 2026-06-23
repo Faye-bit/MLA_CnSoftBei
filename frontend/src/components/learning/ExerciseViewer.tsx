@@ -383,12 +383,13 @@ export default function ExerciseViewer({ content, resourceId, resourceMetadata }
     }
 
     return (
-      <Input
+      <Input.TextArea
         value={(currentAnswer as string) || ''}
         onChange={e => handleTextChange(q, e.target.value)}
         disabled={submittedAnswer}
         placeholder={q.type === 'fill_blank' ? '请输入答案' : '请输入你的理解...'}
-        style={{ maxWidth: 400 }}
+        autoSize={{ minRows: 1, maxRows: 10 }}
+        style={{ maxWidth: 600 }}
       />
     )
   }
