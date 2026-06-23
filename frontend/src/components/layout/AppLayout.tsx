@@ -15,7 +15,7 @@
  * - Content 自然撑高, 内容滚动时穿过半透明 Header 后方 — 毛玻璃效果显现
  */
 
-import { useState, useEffect, useRef, useMemo, useCallback, lazy, Suspense } from 'react'
+import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { Outlet, useNavigate, useLocation } from 'react-router-dom'
 import { Layout, Button, Avatar, Dropdown, Space, Typography, message } from 'antd'
 import {
@@ -27,8 +27,7 @@ import {
 import type { MenuProps } from 'antd'
 import Sidebar from './Sidebar'
 
-/** 悬浮聊天组件按需加载: 用户点击时才加载聊天模块 */
-const FloatingChat = lazy(() => import('../common/FloatingChat'))
+import FloatingChat from '../common/FloatingChat'
 import Live2DStage from '../avatar/Live2DStage'
 import AvatarBubble from '../avatar/AvatarBubble'
 import Live2DSpeechProvider from '../avatar/Live2DSpeechProvider'
@@ -271,10 +270,7 @@ export default function AppLayout() {
           </div>
         </div>
 
-        {/* 按需加载的悬浮聊天组件 */}
-        <Suspense fallback={null}>
-          <FloatingChat />
-        </Suspense>
+        <FloatingChat />
         <Live2DStage visible={live2dVisible} />
         <AvatarBubble />
       </Layout>

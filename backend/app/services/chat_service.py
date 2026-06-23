@@ -10,19 +10,20 @@ RAG 对话流程:
 5. 调用 LLM 流式生成回复
 6. 逐 token SSE 推送给前端
 7. 保存完整 AI 回复到数据库
-8. 首次对话时自动生成标题 (仅第一句, 在 done 之前)
-9. 提取用户信息记忆
-10. 发送 done SSE 事件 (此时标题和记忆已就绪)
+8. 立即发送 done SSE 事件 (通知前端流式已结束)
+9. 后台异步: 自动生成标题 + 提取用户信息记忆 (不阻塞 done)
 """
 
 import uuid
 import json
+import asyncio
 from typing import AsyncGenerator, Optional, List
 from openai import AsyncOpenAI
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.conversation import Conversation, Message
 from app.models.course import Course
+from app.core.database import async_session_factory
 from app.services.config_service import get_config_value
 from app.services.retriever import retrieve, RetrievedChunk
 from app.services.profile_service import get_user_memories, extract_memories_from_exchange
@@ -32,10 +33,10 @@ from loguru import logger
 # RAG 知识库对话 System Prompt
 # ============================================================================
 
-RAG_CHAT_SYSTEM_PROMPT = """你是 MLA (Multiple Learning Agent) 智学引擎，一个专业的课程学习助手，专门为高校学生提供课程辅导。
+RAG_CHAT_SYSTEM_PROMPT = """你是 MLA (Multiple Learning Agent) 智学引擎的虚拟助教，一个专业的课程学习助手，专门为高校学生提供课程辅导。
 
 你的身份:
-- 你的名字是 MLA 智学引擎，由 AAAgent 团队开发
+- 你的名字是 Haru
 
 重要规则:
 1. 回答必须优先基于提供的「知识库参考资料」。如果知识库中有相关内容，请引用来回答。
@@ -480,31 +481,16 @@ async def chat_stream(
         await db.commit()
         await db.refresh(assistant_msg)
 
-        # 8. 首次对话时自动生成标题 (必须在 done 之前, 确保前端收到 done 后能获取到新标题)
-        if conversation.title == "新对话":
-            try:
-                await generate_conversation_title(conversation_id, user_message, db)
-            except Exception as e:
-                logger.warning(f"自动标题生成失败 (已忽略): {e}")
+        # 8. 立即发送完成事件 — 不等待标题/记忆的后台处理
+        yield _sse_event("done", {"message_id": str(assistant_msg.id)})
 
-        # 后台异步提取用户信息记忆 (也移到 done 之前, 避免阻塞 UI 刷新)
-        # 传入 AI 回复, 让 LLM 从对话上下文中推断用户信息
-        try:
-            await extract_memories_from_exchange(
-                user_id=conversation.user_id,
-                user_message=user_message,
-                db=db,
-                assistant_message=full_content,
-            )
-        except Exception as e:
-            logger.warning(f"后台记忆提取失败 (已忽略): {e}")
-
-        # 首次对话时自动生成标题 (静默)
-        if conversation.title in ("新对话", "快速问答"):
-            try:
-                await generate_conversation_title(conversation_id, user_message, db)
-            except Exception as e:
-                logger.warning(f"自动标题生成失败 (已忽略): {e}")
+        # 9. 后台异步: 生成标题 + 提取用户记忆 (使用独立 DB 会话, 不阻塞 UI)
+        asyncio.create_task(_postprocess_background(
+            conversation_id=conversation_id,
+            user_id=conversation.user_id,
+            user_message=user_message,
+            assistant_message=full_content,
+        ))
 
     except Exception as e:
         error_msg = str(e)
@@ -518,6 +504,45 @@ async def chat_stream(
         await db.commit()
         await db.refresh(error_msg_obj)
         yield _sse_event("error", {"message": error_msg, "message_id": str(error_msg_obj.id)})
+
+
+# ============================================================================
+# 后台任务: 标题生成 + 记忆提取 — 不阻塞 done 事件
+# ============================================================================
+
+async def _postprocess_background(
+    conversation_id: uuid.UUID,
+    user_id: uuid.UUID,
+    user_message: str,
+    assistant_message: str,
+):
+    """
+    流式完成后的后台处理任务
+    使用独立的数据库会话, 不影响主 SSE 流的响应速度
+
+    执行内容:
+    1. 首次对话时自动生成标题 (通过 LLM 概括首条消息)
+    2. 从本轮对话中提取用户信息记忆
+    """
+    async with async_session_factory() as db:
+        try:
+            # 1. 标题生成
+            await generate_conversation_title(conversation_id, user_message, db)
+        except Exception as e:
+            logger.warning(f"后台标题生成失败 (已忽略): {e}")
+
+    # 记忆提取也使用独立会话
+    async with async_session_factory() as db:
+        try:
+            # 2. 提取用户信息记忆
+            await extract_memories_from_exchange(
+                user_id=user_id,
+                user_message=user_message,
+                db=db,
+                assistant_message=assistant_message,
+            )
+        except Exception as e:
+            logger.warning(f"后台记忆提取失败 (已忽略): {e}")
 
 
 def _sse_event(event_type: str, data: dict) -> str:

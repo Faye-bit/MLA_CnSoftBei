@@ -515,6 +515,34 @@ export function streamChat(
       const decoder = new TextDecoder()
       let buffer = ''
 
+      /**
+       * 解析并分发一个完整的 SSE 事件行
+       * 格式: data: {"type":"...","key":"value",...}
+       */
+      const dispatchEvent = (line: string) => {
+        if (!line.trim() || !line.startsWith('data: ')) return
+        try {
+          const jsonStr = line.slice(6)  // 去掉 "data: " 前缀
+          const event = JSON.parse(jsonStr)
+          switch (event.type) {
+            case 'content':
+              callbacks.onContent(event.content)
+              break
+            case 'sources':
+              callbacks.onSources(event.sources || [])
+              break
+            case 'done':
+              callbacks.onDone(event.message_id)
+              break
+            case 'error':
+              callbacks.onError(event.message || '未知错误')
+              break
+          }
+        } catch {
+          // 忽略解析错误的行
+        }
+      }
+
       // 逐块读取 SSE 流
       while (true) {
         const { done, value } = await reader.read()
@@ -527,30 +555,19 @@ export function streamChat(
         buffer = lines.pop() || ''  // 最后一个可能不完整, 保留在 buffer 中
 
         for (const line of lines) {
-          if (!line.trim() || !line.startsWith('data: ')) continue
-
-          try {
-            const jsonStr = line.slice(6)  // 去掉 "data: " 前缀
-            const event = JSON.parse(jsonStr)
-
-            switch (event.type) {
-              case 'content':
-                callbacks.onContent(event.content)
-                break
-              case 'sources':
-                callbacks.onSources(event.sources || [])
-                break
-              case 'done':
-                callbacks.onDone(event.message_id)
-                break
-              case 'error':
-                callbacks.onError(event.message || '未知错误')
-                break
-            }
-          } catch {
-            // 忽略解析错误的行
-          }
+          dispatchEvent(line)
         }
+      }
+
+      /**
+       * 处理缓冲区中可能残留的完整 SSE 事件
+       * 当 SSE 流结束但 buffer 中仍有完整 data: {...} 行时,
+       * (例如最后一个事件被 split 误判为不完整, 或流结束时
+       * trailing \n\n 未正确到达) 需要在这里集中处理,
+       * 防止最后一个事件 (尤其是 done) 丢失导致流永不结束
+       */
+      if (buffer.trim()) {
+        dispatchEvent(buffer)
       }
     })
     .catch((err) => {

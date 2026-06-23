@@ -15,7 +15,7 @@ import {
   ExpandOutlined, MinusOutlined, DeleteOutlined, PlusOutlined,
 } from '@ant-design/icons'
 import ChatMessage from '../chat/ChatMessage'
-import { getConversations, getConversationDetail, createConversation, deleteConversation, streamChat } from '../../services/api'
+import { getConversationDetail, createConversation, streamChat } from '../../services/api'
 import type { Conversation, Message, ChatSource } from '../../types'
 import { blue, gray } from '../../styles/tokens'
 
@@ -45,6 +45,11 @@ export default function FloatingChat() {
   const streamingContentRef = useRef('')
   const streamingSourcesRef = useRef<ChatSource[]>([])
   const abortControllerRef = useRef<AbortController | null>(null)
+  /**
+   * 追踪用户是否已在本轮会话中发送过消息
+   * 用于防止 loadConversationById 在流式进行中覆盖本地消息状态
+   */
+  const hasSentMessageRef = useRef(false)
   /** IME 组合状态: 输入法激活时 Enter 只选词不发送 */
   const isComposingRef = useRef(false)
   /** 输入框 DOM 引用 — 用于自适应高度 */
@@ -67,12 +72,24 @@ export default function FloatingChat() {
     setMessagesLoading(true)
     try {
       const detail = await getConversationDetail(id)
-      setConversation({ id: detail.id, user_id: detail.user_id, course_id: detail.course_id, title: detail.title, conversation_type: detail.conversation_type, profile_collection_stage: detail.profile_collection_stage, message_count: detail.message_count, created_at: detail.created_at, updated_at: detail.updated_at })
-      setMessages(detail.messages || [])
+      /**
+       * 仅在用户未发送消息时才覆盖 conversation 和 messages
+       * 如果已发送, 状态由 handleSend/onDone/onError 管理,
+       * 避免慢速 API 响应覆盖已更新的本地状态;
+       * 同时也避免重置 streamingContentRef 干扰正在进行的流式输出
+       */
+      if (!hasSentMessageRef.current) {
+        /** 对齐 Chat.tsx handleSelectConversation: 加载对话前重置流式状态 */
+        setStreaming(false); setStreamingContent(''); setStreamingSources([])
+        streamingContentRef.current = ''; streamingSourcesRef.current = []
+        setConversation({ id: detail.id, user_id: detail.user_id, course_id: detail.course_id, title: detail.title, conversation_type: detail.conversation_type, profile_collection_stage: detail.profile_collection_stage, message_count: detail.message_count, created_at: detail.created_at, updated_at: detail.updated_at })
+        setMessages(detail.messages || [])
+      }
     } finally { setMessagesLoading(false) }
   }
 
   async function createNewConversation() {
+    hasSentMessageRef.current = false
     setMessagesLoading(true)
     try {
       const conv = await createConversation({ conversation_type: 'chat', title: '快速问答' })
@@ -82,7 +99,7 @@ export default function FloatingChat() {
   }
 
   async function handleDeleteAndNew() {
-    if (conversation) { try { await deleteConversation(conversation.id) } catch { /* ignore */ } }
+    /** 不再删除旧会话 — 保留在数据库中供"AI问答"页面访问 */
     setConversation(null); setMessages([])
     localStorage.removeItem(LAST_CONVERSATION_KEY)
     await createNewConversation()
@@ -92,6 +109,9 @@ export default function FloatingChat() {
   async function handleSend() {
     const content = inputValue.trim()
     if (!content || streaming || !conversation) return
+
+    /** 标记本会话已发送消息, 防止 loadConversationById 覆盖本地消息 */
+    hasSentMessageRef.current = true
 
     const userMsg: Message = { id: 'temp-' + Date.now(), conversation_id: conversation.id, role: 'user', content, sources: null, message_metadata: null, created_at: new Date().toISOString() }
     setMessages((prev) => [...prev, userMsg]); setInputValue('')
@@ -107,7 +127,13 @@ export default function FloatingChat() {
       onContent: (chunk) => { streamingContentRef.current += chunk; setStreamingContent(streamingContentRef.current) },
       onSources: (sources) => { streamingSourcesRef.current = sources; setStreamingSources(sources) },
       onDone: (messageId) => {
-        setMessages((prev) => [...prev, { id: messageId, conversation_id: convSnapshot.id, role: 'assistant', content: streamingContentRef.current, sources: streamingSourcesRef.current.length > 0 ? streamingSourcesRef.current : null, message_metadata: null, created_at: new Date().toISOString() }])
+        /** 必须先将 ref 内容保存到局部变量, 再调用 setMessages
+         *  React 19 自动批处理状态下, setMessages 的 updater 回调
+         *  可能在 streamingContentRef 被重置之后才执行,
+         *  导致 AI 回复内容丢失 (空气泡 bug) */
+        const finalContent = streamingContentRef.current
+        const finalSources = streamingSourcesRef.current
+        setMessages((prev) => [...prev, { id: messageId, conversation_id: convSnapshot.id, role: 'assistant', content: finalContent, sources: finalSources.length > 0 ? finalSources : null, message_metadata: null, created_at: new Date().toISOString() }])
         setStreaming(false); setStreamingContent(''); setStreamingSources([]); streamingContentRef.current = ''; streamingSourcesRef.current = []
       },
       onError: (error) => {
@@ -121,6 +147,7 @@ export default function FloatingChat() {
 
   function handleStop() {
     abortControllerRef.current?.abort()
+    hasSentMessageRef.current = false
     const partial = streamingContentRef.current
     if (partial && conversation) setMessages((prev) => [...prev, { id: 'partial-' + Date.now(), conversation_id: conversation.id, role: 'assistant', content: partial + '\n\n[已停止]', sources: streamingSourcesRef.current.length > 0 ? streamingSourcesRef.current : null, message_metadata: null, created_at: new Date().toISOString() }])
     setStreaming(false); setStreamingContent(''); setStreamingSources([]); streamingContentRef.current = ''; streamingSourcesRef.current = []
@@ -173,6 +200,10 @@ export default function FloatingChat() {
   }), [snapSide, collapseTop])
 
   function handleClose() {
+    /** 仅在实际流式进行中时才中止请求, 避免已完成流式上的副作用 */
+    if (streaming) abortControllerRef.current?.abort()
+    /** 重置发送标记, 下次打开面板时允许从服务器加载最新消息 */
+    hasSentMessageRef.current = false
     setVisible(false); setStreaming(false); setStreamingContent(''); setStreamingSources([])
     streamingContentRef.current = ''; streamingSourcesRef.current = []
   }
@@ -229,14 +260,14 @@ export default function FloatingChat() {
                 onKeyDown={(e) => { if (e.key === 'Enter' && !isComposingRef.current && !e.shiftKey) { e.preventDefault(); handleSend() } }}
                 onCompositionStart={() => { isComposingRef.current = true }}
                 onCompositionEnd={() => { isComposingRef.current = false }}
-                placeholder="输入问题, Enter 发送, Shift+Enter 换行" rows={1} disabled={streaming}
+                placeholder="输入问题, Enter 发送, Shift+Enter 换行" rows={1} disabled={streaming || messagesLoading}
                 style={{ flex: 1, resize: 'none', border: `1px solid ${gray[300]}`, borderRadius: 8, padding: '8px 10px', fontSize: 13, lineHeight: 1.4, outline: 'none', fontFamily: 'inherit', maxHeight: 120, minHeight: 34 }}
                 onFocus={(e) => { e.target.style.borderColor = blue[500]; e.target.style.boxShadow = '0 0 0 3px rgba(59,130,246,0.15)' }}
                 onBlur={(e) => { e.target.style.borderColor = gray[300]; e.target.style.boxShadow = 'none' }} />
               {streaming ? (
                 <Button type="primary" danger size="small" icon={<StopOutlined />} onClick={handleStop} />
               ) : (
-                <Button type="primary" size="small" icon={<SendOutlined />} onClick={handleSend} disabled={!inputValue.trim()} />
+                <Button type="primary" size="small" icon={<SendOutlined />} onClick={handleSend} disabled={!inputValue.trim() || messagesLoading} />
               )}
             </div>
           </div>

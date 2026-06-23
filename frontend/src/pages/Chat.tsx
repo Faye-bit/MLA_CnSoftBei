@@ -175,7 +175,12 @@ export default function Chat() {
       onContent: (chunk) => { streamingContentRef.current += chunk; setStreamingContent(streamingContentRef.current) },
       onSources: (sources) => { streamingSourcesRef.current = sources; setStreamingSources(sources) },
       onDone: (messageId) => {
-        setMessages((prev) => [...prev, { id: messageId, conversation_id: conversationSnapshot.id, role: 'assistant', content: streamingContentRef.current, sources: streamingSourcesRef.current.length > 0 ? streamingSourcesRef.current : null, message_metadata: null, created_at: new Date().toISOString() }])
+        /** 必须先将 ref 内容保存到局部变量, 再调用 setMessages
+         *  React 19 自动批处理状态下, setMessages 的 updater 回调
+         *  可能在 streamingContentRef 被重置之后才执行 */
+        const finalContent = streamingContentRef.current
+        const finalSources = streamingSourcesRef.current
+        setMessages((prev) => [...prev, { id: messageId, conversation_id: conversationSnapshot.id, role: 'assistant', content: finalContent, sources: finalSources.length > 0 ? finalSources : null, message_metadata: null, created_at: new Date().toISOString() }])
         setStreaming(false); setStreamingContent(''); setStreamingSources([])
         streamingContentRef.current = ''; streamingSourcesRef.current = []
         silentRefreshConversations()
