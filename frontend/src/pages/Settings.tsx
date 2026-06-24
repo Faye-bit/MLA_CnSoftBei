@@ -141,6 +141,19 @@ export default function Settings() {
             onChange={(checked) => setLive2DEnabled(checked)}
           />
         </div>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 12, paddingTop: 12, borderTop: '1px solid #f0f0f0' }}>
+          <div>
+            <Text strong>启用智能气泡</Text>
+            <br />
+            <Text type="secondary" style={{ fontSize: 12 }}>
+              关闭后虚拟形象不再弹出提示气泡 (页面切换/闲置提醒等)。
+            </Text>
+          </div>
+          <Switch
+            defaultChecked={localStorage.getItem('mla-bubble-enabled') !== 'false'}
+            onChange={(checked) => localStorage.setItem('mla-bubble-enabled', String(checked))}
+          />
+        </div>
       </Card>
 
       <Form form={form} layout="vertical">
