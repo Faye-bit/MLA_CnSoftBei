@@ -177,10 +177,39 @@ class KnowledgePoint(Base):
         String(20), nullable=False, default="medium"
     )
 
-    # 来源类型
+    # 来源类型: manual=人工创建 / auto=AI自动提取
     source_type: Mapped[str] = mapped_column(
         String(20), nullable=False, default="manual"
     )
+
+    # ========== AI 解释 (快问AI 功能) ==========
+
+    # AI 生成的简洁解释: 用户通过"快问AI"提问后, 选择保存的浓缩版回答
+    ai_explanation: Mapped[Optional[str]] = mapped_column(
+        Text, nullable=True
+    )
+
+    # AI 解释的生成时间
+    ai_explanation_generated_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
+    # 触发该 AI 解释的原始用户提问 (用于相似提问去重)
+    ai_explanation_query: Mapped[Optional[str]] = mapped_column(
+        Text, nullable=True
+    )
+
+    # "报告不准确" 计数: >= 5 时前端自动隐藏该解释
+    ai_explanation_report_count: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0
+    )
+
+    # 生成该解释使用的 LLM 模型名称
+    ai_explanation_model: Mapped[Optional[str]] = mapped_column(
+        String(50), nullable=True
+    )
+
+    # ========== 时间戳 ==========
 
     # 创建时间
     created_at: Mapped[datetime] = mapped_column(

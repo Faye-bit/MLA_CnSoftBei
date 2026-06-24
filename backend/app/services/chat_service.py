@@ -22,7 +22,7 @@ from openai import AsyncOpenAI
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.conversation import Conversation, Message
-from app.models.course import Course
+from app.models.course import Course, KnowledgePoint
 from app.core.database import async_session_factory
 from app.services.config_service import get_config_value
 from app.services.retriever import retrieve, RetrievedChunk
@@ -114,6 +114,69 @@ PROFILE_STAGES = [
 ]
 
 
+# ============================================================================
+# 快问AI System Prompt (按上下文类型分支)
+# ============================================================================
+
+QUICK_ASK_SYSTEM_PROMPT = """你是 MLA (Multiple Learning Agent) 智学引擎的虚拟助教 Haru。
+
+{context_section}
+
+重要规则:
+1. 请针对上述内容进行清晰、易懂的解释，帮助学生理解。
+2. 使用 Markdown 格式，支持标题、列表、代码块、表格等。
+3. 如果涉及代码，请逐行解释代码含义和关键逻辑。
+4. 如果涉及练习题，请解释概念和方法，**不要直接给出答案**。
+5. 回答末尾列出引用的知识库来源编号 (如有)。
+
+{memories_section}"""
+
+
+def build_quick_ask_context(ctx: dict) -> str:
+    """
+    根据快问AI的上下文类型构建针对性的系统提示片段
+
+    :param ctx: quick_ask_context 字典, 包含 source_type, context_text 等
+    :return: 上下文描述文本
+    """
+    source_type = ctx.get("source_type", "general")
+    context_text = ctx.get("context_text", "")
+
+    if source_type == "kp":
+        return (
+            f"学生正在学习以下知识点，希望获得深入理解：\n\n"
+            f"{context_text}\n\n"
+            f"请帮助学生深入理解这个知识点，解释核心概念、关键原理以及应用场景。"
+        )
+    elif source_type == "code":
+        return (
+            f"学生在阅读以下代码时遇到了困难：\n\n"
+            f"```\n{context_text}\n```\n\n"
+            f"请逐行解释这段代码的功能、逻辑和关键概念，说明每部分的作用。"
+        )
+    elif source_type == "exercise":
+        return (
+            f"学生在做以下练习题时需要帮助：\n\n"
+            f"{context_text}\n\n"
+            f"请解释相关概念和解题思路，帮助学生理解题目考察的知识点。"
+            f"**重要: 不要直接给出答案，而是引导学生思考。**"
+        )
+    elif source_type == "document":
+        return (
+            f"学生在阅读以下文档内容时遇到了问题：\n\n"
+            f"{context_text}\n\n"
+            f"请帮助解释文档中的关键概念和要点。"
+        )
+    elif source_type == "text_selection":
+        return (
+            f"学生选中了以下内容，希望获得更多解释：\n\n"
+            f"{context_text}\n\n"
+            f"请针对选中的文本进行解释，说明其含义和背景。"
+        )
+    else:
+        return f"学生的问题是：\n\n{context_text}"
+
+
 def get_stage_hint(current_stage: Optional[str]) -> str:
     """根据当前收集阶段生成引导提示"""
     if current_stage is None or current_stage == "done":
@@ -180,6 +243,20 @@ def _format_memories(memories: list[str]) -> str:
 # ============================================================================
 
 TITLE_GENERATION_PROMPT = """请用不超过 15 个字概括以下对话的核心主题。直接回复标题文本, 不要加引号、标点或任何前缀。"""
+
+
+# ============================================================================
+# AI 解释浓缩 Prompt (快问AI 功能)
+# ============================================================================
+
+CONDENSE_EXPLANATION_PROMPT = """请将以下 AI 助教的回复浓缩为一段简洁的知识点解释 (2-4 句话, 最多 200 字)。
+聚焦于核心概念和关键要点。去除人称代词 (如"你"、"学生"等), 保持客观、事实性陈述。
+不要包含任何问候语或过渡语。
+
+AI 回复:
+{full_response}
+
+请直接输出简洁解释：""".strip()
 
 
 async def generate_conversation_title(
@@ -357,6 +434,7 @@ async def chat_stream(
     course_id: Optional[uuid.UUID],
     db: AsyncSession,
     system_prompt: Optional[str] = None,
+    quick_ask_context: Optional[dict] = None,
 ) -> AsyncGenerator[str, None]:
     """
     SSE 流式对话生成器
@@ -367,6 +445,8 @@ async def chat_stream(
     - sources: 知识库引用来源列表
     - done: 生成完成, 附带 message_id
     - error: 错误信息
+
+    :param quick_ask_context: 快问AI上下文 (source_type, kp_id, context_text 等)
     """
     # 1. 获取对话信息
     conversation = await db.get(Conversation, conversation_id)
@@ -374,11 +454,22 @@ async def chat_stream(
         yield _sse_event("error", {"message": "对话不存在"})
         return
 
-    # 2. 保存用户消息到数据库
+    # 2. 保存用户消息到数据库 (附带快问AI上下文元数据)
+    user_msg_metadata: Optional[dict] = None
+    if quick_ask_context:
+        user_msg_metadata = {
+            "quick_ask_source": quick_ask_context.get("source_type"),
+            "kp_id": quick_ask_context.get("kp_id"),
+            "course_id": quick_ask_context.get("course_id"),
+            "chapter_id": quick_ask_context.get("chapter_id"),
+            "document_id": quick_ask_context.get("document_id"),
+            "context_text": quick_ask_context.get("context_text", "")[:500],
+        }
     user_msg = Message(
         conversation_id=conversation_id,
         role="user",
         content=user_message,
+        message_metadata=user_msg_metadata,
     )
     db.add(user_msg)
     await db.commit()
@@ -414,6 +505,20 @@ async def chat_stream(
     if system_prompt:
         # 前端传来的自定义 prompt (如 Live2D 伙伴聊天)
         system_prompt_text = system_prompt.format(memories_section=memories_section)
+    elif quick_ask_context:
+        # 快问AI模式: 使用快问专用系统提示词, 注入上下文
+        context_section = build_quick_ask_context(quick_ask_context)
+        if rag_context:
+            system_prompt_text = QUICK_ASK_SYSTEM_PROMPT.format(
+                context_section=context_section,
+                memories_section=memories_section,
+            ) + f"\n\n知识库参考资料:\n{rag_context}"
+        else:
+            system_prompt_text = QUICK_ASK_SYSTEM_PROMPT.format(
+                context_section=context_section,
+                memories_section=memories_section,
+            )
+        system_prompt = system_prompt_text  # 保持一致性
     elif conversation.conversation_type == "profile_collection":
         stage_hint = get_stage_hint(conversation.profile_collection_stage)
         collected_info = "（新对话, 开始收集信息）"
@@ -543,6 +648,72 @@ async def _postprocess_background(
             )
         except Exception as e:
             logger.warning(f"后台记忆提取失败 (已忽略): {e}")
+
+
+# ============================================================================
+# AI 解释浓缩并存储 (快问AI 功能 — 手动触发)
+# ============================================================================
+
+async def condense_and_store_explanation(
+    kp_id: uuid.UUID,
+    full_response: str,
+    user_query: str,
+    db: AsyncSession,
+) -> str:
+    """
+    浓缩 AI 回复为 2-4 句话并存储到知识点的 ai_explanation 字段
+
+    由前端"保存到知识库"按钮手动触发, 非自动执行。
+
+    :param kp_id: 知识点 ID
+    :param full_response: 完整的 AI 回复文本
+    :param user_query: 触发该解释的原始用户提问
+    :param db: 数据库会话
+    :return: 浓缩后的解释文本 (失败时返回空字符串)
+    """
+    try:
+        kp = await db.get(KnowledgePoint, kp_id)
+        if not kp:
+            logger.warning(f"浓缩解释失败: 知识点 {kp_id} 不存在")
+            return ""
+
+        # 调用 LLM 浓缩
+        client = _create_llm_client()
+        model = get_config_value("llm_model")
+
+        # 截断完整回复: 取前 4000 字符供浓缩
+        truncated = full_response[:4000]
+
+        response = await client.chat.completions.create(
+            model=model,
+            messages=[
+                {"role": "user", "content": CONDENSE_EXPLANATION_PROMPT.format(
+                    full_response=truncated
+                )},
+            ],
+            temperature=0.3,
+            max_tokens=300,
+        )
+
+        condensed = (response.choices[0].message.content or "").strip()
+
+        if condensed:
+            from datetime import datetime as dt, timezone
+            kp.ai_explanation = condensed
+            kp.ai_explanation_generated_at = dt.now(timezone.utc)
+            kp.ai_explanation_query = user_query[:500]
+            kp.ai_explanation_model = model
+            kp.ai_explanation_report_count = 0  # 新解释重置计数
+            await db.commit()
+            logger.info(f"AI 解释已浓缩并存储到 KP {kp_id}: {condensed[:80]}...")
+            return condensed
+        else:
+            logger.warning(f"LLM 浓缩返回空内容, KP {kp_id}")
+            return ""
+
+    except Exception as e:
+        logger.error(f"浓缩解释失败 (KP {kp_id}): {e}")
+        return ""
 
 
 def _sse_event(event_type: str, data: dict) -> str:

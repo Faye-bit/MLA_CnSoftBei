@@ -38,6 +38,7 @@ import {
   CheckCircleOutlined,
   InboxOutlined,
   FolderOutlined,
+  BulbOutlined,
 } from '@ant-design/icons'
 import {
   getCourseDetail,
@@ -47,8 +48,10 @@ import {
   getKnowledgePoints,
   deleteKnowledgePoint,
   uploadDocument,
+  reportAIExplanation,
 } from '../services/api'
-import { useAuthStore } from '../store'
+import { useAuthStore, useAppStore } from '../store'
+import { useQuickAskStore } from '../store/quickAsk'
 import type { CourseDetail, Chapter, KnowledgePoint, KnowledgePointTreeNode, LinkedPageInfo } from '../types'
 import { blue, gray, semantic } from '../styles/tokens'
 
@@ -279,7 +282,7 @@ export default function CourseDetailPage() {
           rowKey="id"
           pagination={false}
           expandable={{
-            expandedRowRender: (record) => <KnowledgePointList chapterId={record.id} onDelete={loadData} />,
+            expandedRowRender: (record) => <KnowledgePointList chapterId={record.id} courseId={id!} onDelete={loadData} />,
           }}
           locale={{ emptyText: '暂无章节，点击右上角按钮添加' }}
         />
@@ -369,7 +372,7 @@ export default function CourseDetailPage() {
  * 知识点列表子组件
  * 在章节表格的展开行中渲染
  */
-function KnowledgePointList({ chapterId, onDelete }: { chapterId: string; onDelete: () => void }) {
+function KnowledgePointList({ chapterId, courseId, onDelete }: { chapterId: string; courseId: string; onDelete: () => void }) {
   const [nodes, setNodes] = useState<KnowledgePointTreeNode[]>([])
   const [loading, setLoading] = useState(true)
 
@@ -401,6 +404,48 @@ function KnowledgePointList({ chapterId, onDelete }: { chapterId: string; onDele
                     <Tag color={item.difficulty === 'easy' ? 'green' : item.difficulty === 'medium' ? 'blue' : 'red'}>
                       难度: {item.difficulty === 'easy' ? '简单' : item.difficulty === 'medium' ? '中等' : '困难'}
                     </Tag>
+
+                    {/* AI 解释展示 (快问AI 功能): 仅当已存储且未达隐藏阈值时显示 */}
+                    {item.ai_explanation && (item.ai_explanation_report_count ?? 0) < 5 && (
+                      <div style={{
+                        marginTop: 12, padding: '10px 12px',
+                        background: '#EFF6FF', border: '1px solid #BFDBFE',
+                        borderRadius: 8,
+                      }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                          <Tag color="purple" style={{ fontSize: 10, margin: 0 }}>
+                            <BulbOutlined /> AI 生成，仅供参考
+                          </Tag>
+                          {item.ai_explanation_generated_at && (
+                            <Text style={{ fontSize: 10, color: gray[400] }}>
+                              {new Date(item.ai_explanation_generated_at).toLocaleDateString('zh-CN')}
+                            </Text>
+                          )}
+                        </div>
+                        <Text style={{ fontSize: 13, lineHeight: 1.7 }}>
+                          {item.ai_explanation}
+                        </Text>
+                        <div style={{ marginTop: 6, textAlign: 'right' }}>
+                          <Button
+                            type="link"
+                            danger
+                            size="small"
+                            style={{ fontSize: 11 }}
+                            onClick={async (e) => {
+                              e.stopPropagation()
+                              try {
+                                await reportAIExplanation(item.id)
+                                message.success('已报告，感谢反馈')
+                                load() // 刷新以更新计数
+                              } catch { message.error('报告失败') }
+                            }}
+                          >
+                            报告不准确
+                          </Button>
+                        </div>
+                      </div>
+                    )}
+
                     {item.linked_pages && item.linked_pages.length > 0 && (
                       <>
                         <Divider style={{ margin: '12px 0 8px', fontSize: 13, color: gray[400] }}>关联页面</Divider>
@@ -428,6 +473,35 @@ function KnowledgePointList({ chapterId, onDelete }: { chapterId: string; onDele
                         </div>
                       </>
                     )}
+
+                    {/* 快问AI 按钮: 一键触发对该知识点的 AI 深度解释 */}
+                    <Divider style={{ margin: '12px 0 8px' }} />
+                    <Button
+                      type="primary"
+                      ghost
+                      size="small"
+                      icon={<BulbOutlined />}
+                      block
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        useQuickAskStore.getState().trigger({
+                          sourceType: 'kp',
+                          contextText: [
+                            `知识点：${item.title}`,
+                            item.description ? `描述：${item.description}` : '',
+                            item.content ? `内容：${item.content}` : '',
+                          ].filter(Boolean).join('\n'),
+                          prefillQuestion: `请帮我详细解释一下"${item.title}"这个知识点`,
+                          metadata: {
+                            courseId: courseId,
+                            chapterId: item.chapter_id,
+                            kpId: item.id,
+                          },
+                        })
+                      }}
+                    >
+                      快问AI — 深入理解这个知识点
+                    </Button>
                   </div>
                 }
               >

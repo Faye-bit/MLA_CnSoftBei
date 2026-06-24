@@ -28,6 +28,7 @@ import type { MenuProps } from 'antd'
 import Sidebar from './Sidebar'
 
 import FloatingChat from '../common/FloatingChat'
+import TextSelectionAsk from '../common/TextSelectionAsk'
 import Live2DStage from '../avatar/Live2DStage'
 import AvatarBubble from '../avatar/AvatarBubble'
 import Live2DSpeechProvider from '../avatar/Live2DSpeechProvider'
@@ -272,6 +273,7 @@ export default function AppLayout() {
         </div>
 
         <FloatingChat />
+        <TextSelectionAsk />
         <Live2DStage visible={live2dVisible} />
         <ReviewReminder />
         <AvatarBubble />

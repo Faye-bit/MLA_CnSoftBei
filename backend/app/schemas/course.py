@@ -102,6 +102,10 @@ class KnowledgePointResponse(BaseModel):
     prerequisite_kp_id: Optional[uuid.UUID] = None
     parent_kp_id: Optional[uuid.UUID] = None
     kp_type: str = "item"; difficulty: str; created_at: datetime
+    # AI 解释字段 (快问AI 功能)
+    ai_explanation: Optional[str] = None
+    ai_explanation_generated_at: Optional[datetime] = None
+    ai_explanation_report_count: int = 0
     model_config = {"from_attributes": True}
 
 
@@ -125,4 +129,24 @@ class KnowledgePointTreeNode(BaseModel):
     image_url: str = ""
     children: list["KnowledgePointTreeNode"] = Field(default_factory=list)
     linked_pages: list[LinkedPageInfo] = Field(default_factory=list)
+    # AI 解释字段 (快问AI 功能)
+    ai_explanation: Optional[str] = None
+    ai_explanation_generated_at: Optional[datetime] = None
+    ai_explanation_report_count: int = 0
     model_config = {"from_attributes": True}
+
+
+# ==================== AI 解释 (快问AI 功能) ====================
+
+class AIExplanationStore(BaseModel):
+    """ 手动存储 AI 解释请求: 前端传入完整 AI 回复, 后端浓缩后存储 """
+    full_response: str = Field(..., min_length=1, max_length=8000, description="完整的 AI 回复文本")
+    query: Optional[str] = Field(default=None, max_length=2000, description="触发该解释的原始用户提问")
+
+
+class AIExplanationResponse(BaseModel):
+    """ AI 解释响应 """
+    ai_explanation: Optional[str] = None
+    ai_explanation_generated_at: Optional[datetime] = None
+    ai_explanation_report_count: int = 0
+    condensed_text: Optional[str] = Field(default=None, description="浓缩后的文本 (仅在存储时返回)")

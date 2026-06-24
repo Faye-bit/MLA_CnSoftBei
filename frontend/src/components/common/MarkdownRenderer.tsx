@@ -15,7 +15,9 @@ import remarkGfm from 'remark-gfm'
 import remarkMath from 'remark-math'
 import rehypeHighlight from 'rehype-highlight'
 import rehypeKatex from 'rehype-katex'
-import { CopyOutlined, CheckOutlined } from '@ant-design/icons'
+import { CopyOutlined, CheckOutlined, BulbOutlined } from '@ant-design/icons'
+import { useQuickAskStore } from '../../store/quickAsk'
+import { useAppStore } from '../../store'
 import { blue, gray, semantic } from '../../styles/tokens'
 
 /** 导入 GitHub Light 语法高亮主题 */
@@ -41,6 +43,7 @@ function CodeBlockWithCopy({ code, className, children }: {
   children: React.ReactNode
 }) {
   const [copied, setCopied] = useState(false)
+  const triggerQuickAsk = useQuickAskStore((s) => s.trigger)
 
   /** 从 className 中提取语言名 (如 "language-python" → "Python") */
   const lang = (className?.replace('language-', '') || '').trim()
@@ -61,6 +64,18 @@ function CodeBlockWithCopy({ code, className, children }: {
       setCopied(true)
       setTimeout(() => setCopied(false), 2000)
     }
+  }
+
+  /** 快问AI: 将当前代码块发送到 FloatingChat */
+  const handleAskAI = () => {
+    triggerQuickAsk({
+      sourceType: 'code',
+      contextText: code,
+      prefillQuestion: `请帮我解释这段${langLabel || ''}代码的含义和逻辑`,
+      metadata: {
+        courseId: useAppStore.getState().currentCourseId ?? undefined,
+      },
+    })
   }
 
   return (
@@ -125,6 +140,33 @@ function CodeBlockWithCopy({ code, className, children }: {
         ) : (
           <CopyOutlined style={{ fontSize: 14 }} />
         )}
+      </button>
+
+      {/* 快问AI 按钮 — hover 时显示在复制按钮左侧 */}
+      <button
+        onClick={handleAskAI}
+        title="问 AI"
+        style={{
+          position: 'absolute',
+          top: 8,
+          right: copied ? 72 : 38,
+          display: 'flex',
+          alignItems: 'center',
+          gap: 4,
+          background: blue[50],
+          border: `1px solid ${blue[200]}`,
+          borderRadius: 6,
+          padding: '3px 6px',
+          cursor: 'pointer',
+          color: blue[600],
+          fontSize: 12,
+          opacity: 0,
+          transition: 'opacity 0.2s, background 0.2s',
+          lineHeight: 1,
+        }}
+      >
+        <BulbOutlined style={{ fontSize: 12 }} />
+        问AI
       </button>
 
       <style>{`

@@ -1,8 +1,7 @@
 /**
  * Live2D 虚拟形象事件总线 + 智能气泡引擎
  *
- * 页面感知: 根据当前页面路由和用户画像生成上下文相关的气泡.
- * LLM 生成: 调用轻量 prompt 生成个性化提示 (非阻塞, 静默失败降级为预设文案).
+ * 调试开关: localStorage key `mla-bubble-debug` (true=开启控制台日志)
  */
 
 // ====== 类型 ======
@@ -25,6 +24,13 @@ let lastTriggerTime = 0
 let listeners: BubbleCallback[] = []
 let currentRoute = '/'
 
+// ====== 气泡开关 ======
+
+/** 气泡系统是否启用 (由系统设置页控制) */
+function isBubbleEnabled(): boolean {
+  return localStorage.getItem('mla-bubble-enabled') !== 'false'
+}
+
 // ====== 公开 API ======
 
 export function onBubble(fn: BubbleCallback) {
@@ -33,6 +39,7 @@ export function onBubble(fn: BubbleCallback) {
 }
 
 export function triggerBubble(msg: BubbleMessage, cooldown = true) {
+  if (!isBubbleEnabled()) return
   const now = Date.now()
   if (cooldown && now - lastTriggerTime < MIN_INTERVAL) return
   lastTriggerTime = now
@@ -44,29 +51,26 @@ export function dismissBubble() {
   listeners.forEach(fn => fn({ text: '', duration: 0 }))
 }
 
-/** 更新当前页面路由 (供 AppLayout 调用) */
+/** 更新当前页面路由 */
 export function setCurrentRoute(path: string) {
   currentRoute = path
 }
 
-/** 检查 Live2D 是否启用 */
 function isLive2DEnabled(): boolean {
   return localStorage.getItem('mla-live2d-enabled') !== 'false'
 }
 
-/** 触发虚拟形象事件 — Live2D 关闭时静默跳过 */
+/** 触发虚拟形象事件 */
 export function dispatchAvatarEvent(event: AvatarEvent) {
-  // Live2D 关闭时只允许 welcome, 其余跳过
   if (!isLive2DEnabled() && event !== 'welcome') return
+  if (!isBubbleEnabled()) return
 
   const msg = getPresetBubble(event)
-  if (!msg) { console.log('[Bubble] 事件无文案:', event); return }
+  if (!msg) return
   const skipCooldown = event === 'page_change' || event === 'welcome'
-  console.log('[Bubble] 触发:', event, msg.text, skipCooldown ? '(无冷却)' : '')
   triggerBubble(msg, !skipCooldown)
 }
 
-/** 页面路由 → 人类可读名称 */
 function getPageName(route: string): string {
   if (route === '/' || route.startsWith('/dashboard')) return '仪表盘'
   if (route.startsWith('/courses')) return '课程管理'
@@ -97,8 +101,8 @@ function getPresetBubble(event: AvatarEvent): BubbleMessage | null {
   }
 
   const eventMessages: Record<string, string[]> = {
-    idle_60s: ['还在吗？我在这儿呢~', '想继续学习的话随时叫我'],
-    idle_180s: ['要不要休息一下？', '你好像离开了，回来继续学习吧~'],
+    idle_60s: ['还在吗？我在这儿呢~', '想学习的话随时叫我'],
+    idle_180s: ['好久没动了，需要帮助吗？', '要不要喝杯水活动一下~'],
     welcome: ['欢迎回来！准备好学习了吗？', '嗨~ 今天想学什么？'],
     page_change: pageMessages[page] || pageMessages['MLA 平台'],
     doc_upload: ['文档上传成功！试试知识检索吧~', '资料已收录，AI 帮你整理知识点'],
@@ -111,24 +115,31 @@ function getPresetBubble(event: AvatarEvent): BubbleMessage | null {
   return { text: pool[Math.floor(Math.random() * pool.length)] }
 }
 
-// ====== 空闲检测 ======
+// ====== 空闲检测 (修复: 180s 定时器也正确清理) ======
 
-let idleTimer: ReturnType<typeof setTimeout> | null = null
+let idleTimer60: ReturnType<typeof setTimeout> | null = null
+let idleTimer180: ReturnType<typeof setTimeout> | null = null
 let idle60Fired = false
+let idle180Fired = false
 
 function resetIdle() {
   idle60Fired = false
-  if (idleTimer) clearTimeout(idleTimer)
+  idle180Fired = false
+  if (idleTimer60) clearTimeout(idleTimer60)
+  if (idleTimer180) clearTimeout(idleTimer180)
 
-  idleTimer = setTimeout(() => {
+  idleTimer60 = setTimeout(() => {
     if (!idle60Fired) {
       idle60Fired = true
       dispatchAvatarEvent('idle_60s')
     }
   }, 60000)
 
-  setTimeout(() => {
-    dispatchAvatarEvent('idle_180s')
+  idleTimer180 = setTimeout(() => {
+    if (!idle180Fired) {
+      idle180Fired = true
+      dispatchAvatarEvent('idle_180s')
+    }
   }, 180000)
 }
 
@@ -139,7 +150,7 @@ export function startIdleDetection() {
   resetIdle()
 }
 
-// ====== 时段问候 (一次性) ======
+// ====== 时段问候 ======
 
 export function timeGreeting() {
   const h = new Date().getHours()

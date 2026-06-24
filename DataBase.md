@@ -77,11 +77,17 @@ CREATE TABLE knowledge_points (
     description        TEXT,
     content            TEXT,
     prerequisite_kp_id UUID REFERENCES knowledge_points(id) ON DELETE SET NULL,
-    kp_type            VARCHAR(20)  NOT NULL DEFAULT 'item',
-    parent_kp_id       UUID REFERENCES knowledge_points(id) ON DELETE SET NULL,
-    difficulty         VARCHAR(20)  NOT NULL DEFAULT 'medium',
-    source_type        VARCHAR(20)  NOT NULL DEFAULT 'manual',
-    created_at         TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+    kp_type                      VARCHAR(20)  NOT NULL DEFAULT 'item',
+    parent_kp_id                 UUID REFERENCES knowledge_points(id) ON DELETE SET NULL,
+    difficulty                   VARCHAR(20)  NOT NULL DEFAULT 'medium',
+    source_type                  VARCHAR(20)  NOT NULL DEFAULT 'manual',
+    -- 快问AI: AI 解释字段 (用户手动触发浓缩后存储)
+    ai_explanation               TEXT,
+    ai_explanation_generated_at  TIMESTAMPTZ,
+    ai_explanation_query         TEXT,
+    ai_explanation_report_count  INTEGER      NOT NULL DEFAULT 0,
+    ai_explanation_model         VARCHAR(50),
+    created_at                   TIMESTAMPTZ  NOT NULL DEFAULT NOW()
 );
 
 
@@ -439,6 +445,11 @@ classDiagram
         +UUID parent_kp_id FK→self
         +String(20) difficulty = "medium"
         +String(20) source_type = "manual"
+        +Text ai_explanation
+        +DateTime ai_explanation_generated_at
+        +Text ai_explanation_query
+        +Integer ai_explanation_report_count = 0
+        +String(50) ai_explanation_model
         +DateTime created_at
     }
 
@@ -688,10 +699,17 @@ classDiagram
 | `kp_type` | String(20) | NOT NULL, default=`"item"` | 类型 (category=分类/item=知识点) |
 | `parent_kp_id` | UUID | FK→self, SET NULL | 所属知识类型分类 |
 | `difficulty` | String(20) | NOT NULL, default=`"medium"` | 难度 (easy/medium/hard) |
-| `source_type` | String(20) | NOT NULL, default=`"manual"` | 来源 (manual/auto) |
+| `source_type` | String(20) | NOT NULL, default=`"manual"` | 来源 (manual=人工创建/auto=AI提取) |
+| `ai_explanation` | Text | nullable | AI 生成的简洁解释 (快问AI 用户手动保存) |
+| `ai_explanation_generated_at` | DateTime | nullable | AI 解释生成时间 |
+| `ai_explanation_query` | Text | nullable | 触发此解释的原始用户提问 (用于相似提问去重) |
+| `ai_explanation_report_count` | Integer | NOT NULL, default=`0` | "报告不准确" 计数 (≥5 时前端自动隐藏) |
+| `ai_explanation_model` | String(50) | nullable | 生成此解释使用的 LLM 模型 |
 | `created_at` | DateTime | NOT NULL | 创建时间 |
 
 **关系:** 从属于 `Chapter`, 外键引用自身的`prerequisite_kp`和 `parent_kp→children`, 通过 `page_knowledge_points`表与`DocumentPage`建立关系。
+
+**快问AI 解释存储流程:** 用户在知识点卡片点击 "快问AI" → FloatingChat 展开并发送预填充问题 → AI 回复完成 → 用户点击「保存到知识库」→ 后端 LLM 浓缩为 2-4 句 (≤200 字) → 存储到 5 个 `ai_*` 字段 → 知识卡片展示 "AI 生成，仅供参考" 区块。
 
 ---
 
@@ -942,7 +960,7 @@ Coordinator Agent 规划的每个学习阶段, 包含阶段主题、涵盖的知
 | `retrieval` | 知识检索 | RAG 检索知识库相关资料 | knowledge_context (top_k=8) |
 | `teaching_design` | 教学设计 | 设计阶段教学方案和资源类型 | 5 种资源规格 |
 | `resource_generation` | 资源生成 | 并行调用 6 个 LLM 生成器 | 6 种学习资源 |
-| `fact_check` | 安全核查 | 内容事实校验 | 核查通过/未通过 |
+| `fact_check` | 综合审查 | 语法/正确性/安全性全面审查 | 核查通过/未通过 |
 | `summary` | 汇总保存 | 持久化阶段、资源、任务 + 链接注入 | 数据库记录 |
 
 **懒加载策略:** 首先生成第 1 阶段, 用户完成当前阶段后通过 SSE 触发生成下一阶段。
