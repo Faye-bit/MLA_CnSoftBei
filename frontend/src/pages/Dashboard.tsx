@@ -19,12 +19,12 @@ import { lazy, Suspense } from 'react'
 import { Row, Col, Skeleton } from 'antd'
 import {
   BarChartOutlined,
-  OrderedListOutlined,
   StarOutlined,
   ThunderboltOutlined,
+  BellOutlined,
 } from '@ant-design/icons'
 import StatsOverview from '../components/dashboard/StatsOverview'
-import TodayTasks from '../components/dashboard/TodayTasks'
+import ReviewDashboardCard from '../components/dashboard/ReviewDashboardCard'
 import FavoritesList from '../components/dashboard/FavoritesList'
 import LearningProgress from '../components/dashboard/LearningProgress'
 import RadarOverview from '../components/dashboard/RadarOverview'
@@ -87,16 +87,16 @@ export default function Dashboard() {
 
         <Col xs={24} lg={10}>
           <div
-            style={CARD_STYLE}
+            style={{ ...CARD_STYLE, display: 'flex', flexDirection: 'column', height: 318 }}
             onMouseEnter={hoverIn}
             onMouseLeave={hoverOut}
           >
-            <div style={CARD_TITLE_STYLE}>
-              <OrderedListOutlined style={{ color: semantic.success, fontSize: 16 }} />
-              <span>今日待办</span>
+            <div style={{ ...CARD_TITLE_STYLE, flexShrink: 0 }}>
+              <BellOutlined style={{ color: '#faad14', fontSize: 16 }} />
+              <span>艾宾浩斯复习提醒</span>
             </div>
-            <div style={{ padding: '12px 20px 16px' }}>
-              <TodayTasks />
+            <div style={{ flex: 1, overflow: 'auto', minHeight: 0 }}>
+              <ReviewDashboardCard />
             </div>
           </div>
         </Col>

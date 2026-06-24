@@ -93,6 +93,12 @@ export default function CourseDetailPage() {
 
   useEffect(() => {
     loadData()
+    // 记录学习行为 → 艾宾浩斯复习
+    if (id) {
+      import('../services/api').then(({ recordLearning }) => {
+        recordLearning({ content_type: 'course_view', content_title: course?.name || '', course_id: id }).catch(() => {})
+      })
+    }
   }, [id])
 
   /** 创建章节 */

@@ -239,6 +239,43 @@ CREATE INDEX idx_audit_logs_action  ON audit_logs (action);
 
 
 -- ------------------------------------------
+-- 20. learning_records
+-- ------------------------------------------
+CREATE TABLE learning_records (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    course_id UUID REFERENCES courses(id) ON DELETE SET NULL,
+    knowledge_point_id UUID REFERENCES knowledge_points(id) ON DELETE SET NULL,
+    content_type VARCHAR(30) NOT NULL,
+    content_title VARCHAR(300) NOT NULL,
+    duration_seconds INTEGER,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX idx_lr_user_id ON learning_records (user_id);
+
+-- ------------------------------------------
+-- 21. review_schedules
+-- ------------------------------------------
+CREATE TABLE review_schedules (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    record_id UUID NOT NULL REFERENCES learning_records(id) ON DELETE CASCADE,
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    course_id UUID REFERENCES courses(id) ON DELETE SET NULL,
+    interval_index INTEGER NOT NULL,
+    review_at TIMESTAMPTZ NOT NULL,
+    status VARCHAR(20) NOT NULL DEFAULT 'pending',
+    reviewed_at TIMESTAMPTZ,
+    remind_method VARCHAR(20) NOT NULL DEFAULT 'popup',
+    reminded BOOLEAN NOT NULL DEFAULT FALSE,
+    content_title VARCHAR(300) NOT NULL,
+    content_type VARCHAR(30) NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX idx_rs_user_id ON review_schedules (user_id);
+CREATE INDEX idx_rs_review_at ON review_schedules (review_at);
+
+
+-- ------------------------------------------
 -- 15. learning_sessions — 学习会话表
 -- ------------------------------------------
 CREATE TABLE learning_sessions (

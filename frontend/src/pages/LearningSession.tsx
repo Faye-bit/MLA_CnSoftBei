@@ -240,10 +240,10 @@ export default function LearningSessionPage() {
 
       onSessionComplete: () => {
         setOverallProgress(100)
-        // 标记所有资源已就绪, 激活"开始学习"按钮
-        setAllResourcesReady(true)
-        // 标记生成完成, 防止后续 session 更新时重新触发 SSE
         generationDoneRef.current = true
+        // 自动关闭进度弹窗并重新加载会话数据 (不再需要用户手动点"开始学习")
+        setShowProgress(false)
+        loadSession()
       },
 
       onError: (data) => {
@@ -321,10 +321,10 @@ export default function LearningSessionPage() {
       },
       onSessionComplete: () => {
         setOverallProgress(100)
-        // 标记所有资源已就绪, 激活"开始学习"按钮
-        setAllResourcesReady(true)
-        // 标记生成完成, 防止后续 session 更新时重新触发 SSE
         generationDoneRef.current = true
+        setShowProgress(false)
+        setGeneratingNext(false)
+        loadSession()
       },
       onError: (data) => {
         const msg = typeof data === 'string' ? data : data.message
@@ -341,11 +341,10 @@ export default function LearningSessionPage() {
     generationDoneRef.current = true
     setShowProgress(false)
     setGeneratingNext(false)
-    setAllResourcesReady(false)
     loadSession()
   }
 
-  /** 用户点击"开始学习" — 关闭进度弹窗, 加载会话数据 */
+  /** 用户点击"开始学习" — 关闭进度弹窗, 加载会话数据 (保留兼容旧流程) */
   async function handleStartLearning() {
     // 标记生成已完成, 防止 useEffect 重新触发 SSE
     generationDoneRef.current = true

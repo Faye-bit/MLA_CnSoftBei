@@ -618,6 +618,45 @@ export async function deleteProfile() {
   await api.delete('/profile/')
 }
 
+// ==================== 艾宾浩斯复习提醒 API ====================
+
+export interface ReviewItem {
+  id: string; content_title: string; content_type: string
+  interval_index: number; interval_days: number
+  review_at: string; status: string; reminded: boolean
+}
+export interface ReviewPendingResponse {
+  pending: ReviewItem[]; upcoming: ReviewItem[]
+  total_pending: number; total_upcoming: number
+}
+
+/** 记录学习行为 */
+export async function recordLearning(data: {
+  content_type: string; content_title: string
+  course_id?: string; knowledge_point_id?: string; duration_seconds?: number
+}) {
+  const res = await api.post<ApiResponse<{ record_id: string; schedules_count: number }>>('/review/record', data)
+  return res.data.data!
+}
+
+/** 获取待复习提醒 */
+export async function getPendingReviews() {
+  const res = await api.get<ApiResponse<ReviewPendingResponse>>('/review/pending')
+  return res.data.data!
+}
+
+/** 标记复习完成 */
+export async function markReviewComplete(scheduleId: string) {
+  const res = await api.post<ApiResponse<{ schedule_id: string }>>('/review/complete', { schedule_id: scheduleId })
+  return res.data.data!
+}
+
+/** 一键完成所有提醒 */
+export async function markAllReviewsComplete() {
+  const res = await api.post<ApiResponse<{ count: number }>>('/review/complete-all')
+  return res.data.data!
+}
+
 // ==================== Phase 3: AI 助学 API ====================
 
 import type {

@@ -31,6 +31,7 @@ import FloatingChat from '../common/FloatingChat'
 import Live2DStage from '../avatar/Live2DStage'
 import AvatarBubble from '../avatar/AvatarBubble'
 import Live2DSpeechProvider from '../avatar/Live2DSpeechProvider'
+import ReviewReminder from '../common/ReviewReminder'
 import { startIdleDetection, timeGreeting, dispatchAvatarEvent, setCurrentRoute, dismissBubble } from '../avatar/AvatarEventBus'
 import { getLive2DEnabled } from '../../pages/Settings'
 import { useAuthStore } from '../../store'
@@ -272,6 +273,7 @@ export default function AppLayout() {
 
         <FloatingChat />
         <Live2DStage visible={live2dVisible} />
+        <ReviewReminder />
         <AvatarBubble />
       </Layout>
     </Live2DSpeechProvider>
