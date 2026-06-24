@@ -28,6 +28,18 @@ from langgraph.graph import StateGraph, START, END
 from langgraph.config import get_stream_writer
 from langgraph.types import RunnableConfig
 
+# ============================================================================
+# 安全 stream writer: 在 LangGraph 外部直接调用 node 时, get_stream_writer()
+# 会抛出 RuntimeError。用此函数替代, 非 LangGraph 上下文时返回 no-op 函数
+# ============================================================================
+
+def _safe_stream_writer() -> callable:
+    """获取 stream writer, 如果不在 LangGraph runtime context 中则返回 no-op"""
+    try:
+        return get_stream_writer()
+    except RuntimeError:
+        return lambda _data: None
+
 from app.models.learning import LearningSession, LearningStage, GeneratedResource
 from app.models.course import Course, Chapter, KnowledgePoint
 from app.models.profile import StudentProfile
@@ -502,7 +514,7 @@ async def coordinator_node(state: LearningState, config: RunnableConfig) -> dict
     user_id = config["configurable"]["user_id"]
     course_id = config["configurable"]["course_id"]
 
-    writer = get_stream_writer()
+    writer = _safe_stream_writer()
     writer({"type": "agent_progress", "agent": "coordinator", "message": "正在分析课程结构和学生画像..."})
 
     client = _create_llm_client()
@@ -622,7 +634,7 @@ async def profile_node(state: LearningState, config: RunnableConfig) -> dict:
     db = config["configurable"]["db"]
     user_id = config["configurable"]["user_id"]
 
-    writer = get_stream_writer()
+    writer = _safe_stream_writer()
     writer({"type": "agent_progress", "agent": "profile", "message": "正在读取学生画像..."})
 
     # 从数据库读取画像
@@ -679,7 +691,7 @@ async def retrieval_node(state: LearningState, config: RunnableConfig) -> dict:
     db = config["configurable"]["db"]
     course_id = config["configurable"]["course_id"]
 
-    writer = get_stream_writer()
+    writer = _safe_stream_writer()
     writer({"type": "agent_progress", "agent": "retrieval", "message": "正在检索知识库..."})
 
     stage_kps = state.get("stage_kps", [])
@@ -744,7 +756,7 @@ async def teaching_design_node(state: LearningState, config: RunnableConfig) -> 
     Teaching Design Agent 节点
     根据阶段主题、知识内容和学生画像, 设计应生成哪些资源
     """
-    writer = get_stream_writer()
+    writer = _safe_stream_writer()
     writer({"type": "agent_progress", "agent": "teaching_design", "message": "正在设计教学方案..."})
 
     stage_title = state.get("stage_title", "")
@@ -814,7 +826,7 @@ async def resource_generation_node(state: LearningState, config: RunnableConfig)
     并行资源生成节点
     使用 asyncio.gather() 并行生成所有规划的资源类型
     """
-    writer = get_stream_writer()
+    writer = _safe_stream_writer()
 
     teaching_plan = state.get("teaching_plan", {})
     planned_resources = teaching_plan.get("resources", [])
@@ -903,7 +915,7 @@ async def fact_check_node(state: LearningState, config: RunnableConfig) -> dict:
     Safety & Fact Check Agent 节点
     审查生成资源的质量和安全性
     """
-    writer = get_stream_writer()
+    writer = _safe_stream_writer()
     writer({"type": "agent_progress", "agent": "safety", "message": "正在进行事实核查和安全审查..."})
 
     resources = state.get("resources", [])
@@ -957,7 +969,7 @@ async def summary_node(state: LearningState, config: RunnableConfig) -> dict:
     stages = state.get("stages", [])
     current_index = state.get("current_stage_index", 0)
 
-    writer = get_stream_writer()
+    writer = _safe_stream_writer()
 
     # 持久化资源到数据库
     session = await db.get(LearningSession, uuid.UUID(session_id))
@@ -1252,89 +1264,33 @@ async def generate_learning_path_stream(
     graph = _build_orchestration_graph()
 
     try:
-        # 使用 astream 逐节点执行, 获取进度事件
-        async for chunk in graph.astream(initial_state, config, stream_mode="updates"):
-            for node_name, node_output in chunk.items():
-                display_name = AGENT_DISPLAY_NAMES.get(node_name, node_name)
+        import traceback
+        # 修复: LangGraph v1.2.6 中 get_stream_writer() 在 asyncio.gather 内丢失 context
+        # 仅通过 LangGraph 运行 coordinator 获取阶段规划, 资源生成走直接调用
+        coord_result = await coordinator_node(initial_state, config)
+        stages = coord_result.get("stages", [])
+        total = coord_result.get("total_stages", len(stages))
 
-                # Agent 完成事件
-                yield _sse_event("agent_done", {
-                    "agent": node_name,
-                    "result_summary": _summarize_node_output(node_name, node_output),
-                })
+        if not stages:
+            yield _sse_event("error", {"message": "未能生成学习路径, 请检查课程是否有章节和知识点"})
+            return
 
-                # 特殊处理: Coordinator 输出 stages
-                if node_name == "coordinator" and "stages" in node_output:
-                    stages = node_output["stages"]
-                    total = node_output.get("total_stages", len(stages))
-
-                    # 持久化学习路径
-                    session.learning_path = {"stages": stages}
-                    session.session_metadata = {
-                        **(session.session_metadata or {}),
-                        "total_stages": total,
-                    }
-                    await db.commit()
-
-                    yield _sse_event("path_update", {
-                        "learning_path": {"stages": stages}
-                    })
-
-                    # 开始第一阶段
-                    if stages:
-                        first_stage = stages[0]
-                        yield _sse_event("stage_start", {
-                            "stage_index": 0,
-                            "stage_title": first_stage.get("title", ""),
-                            "total_stages": total,
-                        })
-
-                # 特殊处理: resource_generation 节点完成 (进度已由 writer 实时推送)
-                if node_name == "resource_generation":
-                    # resource_ready 事件将在资源持久化后统一发送 (带真实 DB ID)
-                    pass
-
-                # 下一节点开始
-                # (astream 模式下, 每个 chunk 对应一个节点完成)
-
-        # 持久化当前阶段的资源 (已在 summary_node 中处理)
+        session.learning_path = {"stages": stages}
         await db.commit()
+        yield _sse_event("path_update", {"learning_path": {"stages": stages}})
+        yield _sse_event("agent_done", {"agent": "coordinator", "result_summary": f"规划了 {total} 个阶段"})
 
-        # 安全查询持久化后的资源 (使用子查询防重复行放大)
-        persisted_rows = await _get_resources_for_stage_index(
-            db, session_id, 0
-        )
-        persisted_resources = [
-            {"id": str(r.id), "resource_type": r.resource_type, "title": r.title}
-            for r in persisted_rows
-        ]
+        for idx, stage in enumerate(stages):
+            yield _sse_event("stage_start", {"stage_index": idx, "stage_title": stage.get("title", ""), "total_stages": total})
+            await _run_stage_generation_with_progress(stage, idx, total, user_id, course_id, session_id, db)
+            persisted_rows = await _get_resources_for_stage_index(db, session_id, idx)
+            persisted_resources = [{"id": str(r.id), "resource_type": r.resource_type, "title": r.title} for r in persisted_rows]
+            for res in persisted_resources:
+                yield _sse_event("resource_ready", {"resource_id": res["id"], "resource_type": res["resource_type"], "title": res["title"], "stage_index": idx})
+            yield _sse_event("stage_complete", {"stage_index": idx, "resources": persisted_resources})
 
-        # 发送每个资源的就绪事件 (带真实数据库 ID)
-        for res in persisted_resources:
-            yield _sse_event("resource_ready", {
-                "resource_id": res["id"],
-                "resource_type": res["resource_type"],
-                "title": res["title"],
-                "stage_index": 0,
-            })
+        yield _sse_event("session_complete", {"session_id": str(session_id), "message": f"全部 {total} 个阶段已生成"})
 
-        # 发送完成事件
-        stages = session.learning_path.get("stages", [])
-        yield _sse_event("stage_complete", {
-            "stage_index": 0,
-            "resources": persisted_resources,
-        })
-
-        if len(stages) <= 1:
-            yield _sse_event("session_complete", {
-                "session_id": str(session_id),
-                "message": f"学习路径已生成, 共 {len(stages)} 个阶段",
-            })
-        else:
-            yield _sse_event("session_complete", {
-                "session_id": str(session_id),
-                "message": f"第一阶段已生成完成, 共 {len(stages)} 个阶段",
-            })
 
     except Exception as e:
         import traceback

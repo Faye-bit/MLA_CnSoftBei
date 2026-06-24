@@ -478,6 +478,15 @@ function KnowledgePointList({ chapterId, courseId, onDelete }: { chapterId: stri
                       block
                       onClick={(e) => {
                         e.stopPropagation()
+                        // 记录学习行为 → 艾宾浩斯复习
+                        import('../services/api').then(({ recordLearning }) => {
+                          recordLearning({
+                            content_type: 'kp_view',
+                            content_title: item.title,
+                            course_id: courseId,
+                            knowledge_point_id: item.id,
+                          }).catch(() => {})
+                        })
                         useQuickAskStore.getState().trigger({
                           sourceType: 'kp',
                           contextText: [
