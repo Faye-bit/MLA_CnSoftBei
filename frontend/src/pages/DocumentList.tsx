@@ -7,8 +7,10 @@
 import { useEffect, useState, useMemo, useCallback } from 'react'
 import { useParams } from 'react-router-dom'
 import { Table, Tag, Typography, Popconfirm, message, Space, Button, Drawer, Select, Alert, Modal, List, Checkbox, Image, Card, Row, Col } from 'antd'
-import { DeleteOutlined, EyeOutlined, LinkOutlined, ThunderboltOutlined, PlusOutlined, FileImageOutlined } from '@ant-design/icons'
+import { DeleteOutlined, EyeOutlined, LinkOutlined, ThunderboltOutlined, PlusOutlined, FileImageOutlined, BulbOutlined } from '@ant-design/icons'
 import { getDocuments, deleteDocument, getDocumentDetail, getCourseKnowledgePoints, linkChunkToKp, linkPageToKp, extractKP, createExtractedKP, getChapters, getPageImageUrl, linkDocumentToChapter } from '../services/api'
+import { useQuickAskStore } from '../store/quickAsk'
+import { useAppStore } from '../store'
 import type { Document, DocumentDetail, DocumentPage, Chapter } from '../types'
 
 const { Title, Text, Paragraph } = Typography
@@ -57,6 +59,7 @@ function formatFileSize(bytes: number): string {
 
 export default function DocumentList() {
   const { id } = useParams<{ id: string }>()
+  const triggerQuickAsk = useQuickAskStore((s) => s.trigger)
   const [documents, setDocuments] = useState<Document[]>([])
   const [loading, setLoading] = useState(true)
   const [total, setTotal] = useState(0)
@@ -303,21 +306,21 @@ export default function DocumentList() {
       title: '类型',
       dataIndex: 'file_type',
       key: 'file_type',
-      width: 80,
+      width: 70,
       render: (t: string) => <Tag color={typeColorMap[t] || 'default'}>{t.toUpperCase()}</Tag>,
     },
     {
       title: '大小',
       dataIndex: 'file_size',
       key: 'file_size',
-      width: 100,
+      width: 80,
       render: (size: number) => formatFileSize(size),
     },
     {
       title: '状态',
       dataIndex: 'parse_status',
       key: 'parse_status',
-      width: 100,
+      width: 75,
       render: (status: string) => {
         const info = statusMap[status] || { label: status, color: 'default' }
         return <Tag color={info.color}>{info.label}</Tag>
@@ -326,7 +329,7 @@ export default function DocumentList() {
     {
       title: '切片/页数',
       key: 'count',
-      width: 80,
+      width: 75,
       render: (_: unknown, record: Document) => {
         // 对于 PDF/PPTX 显示页数, 其他显示切片数
         if (record.file_type === 'pdf' || record.file_type === 'pptx') {
@@ -339,15 +342,16 @@ export default function DocumentList() {
       title: '上传时间',
       dataIndex: 'created_at',
       key: 'created_at',
-      width: 180,
+      width: 150,
       render: (t: string) => new Date(t).toLocaleString('zh-CN'),
     },
     {
       title: '操作',
       key: 'actions',
-      width: 120,
+      width: 230,
+      fixed: 'right' as const,
       render: (_: unknown, record: Document) => (
-        <Space>
+        <Space size="small">
           <Button
             type="link"
             size="small"
@@ -363,7 +367,14 @@ export default function DocumentList() {
             okText="确定"
             cancelText="取消"
           >
-            <Button type="link" size="small" danger icon={<DeleteOutlined />} />
+            <Button
+              type="link"
+              size="small"
+              danger
+              icon={<DeleteOutlined />}
+            >
+              删除文档
+            </Button>
           </Popconfirm>
         </Space>
       ),
@@ -392,6 +403,7 @@ export default function DocumentList() {
         columns={columns}
         rowKey="id"
         loading={loading}
+        scroll={{ x: 800 }}
         pagination={{
           current: page,
           total,
@@ -550,6 +562,30 @@ export default function DocumentList() {
                                     ))}
                                   </Space>
                                 )}
+                                {/* 快问AI: 询问文档页内容 */}
+                                <div style={{ marginTop: 4 }}>
+                                  <Button
+                                    type="link"
+                                    size="small"
+                                    icon={<BulbOutlined />}
+                                    style={{ fontSize: 11, padding: 0, color: '#3B82F6' }}
+                                    onClick={(e) => {
+                                      e.stopPropagation()
+                                      triggerQuickAsk({
+                                        sourceType: 'document',
+                                        contextText: page.summary || `页面 ${page.page_number} 的内容`,
+                                        prefillQuestion: `请帮我解释第 ${page.page_number} 页的核心概念`,
+                                        metadata: {
+                                          courseId: id,
+                                          documentId: selectedDoc?.id,
+                                          pageNumber: page.page_number,
+                                        },
+                                      })
+                                    }}
+                                  >
+                                    问AI
+                                  </Button>
+                                </div>
                               </div>
                             }
                           />

@@ -22,6 +22,8 @@ import {
   BulbOutlined, LoadingOutlined, StarFilled,
 } from '@ant-design/icons'
 import { saveExerciseProgress, scoreExerciseAnswer } from '../../services/api'
+import { useQuickAskStore } from '../../store/quickAsk'
+import { useAppStore } from '../../store'
 import type { ExerciseSet, ExerciseQuestion } from '../../types'
 
 const { Text, Title, Paragraph } = Typography
@@ -33,6 +35,9 @@ interface ExerciseViewerProps {
 }
 
 export default function ExerciseViewer({ content, resourceId, resourceMetadata }: ExerciseViewerProps) {
+  // ── 快问AI 触发器 ──
+  const triggerQuickAsk = useQuickAskStore((s) => s.trigger)
+
   // ── 从 resource_metadata 中恢复历史作答进度 ──
   const saved = (resourceMetadata?.exercise_progress || {}) as {
     answers?: Record<string, number | number[] | string>
@@ -430,6 +435,32 @@ export default function ExerciseViewer({ content, resourceId, resourceMetadata }
           <Paragraph style={{ marginTop: 8, fontSize: 15, whiteSpace: 'pre-wrap' }}>
             {currentQuestion?.question}
           </Paragraph>
+
+          {/* 快问AI: 不理解？问问 AI — 不直接给答案，解释概念和方法 */}
+          {currentQuestion && (
+            <Button
+              type="text"
+              size="small"
+              icon={<BulbOutlined />}
+              onClick={() => {
+                triggerQuickAsk({
+                  sourceType: 'exercise',
+                  contextText: [
+                    `题目：${currentQuestion.question}`,
+                    `题型：${getTypeLabel(currentQuestion.type)}`,
+                    currentQuestion.explanation ? `解析提示：${currentQuestion.explanation}` : '',
+                  ].filter(Boolean).join('\n'),
+                  prefillQuestion: `请帮我理解这道${getTypeLabel(currentQuestion.type)}题考察的知识点，不要直接给答案`,
+                  metadata: {
+                    courseId: useAppStore.getState().currentCourseId ?? undefined,
+                  },
+                })
+              }}
+              style={{ color: '#3B82F6', marginBottom: 8, padding: '2px 4px' }}
+            >
+              不理解？问问 AI
+            </Button>
+          )}
         </div>
 
         <div style={{ marginBottom: 16 }}>

@@ -22,6 +22,7 @@ from app.schemas.course import (
     ChapterCreate, ChapterUpdate, ChapterResponse,
     KnowledgePointCreate, KnowledgePointUpdate, KnowledgePointResponse,
     KnowledgePointTreeNode, LinkedPageInfo,
+    AIExplanationStore, AIExplanationResponse,
 )
 from app.api.deps import get_current_user
 
@@ -406,6 +407,9 @@ async def list_knowledge_points(
             parent_kp_id=kp.parent_kp_id, kp_type=kp.kp_type,
             difficulty=kp.difficulty, created_at=kp.created_at,
             children=[], linked_pages=linked_pages,
+            ai_explanation=kp.ai_explanation,
+            ai_explanation_generated_at=kp.ai_explanation_generated_at,
+            ai_explanation_report_count=kp.ai_explanation_report_count or 0,
         )
     for kp in all_kps:
         node = kp_map[kp.id]
@@ -493,3 +497,123 @@ async def reclassify_knowledge_points(
 
     return ApiResponse(data=result2,
                        message=f"知识树整理完成: {result2['category_count']} 个分类, {result2['item_count']} 个知识点")
+
+
+# ==================== AI 解释 (快问AI 功能) ====================
+
+@router.get("/knowledge-points/{kp_id}/ai-explanation", response_model=ApiResponse[AIExplanationResponse], summary="获取AI解释")
+async def get_ai_explanation(
+    kp_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    获取知识点的 AI 解释 (如有)
+    前端在显示知识点卡片时调用, 判断是否已有 AI 解释可展示
+    """
+    kp = await _get_owned_kp(kp_id, current_user, db)
+    return ApiResponse(data=AIExplanationResponse(
+        ai_explanation=kp.ai_explanation,
+        ai_explanation_generated_at=kp.ai_explanation_generated_at,
+        ai_explanation_report_count=kp.ai_explanation_report_count,
+    ))
+
+
+@router.post("/knowledge-points/{kp_id}/condense-explanation", response_model=ApiResponse[AIExplanationResponse], summary="浓缩并存储AI解释")
+async def condense_ai_explanation(
+    kp_id: uuid.UUID,
+    body: AIExplanationStore,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    手动存储入口: 接收完整 AI 回复, 调用 LLM 浓缩为 2-4 句话,
+    存储到知识点的 ai_explanation 字段, 并返回浓缩结果供前端展示确认
+
+    去重: 如果 7 天内已有相似提问的 AI 解释, 直接返回已有解释而不重新生成
+    """
+    from datetime import datetime as dt, timedelta, timezone
+    from app.services.chat_service import condense_and_store_explanation
+
+    kp = await _get_owned_kp(kp_id, current_user, db)
+
+    # 去重检查: 7 天内有解释且提问相似度 > 0.4 则跳过
+    if kp.ai_explanation and kp.ai_explanation_query and kp.ai_explanation_generated_at:
+        age = dt.now(timezone.utc) - kp.ai_explanation_generated_at
+        if age < timedelta(days=7) and body.query:
+            # Jaccard 字符集重叠率
+            old_set = set(kp.ai_explanation_query)
+            new_set = set(body.query)
+            intersection = len(old_set & new_set)
+            union = len(old_set | new_set)
+            overlap = intersection / max(union, 1)
+            if overlap > 0.4:
+                return ApiResponse(
+                    data=AIExplanationResponse(
+                        ai_explanation=kp.ai_explanation,
+                        ai_explanation_generated_at=kp.ai_explanation_generated_at,
+                        ai_explanation_report_count=kp.ai_explanation_report_count,
+                        condensed_text=kp.ai_explanation,
+                    ),
+                    message="已有相似 AI 解释, 无需重新生成"
+                )
+
+    # 调用浓缩并存储
+    condensed = await condense_and_store_explanation(
+        kp_id=kp_id,
+        full_response=body.full_response,
+        user_query=body.query or "",
+        db=db,
+    )
+
+    # 重新查询以获取最新状态
+    await db.refresh(kp)
+
+    return ApiResponse(
+        data=AIExplanationResponse(
+            ai_explanation=kp.ai_explanation,
+            ai_explanation_generated_at=kp.ai_explanation_generated_at,
+            ai_explanation_report_count=kp.ai_explanation_report_count,
+            condensed_text=condensed,
+        ),
+        message="AI 解释已保存到知识卡片"
+    )
+
+
+@router.delete("/knowledge-points/{kp_id}/ai-explanation", response_model=ApiResponse, summary="删除AI解释")
+async def delete_ai_explanation(
+    kp_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    删除知识点的 AI 解释 (用户后悔保存时调用)
+    """
+    kp = await _get_owned_kp(kp_id, current_user, db)
+    kp.ai_explanation = None
+    kp.ai_explanation_generated_at = None
+    kp.ai_explanation_query = None
+    kp.ai_explanation_model = None
+    kp.ai_explanation_report_count = 0
+    await db.flush()
+    return ApiResponse(message="AI 解释已删除")
+
+
+@router.post("/knowledge-points/{kp_id}/report-ai-explanation", response_model=ApiResponse[dict], summary="报告AI解释不准确")
+async def report_ai_explanation(
+    kp_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    报告 AI 解释不准确: 计数器 +1
+    当计数 >= 5 时前端自动隐藏该解释
+    """
+    kp = await _get_owned_kp(kp_id, current_user, db)
+    kp.ai_explanation_report_count = (kp.ai_explanation_report_count or 0) + 1
+    await db.flush()
+    hidden = kp.ai_explanation_report_count >= 5
+    return ApiResponse(
+        data={"report_count": kp.ai_explanation_report_count, "hidden": hidden},
+        message="报告成功" if not hidden else "报告成功, 该解释已被隐藏"
+    )

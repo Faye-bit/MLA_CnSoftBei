@@ -479,6 +479,7 @@ export function streamChat(
     onError: (error: string) => void
   },
   systemPrompt?: string,
+  quickAskMetadata?: Record<string, unknown>,
 ): AbortController {
   const controller = new AbortController()
   const token = useAuthStore.getState().token
@@ -488,6 +489,7 @@ export function streamChat(
   const body: Record<string, unknown> = { content }
   if (courseId) body.course_id = courseId
   if (systemPrompt) body.system_prompt = systemPrompt
+  if (quickAskMetadata) body.quick_ask_context = quickAskMetadata
 
   fetch(url, {
     method: 'POST',
@@ -1072,4 +1074,59 @@ export async function synthesizeTTS(
     { responseType: 'blob' },
   )
   return res.data
+}
+
+// ============================================================================
+// AI 解释 (快问AI 功能)
+// ============================================================================
+
+/**
+ * 获取知识点的 AI 解释
+ * 前端在展示知识点卡片时调用, 判断是否已有 AI 解释可展示
+ */
+export async function getKPExplanation(kpId: string) {
+  const res = await api.get<ApiResponse<{
+    ai_explanation: string | null
+    ai_explanation_generated_at: string | null
+    ai_explanation_report_count: number
+    condensed_text?: string | null
+  }>>(`/courses/knowledge-points/${kpId}/ai-explanation`)
+  return res.data.data!
+}
+
+/**
+ * 浓缩 AI 回复并存储到知识点 (手动触发)
+ * @param kpId 知识点 ID
+ * @param fullResponse 完整的 AI 回复文本
+ * @param query 触发该解释的原始用户提问
+ * @returns 浓缩结果, 含 condensed_text
+ */
+export async function condenseAndStoreExplanation(
+  kpId: string,
+  fullResponse: string,
+  query: string,
+) {
+  const res = await api.post<ApiResponse<{
+    ai_explanation: string | null
+    ai_explanation_generated_at: string | null
+    ai_explanation_report_count: number
+    condensed_text?: string | null
+  }>>(`/courses/knowledge-points/${kpId}/condense-explanation`, {
+    full_response: fullResponse,
+    query,
+  })
+  return res.data.data!
+}
+
+/** 删除知识点的 AI 解释 */
+export async function deleteAIExplanation(kpId: string) {
+  await api.delete(`/courses/knowledge-points/${kpId}/ai-explanation`)
+}
+
+/** 报告 AI 解释不准确 (计数器 +1) */
+export async function reportAIExplanation(kpId: string) {
+  const res = await api.post<ApiResponse<{ report_count: number; hidden: boolean }>>(
+    `/courses/knowledge-points/${kpId}/report-ai-explanation`,
+  )
+  return res.data.data!
 }

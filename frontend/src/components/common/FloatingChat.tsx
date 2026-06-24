@@ -13,9 +13,12 @@ import { Button, Spin, Typography, message } from 'antd'
 import {
   MessageOutlined, CloseOutlined, SendOutlined, StopOutlined,
   ExpandOutlined, MinusOutlined, DeleteOutlined, PlusOutlined,
+  SaveOutlined, BulbOutlined,
 } from '@ant-design/icons'
 import ChatMessage from '../chat/ChatMessage'
-import { getConversationDetail, createConversation, streamChat } from '../../services/api'
+import { getConversationDetail, createConversation, streamChat, condenseAndStoreExplanation, deleteAIExplanation } from '../../services/api'
+import { useQuickAskStore } from '../../store/quickAsk'
+import type { QuickAskContext } from '../../store/quickAsk'
 import type { Conversation, Message, ChatSource } from '../../types'
 import { blue, gray } from '../../styles/tokens'
 
@@ -54,6 +57,217 @@ export default function FloatingChat() {
   const isComposingRef = useRef(false)
   /** 输入框 DOM 引用 — 用于自适应高度 */
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+
+  // ========== 快问AI 集成 ==========
+
+  /** 快问AI 上下文 (从各触发点通过 QuickAskStore 传入) */
+  const quickAskContext = useQuickAskStore((s) => s.context)
+  const clearQuickAsk = useQuickAskStore((s) => s.clear)
+
+  /**
+   * 追踪可保存到知识库的消息对: AI消息ID -> { kpId, saved }
+   * 当用户点击"保存到知识库"后, saved 变为 true
+   */
+  const saveableMessagesRef = useRef<Map<string, { kpId: string; saved: boolean }>>(new Map())
+
+  // 监听快问AI上下文: 展开面板 + 发送预填充问题
+  useEffect(() => {
+    if (!quickAskContext) return
+    // 展开聊天面板
+    setVisible(true)
+    // 延迟执行以确保面板已经渲染, 等待 conversation 就绪后发送
+    const timeout = setTimeout(async () => {
+      // ensureConversationReady 返回可用的 conversation (新建或复用)
+      const conv = await ensureConversationReady(quickAskContext)
+      if (conv) {
+        await handleQuickAskSend(conv, quickAskContext)
+      }
+      clearQuickAsk()
+    }, 300)
+    return () => clearTimeout(timeout)
+  }, [quickAskContext])
+
+  /**
+   * 确保有可用的对话: 如果不存在或没有关联课程则创建新对话
+   * @returns Conversation 对象 (直接返回, 不依赖 React state)
+   */
+  async function ensureConversationReady(ctx: QuickAskContext): Promise<Conversation | null> {
+    const courseId = ctx.metadata.courseId
+    // 如果已有对话且课程匹配, 直接复用
+    if (conversation && (!courseId || conversation.course_id === courseId)) {
+      return conversation
+    }
+    // 否则创建新对话
+    hasSentMessageRef.current = false
+    try {
+      const conv = await createConversation({
+        conversation_type: 'chat',
+        title: '快速问答',
+        course_id: courseId,
+      })
+      setConversation(conv)
+      setMessages([])
+      localStorage.setItem(LAST_CONVERSATION_KEY, conv.id)
+      return conv
+    } catch {
+      return null
+    }
+  }
+
+  /**
+   * 根据快问上下文类型生成智能预填充问题
+   */
+  function generateQuickAskQuestion(ctx: QuickAskContext): string {
+    const text = ctx.contextText.slice(0, 200)
+    switch (ctx.sourceType) {
+      case 'kp': return `请帮我详细解释一下"${text}"这个知识点`
+      case 'code': return '请帮我解释这段代码的含义和逻辑'
+      case 'exercise': return '请帮我理解这道题考察的概念，不要直接给答案，帮我理清思路'
+      case 'document': return '请帮我解释这份文档中的关键概念'
+      case 'text_selection': return `请帮我解释这段内容：${text}`
+      default: return text
+    }
+  }
+
+  /**
+   * 快问AI发送: 构建 quickAskMetadata 并发送预填充问题
+   * @param conv 当前可用的对话对象 (直接传入, 避免 stale state)
+   * @param ctx 快问上下文
+   */
+  async function handleQuickAskSend(conv: Conversation, ctx: QuickAskContext) {
+    if (streaming) return
+
+    const question = ctx.prefillQuestion || generateQuickAskQuestion(ctx)
+    if (!question.trim()) return
+
+    hasSentMessageRef.current = true
+
+    const userMsg: Message = {
+      id: 'temp-qa-' + Date.now(),
+      conversation_id: conv.id,
+      role: 'user',
+      content: question,
+      sources: null,
+      message_metadata: null,
+      created_at: new Date().toISOString(),
+    }
+    setMessages((prev) => [...prev, userMsg])
+
+    streamingContentRef.current = ''
+    streamingSourcesRef.current = []
+    setStreaming(true)
+    setStreamingContent('')
+    setStreamingSources([])
+
+    // 构建快问元数据传给后端
+    const quickAskMetadata: Record<string, unknown> = {
+      source_type: ctx.sourceType,
+      context_text: ctx.contextText,
+      kp_id: ctx.metadata.kpId,
+      course_id: ctx.metadata.courseId,
+      chapter_id: ctx.metadata.chapterId,
+      document_id: ctx.metadata.documentId,
+    }
+
+    // 记录可保存的消息 (仅 kp 类型)
+    const kpId = ctx.metadata.kpId
+
+    abortControllerRef.current = streamChat(
+      conv.id,
+      question,
+      ctx.metadata.courseId || conv.course_id,
+      {
+        onContent: (chunk) => {
+          streamingContentRef.current += chunk
+          setStreamingContent(streamingContentRef.current)
+        },
+        onSources: (sources) => {
+          streamingSourcesRef.current = sources
+          setStreamingSources(sources)
+        },
+        onDone: (messageId) => {
+          const finalContent = streamingContentRef.current
+          const finalSources = streamingSourcesRef.current
+          setMessages((prev) => [
+            ...prev,
+            {
+              id: messageId,
+              conversation_id: conv.id,
+              role: 'assistant',
+              content: finalContent,
+              sources: finalSources.length > 0 ? finalSources : null,
+              message_metadata: null,
+              created_at: new Date().toISOString(),
+            },
+          ])
+          // 标记此 AI 回复可保存到知识库
+          if (kpId) {
+            saveableMessagesRef.current.set(messageId, { kpId, saved: false })
+          }
+          setStreaming(false)
+          setStreamingContent('')
+          setStreamingSources([])
+          streamingContentRef.current = ''
+          streamingSourcesRef.current = []
+        },
+        onError: (error) => {
+          message.error('回复生成失败: ' + error)
+          const partial = streamingContentRef.current
+          if (partial) {
+            setMessages((prev) => [
+              ...prev,
+              {
+                id: 'error-' + Date.now(),
+                conversation_id: conv.id,
+                role: 'assistant',
+                content: partial + '\n\n[回复中断: ' + error + ']',
+                sources: streamingSourcesRef.current.length > 0 ? streamingSourcesRef.current : null,
+                message_metadata: null,
+                created_at: new Date().toISOString(),
+              },
+            ])
+          }
+          setStreaming(false)
+          setStreamingContent('')
+          setStreamingSources([])
+          streamingContentRef.current = ''
+          streamingSourcesRef.current = []
+        },
+      },
+      undefined, // systemPrompt — 后端会根据 quick_ask_context 自动构建
+      quickAskMetadata,
+    )
+  }
+
+  /**
+   * 保存 AI 回复到知识库: 调用后端浓缩 + 存储
+   */
+  async function handleSaveToKnowledgeBase(messageId: string, kpId: string, fullResponse: string, userQuestion: string) {
+    try {
+      const entry = saveableMessagesRef.current.get(messageId)
+      if (!entry || entry.saved) return
+
+      message.loading({ content: '正在浓缩并存储 AI 解释…', key: 'save-kp' })
+      await condenseAndStoreExplanation(kpId, fullResponse, userQuestion)
+      entry.saved = true
+      saveableMessagesRef.current.set(messageId, entry)
+      message.success({ content: '已保存到知识卡片，可在课程详情中查看', key: 'save-kp' })
+    } catch (err: unknown) {
+      const errMsg = err instanceof Error ? err.message : '未知错误'
+      message.error({ content: '保存失败: ' + errMsg, key: 'save-kp' })
+    }
+  }
+
+  /** 查找某个 AI 回复对应的用户提问文本 */
+  function findUserQuestion(aiMsgIndex: number): string {
+    // 向前查找最近的 user 消息
+    for (let i = aiMsgIndex - 1; i >= 0; i--) {
+      if (messages[i].role === 'user') {
+        return messages[i].content
+      }
+    }
+    return ''
+  }
 
   useEffect(() => { return () => { abortControllerRef.current?.abort() } }, [])
 
@@ -244,7 +458,42 @@ export default function FloatingChat() {
               </div>
             ) : (
               <>
-                {messages.map((msg) => <ChatMessage key={msg.id} role={msg.role} content={msg.content} sources={msg.sources} createdAt={msg.created_at} />)}
+                {messages.map((msg, idx) => {
+                  const saveEntry = msg.role === 'assistant' ? saveableMessagesRef.current.get(msg.id) : null
+                  return (
+                    <div key={msg.id}>
+                      <ChatMessage
+                        role={msg.role}
+                        content={msg.content}
+                        sources={msg.sources}
+                        createdAt={msg.created_at}
+                      />
+                      {/* "保存到知识库" 按钮: 仅快问AI 触发且 sourceType=kp 的 AI 回复显示 */}
+                      {msg.role === 'assistant' && saveEntry && !saveEntry.saved && (
+                        <div style={{ padding: '0 0 8px', textAlign: 'right' }}>
+                          <Button
+                            type="primary"
+                            ghost
+                            size="small"
+                            icon={<SaveOutlined />}
+                            onClick={() => handleSaveToKnowledgeBase(msg.id, saveEntry.kpId, msg.content, findUserQuestion(idx))}
+                            style={{ borderRadius: 6, fontSize: 12 }}
+                          >
+                            保存到知识库
+                          </Button>
+                        </div>
+                      )}
+                      {/* 已保存标记 */}
+                      {msg.role === 'assistant' && saveEntry && saveEntry.saved && (
+                        <div style={{ padding: '0 0 8px', textAlign: 'right' }}>
+                          <Text type="success" style={{ fontSize: 11 }}>
+                            <BulbOutlined /> 已保存到知识卡片
+                          </Text>
+                        </div>
+                      )}
+                    </div>
+                  )
+                })}
                 {streaming && streamingContent && <ChatMessage role="assistant" content={streamingContent} sources={streamingSources} streaming />}
                 {streaming && !streamingContent && <div style={{ textAlign: 'center', padding: 16 }}><Spin size="small" /> <Text type="secondary" style={{ fontSize: 12 }}>思考中...</Text></div>}
                 <div ref={messagesEndRef} />

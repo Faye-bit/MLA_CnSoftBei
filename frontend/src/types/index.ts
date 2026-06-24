@@ -59,6 +59,10 @@ export interface KnowledgePoint {
   prerequisite_kp_id: string | null; parent_kp_id: string | null
   kp_type: 'category' | 'item'
   difficulty: 'easy' | 'medium' | 'hard'; created_at: string
+  /** AI 解释 (快问AI 功能) */
+  ai_explanation: string | null
+  ai_explanation_generated_at: string | null
+  ai_explanation_report_count: number
 }
 /** 知识点关联的文档页面信息 */
 export interface LinkedPageInfo {
@@ -79,6 +83,10 @@ export interface KnowledgePointTreeNode {
   image_url: string
   children: KnowledgePointTreeNode[]
   linked_pages: LinkedPageInfo[]
+  /** AI 解释 (快问AI 功能) */
+  ai_explanation: string | null
+  ai_explanation_generated_at: string | null
+  ai_explanation_report_count: number
 }
 
 // ==================== 文档相关 ====================
@@ -398,6 +406,15 @@ export interface ConversationCreate {
 export interface SendMessageRequest {
   content: string
   course_id?: string | null
+  quick_ask_context?: Record<string, unknown> | null
+}
+
+/** AI 解释响应 (快问AI 功能) */
+export interface AIExplanationResponse {
+  ai_explanation: string | null
+  ai_explanation_generated_at: string | null
+  ai_explanation_report_count: number
+  condensed_text?: string | null
 }
 
 // ==================== 学生画像相关 (描述式) ====================
