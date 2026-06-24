@@ -48,6 +48,8 @@ class ReviewItem(BaseModel):
     review_at: str
     status: str
     reminded: bool
+    knowledge_point_id: Optional[uuid.UUID] = None
+    course_id: Optional[uuid.UUID] = None
 
     model_config = {"from_attributes": True}
 
@@ -113,6 +115,8 @@ async def api_get_pending(
             review_at=rv.review_at.isoformat(),
             status=rv.status,
             reminded=rv.reminded,
+            knowledge_point_id=rv.knowledge_point_id,
+            course_id=rv.course_id,
         )
 
     return ApiResponse(

@@ -626,6 +626,7 @@ export interface ReviewItem {
   id: string; content_title: string; content_type: string
   interval_index: number; interval_days: number
   review_at: string; status: string; reminded: boolean
+  knowledge_point_id: string | null; course_id: string | null
 }
 export interface ReviewPendingResponse {
   pending: ReviewItem[]; upcoming: ReviewItem[]

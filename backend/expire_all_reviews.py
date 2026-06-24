@@ -27,17 +27,22 @@ async def main():
                 ReviewSchedule.user_id == uid,
                 ReviewSchedule.status == 'pending',
                 ReviewSchedule.review_at > now,
-            )
+            ).order_by(ReviewSchedule.review_at.asc())
             result = await db.execute(stmt)
             schedules = result.scalars().all()
 
             if schedules:
-                past = now - timedelta(days=1)
-                for i, s in enumerate(schedules):
-                    # 均匀分布在过去 1-5 天, 避免所有项显示相同天数
-                    s.review_at = past - timedelta(days=i % 5)
+                # 只将每个内容最近的一条设为过期, 模拟真实用户场景
+                seen: set[tuple] = set()
+                expired = 0
+                for s in schedules:
+                    key = (s.content_type, s.content_title)
+                    if key not in seen:
+                        seen.add(key)
+                        s.review_at = now - timedelta(days=1)
+                        expired += 1
                 await db.commit()
-                print(f"[{nick or email}]: {len(schedules)} 条复习已设为过期 ✅")
+                print(f"[{nick or email}]: {expired} 条复习已设为过期 ✅ (共 {len(schedules)} 条, 跳过 {len(schedules) - expired} 条重复间隔)")
             else:
                 print(f"[{nick or email}]: 无需处理 (没有未来待复习项)")
 

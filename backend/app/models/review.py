@@ -104,6 +104,12 @@ class ReviewSchedule(Base):
         nullable=False, index=True
     )
 
+    # 关联知识点 (可选, 用于展示 AI 解释知识卡片)
+    knowledge_point_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("knowledge_points.id", ondelete="SET NULL"),
+        nullable=True
+    )
+
     # 关联课程 (冗余, 用于前端展示)
     course_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True), ForeignKey("courses.id", ondelete="SET NULL"),

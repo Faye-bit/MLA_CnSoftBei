@@ -110,6 +110,7 @@ async def record_learning(
             record_id=record.id,
             user_id=user_id,
             course_id=course_id,
+            knowledge_point_id=knowledge_point_id,
             interval_index=idx,
             review_at=review_date,
             remind_method=remind_method,
@@ -138,12 +139,12 @@ async def get_pending_reviews(
 ) -> List[ReviewSchedule]:
     """
     获取用户当前到期的待复习提醒列表
-    仅返回 review_at <= now 且 status='pending' 的条目
+    每个学习内容只返回最急迫的一条 (最低 interval_index), 避免同一内容出现多天间隔
 
     :param user_id: 用户 ID
     :param db: 数据库会话
     :param limit: 最多返回条数
-    :return: 待复习提醒列表 (按复习时间排序)
+    :return: 待复习提醒列表 (去重后, 按复习时间排序)
     """
     now = datetime.now(timezone.utc)
     stmt = (
@@ -156,11 +157,19 @@ async def get_pending_reviews(
             )
         )
         .order_by(ReviewSchedule.review_at.asc())
-        .limit(limit)
     )
     result = await db.execute(stmt)
-    schedules = result.scalars().all()
-    return list(schedules)
+    all_schedules = result.scalars().all()
+
+    # 去重: 每个 (content_type, content_title) 只保留 interval_index 最小的一条 (最急迫)
+    seen: dict[tuple, ReviewSchedule] = {}
+    for s in all_schedules:
+        key = (s.content_type, s.content_title)
+        if key not in seen or s.interval_index < seen[key].interval_index:
+            seen[key] = s
+
+    deduped = sorted(seen.values(), key=lambda s: s.review_at)[:limit]
+    return deduped
 
 
 async def get_upcoming_reviews(
@@ -170,14 +179,29 @@ async def get_upcoming_reviews(
 ) -> List[ReviewSchedule]:
     """
     获取未来 N 天内到期的复习提醒 (用于预告)
+    每个学习内容只返回最近的一条 (最低 interval_index)
 
     :param user_id: 用户 ID
     :param db: 数据库会话
     :param days_ahead: 提前天数
-    :return: 即将到期的复习提醒
+    :return: 即将到期的复习提醒 (去重后, 且不包含已有到期项的内容)
     """
     now = datetime.now(timezone.utc)
     future = now + timedelta(days=days_ahead)
+
+    # 先查出所有已到期的内容 key (这些不应出现在 upcoming 中)
+    expired_stmt = select(ReviewSchedule).where(
+        and_(
+            ReviewSchedule.user_id == user_id,
+            ReviewSchedule.review_at <= now,
+            ReviewSchedule.status == "pending",
+        )
+    )
+    expired_result = await db.execute(expired_stmt)
+    expired_keys: set[tuple] = {
+        (s.content_type, s.content_title) for s in expired_result.scalars().all()
+    }
+
     stmt = (
         select(ReviewSchedule)
         .where(
@@ -189,10 +213,20 @@ async def get_upcoming_reviews(
             )
         )
         .order_by(ReviewSchedule.review_at.asc())
-        .limit(10)
     )
     result = await db.execute(stmt)
-    return list(result.scalars().all())
+    all_schedules = result.scalars().all()
+
+    # 去重: 每个 (content_type, content_title) 只保留 interval_index 最小的一条
+    seen: dict[tuple, ReviewSchedule] = {}
+    for s in all_schedules:
+        key = (s.content_type, s.content_title)
+        if key in expired_keys:
+            continue  # 已有到期项的不显示在即将到期中
+        if key not in seen or s.interval_index < seen[key].interval_index:
+            seen[key] = s
+
+    return sorted(seen.values(), key=lambda s: s.review_at)[:10]
 
 
 # ============================================================================

@@ -87,11 +87,11 @@ export default function Dashboard() {
 
         <Col xs={24} lg={10}>
           <div
-            style={{ ...CARD_STYLE, display: 'flex', flexDirection: 'column', height: 318 }}
+            style={{ ...CARD_STYLE, display: 'flex', flexDirection: 'column', height: '100%' }}
             onMouseEnter={hoverIn}
             onMouseLeave={hoverOut}
           >
-            <div style={{ ...CARD_TITLE_STYLE, flexShrink: 0 }}>
+            <div style={{ ...CARD_TITLE_STYLE, flexShrink: 0, paddingBottom: 12 }}>
               <BellOutlined style={{ color: '#faad14', fontSize: 16 }} />
               <span>艾宾浩斯复习提醒</span>
             </div>
