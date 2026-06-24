@@ -56,21 +56,14 @@ export default function Sidebar({ collapsed }: { collapsed: boolean }) {
         label: '课程管理',
       },
       {
-        key: 'knowledge-group',
+        key: '/knowledge',
         icon: <SearchOutlined />,
-        label: '知识库',
-        children: [
-          {
-            key: '/knowledge',
-            icon: <SearchOutlined />,
-            label: '知识检索',
-          },
-          {
-            key: '/chat',
-            icon: <MessageOutlined />,
-            label: 'AI 对话',
-          },
-        ],
+        label: '知识检索',
+      },
+      {
+        key: '/chat',
+        icon: <MessageOutlined />,
+        label: 'AI 对话',
       },
       {
         key: '/learning',
@@ -163,7 +156,7 @@ export default function Sidebar({ collapsed }: { collapsed: boolean }) {
         <Menu
           mode="inline"
           selectedKeys={[selectedKey]}
-          defaultOpenKeys={['knowledge-group', 'admin-group']}
+          defaultOpenKeys={['admin-group']}
           items={menuItems}
           onClick={handleMenuClick}
           style={{

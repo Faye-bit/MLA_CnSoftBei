@@ -16,6 +16,8 @@ import {
   Alert,
   Tag,
   Switch,
+  Radio,
+  Select,
 } from 'antd'
 import { SaveOutlined, ReloadOutlined } from '@ant-design/icons'
 import { getApiConfig, updateApiConfig } from '../services/api'
@@ -46,6 +48,9 @@ export default function Settings() {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [form] = Form.useForm()
+
+  /** TTS API 版本切换: 'new' = 新版 API Key / 'old' = 旧版 App ID + Access Token */
+  const [ttsApiVersion, setTtsApiVersion] = useState<'new' | 'old'>('new')
 
   /** 加载当前配置 */
   async function loadConfig() {
@@ -109,6 +114,35 @@ export default function Settings() {
         style={{ marginBottom: 24 }}
       />
 
+      {/* Live2D 虚拟形象 — 放在最前面 */}
+      <Card
+        title={
+          <Space>
+            <Tag color="pink">虚拟形象</Tag>
+            <span>AI 虚拟助教 (Live2D)</span>
+            <Text type="secondary" style={{ fontSize: 12 }}>
+              (页面左下角悬浮的交互式虚拟角色)
+            </Text>
+          </Space>
+        }
+        style={{ marginBottom: 24 }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div>
+            <Text strong>启用虚拟形象</Text>
+            <br />
+            <Text type="secondary" style={{ fontSize: 12 }}>
+              开启后在页面左下角显示 Live2D 虚拟助教, 可点击互动。
+              关闭后立即隐藏。
+            </Text>
+          </div>
+          <Switch
+            defaultChecked={getLive2DEnabled()}
+            onChange={(checked) => setLive2DEnabled(checked)}
+          />
+        </div>
+      </Card>
+
       <Form form={form} layout="vertical">
         {/* LLM 配置 */}
         <Card
@@ -156,35 +190,6 @@ export default function Settings() {
           <Form.Item name="embedding_model" label="模型名称">
             <Input placeholder="text-embedding-3-small" />
           </Form.Item>
-        </Card>
-
-        {/* Live2D 虚拟形象 */}
-        <Card
-          title={
-            <Space>
-              <Tag color="pink">虚拟形象</Tag>
-              <span>AI 虚拟助教 (Live2D)</span>
-              <Text type="secondary" style={{ fontSize: 12 }}>
-                (页面右下角悬浮的交互式虚拟角色)
-              </Text>
-            </Space>
-          }
-          style={{ marginBottom: 24 }}
-        >
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <div>
-              <Text strong>启用虚拟形象</Text>
-              <br />
-              <Text type="secondary" style={{ fontSize: 12 }}>
-                开启后在页面右下角显示 Live2D 虚拟助教, 可点击互动。
-                关闭后立即隐藏。
-              </Text>
-            </div>
-            <Switch
-              defaultChecked={getLive2DEnabled()}
-              onChange={(checked) => setLive2DEnabled(checked)}
-            />
-          </div>
         </Card>
 
         {/* 文档解析模型配置 */}
@@ -258,41 +263,76 @@ export default function Settings() {
                   火山引擎语音控制台
                 </a>
                 {' '}开通 seed-tts-2.0 服务。
-                <br/>新版控制台填写 API Key；旧版控制台填写 App ID + Access Token。
               </span>
             }
             type="warning"
             showIcon={false}
             style={{ marginBottom: 16 }}
           />
-          <Form.Item
-            name="tts_api_key"
-            label="API Key (新版)"
-            tooltip="火山引擎新版统一 API Key, 在 https://console.volcengine.com/speech/new/setting/apikeys 获取"
-          >
-            <Input.Password placeholder="新版 API Key (优先使用)" />
+
+          {/* API 版本切换 */}
+          <Form.Item label="API 认证方式">
+            <Radio.Group
+              value={ttsApiVersion}
+              onChange={(e) => setTtsApiVersion(e.target.value)}
+            >
+              <Radio.Button value="new">新版 API Key</Radio.Button>
+              <Radio.Button value="old">旧版 App ID + Token</Radio.Button>
+            </Radio.Group>
           </Form.Item>
-          <Form.Item
-            name="tts_app_id"
-            label="App ID (旧版)"
-            tooltip="火山引擎旧版语音 App ID, 与 Access Token 配合使用"
-          >
-            <Input placeholder="旧版 App ID" />
-          </Form.Item>
-          <Form.Item
-            name="tts_access_token"
-            label="Access Token (旧版)"
-            tooltip="火山引擎旧版语音 Access Token, 与 App ID 配合使用"
-          >
-            <Input.Password placeholder="旧版 Access Token" />
-          </Form.Item>
+
+          {/* 新版: 仅显示 API Key */}
+          {ttsApiVersion === 'new' && (
+            <Form.Item
+              name="tts_api_key"
+              label="API Key"
+              tooltip="火山引擎新版统一 API Key, 在 https://console.volcengine.com/speech/new/setting/apikeys 获取"
+            >
+              <Input.Password placeholder="新版 API Key" />
+            </Form.Item>
+          )}
+
+          {/* 旧版: 显示 App ID + Access Token */}
+          {ttsApiVersion === 'old' && (
+            <>
+              <Form.Item
+                name="tts_app_id"
+                label="App ID"
+                tooltip="火山引擎旧版语音 App ID"
+              >
+                <Input placeholder="旧版 App ID" />
+              </Form.Item>
+              <Form.Item
+                name="tts_access_token"
+                label="Access Token"
+                tooltip="火山引擎旧版语音 Access Token, 与 App ID 配合使用"
+              >
+                <Input.Password placeholder="旧版 Access Token" />
+              </Form.Item>
+            </>
+          )}
+
+          {/* 音色下拉选择 */}
           <Form.Item
             name="tts_voice"
             label="默认音色"
-            tooltip="可选: zh-female-warm (温暖女声), zh-female-assistant (助手女声), zh-male-storyteller (说书人男声) 等"
+            tooltip="选择 Live2D 虚拟助教的朗读音色"
           >
-            <Input placeholder="zh-female-warm" />
+            <Select
+              placeholder="选择音色"
+              allowClear
+              options={[
+                { label: '中文 · 温暖女声 (推荐)', value: 'zh-female-warm' },
+                { label: '中文 · 记者女声', value: 'zh-female-reporter' },
+                { label: '中文 · 温暖男声', value: 'zh-male-warm' },
+                { label: '中文 · 解说男声', value: 'zh-male-energetic' },
+                { label: '英文 · 助手女声', value: 'en-female-assistant' },
+                { label: '英文 · 助手男声', value: 'en-male-assistant' },
+              ]}
+            />
           </Form.Item>
+
+          {/* 语速 */}
           <Form.Item
             name="tts_speed"
             label="语速倍率"
