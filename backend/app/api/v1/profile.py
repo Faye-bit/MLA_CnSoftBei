@@ -221,6 +221,22 @@ async def get_study_radar(
         raise HTTPException(status_code=500, detail=f"雷达图获取失败: {str(e)}")
 
 
+@router.get("/radar/{dimension_key}", summary="获取雷达图维度详情")
+async def get_radar_dimension_detail(
+    dimension_key: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """获取指定维度的详细追踪数据 (点击雷达图维度时调用)"""
+    from app.services.radar_service import get_dimension_detail
+    try:
+        detail = await get_dimension_detail(current_user.id, dimension_key, db)
+        return ApiResponse(data=detail, message="维度详情获取成功")
+    except Exception as e:
+        logger.error(f"维度详情异常: {e}\n{traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail=f"维度详情获取失败: {str(e)}")
+
+
 @router.delete("/", response_model=ApiResponse[None], summary="重置画像")
 async def delete_my_profile(
     db: AsyncSession = Depends(get_db),

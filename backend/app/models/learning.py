@@ -239,6 +239,11 @@ class GeneratedResource(Base):
         DateTime(timezone=True), server_default=func.now()
     )
 
+    # 更新时间 (练习作答保存时自动更新, 用于追踪最近做题活动)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
     # 关联关系: 所属阶段
     stage: Mapped["LearningStage"] = relationship(
         "LearningStage", back_populates="resources"

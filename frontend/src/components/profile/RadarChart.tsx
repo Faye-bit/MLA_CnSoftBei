@@ -30,6 +30,8 @@ interface RadarChartProps {
   overallScore: number
   loading?: boolean
   updatedAt?: string
+  selectedKey?: string
+  onDimensionClick?: (key: string) => void
 }
 
 function toChartData(dimensions: RadarDimension[]) {
@@ -43,7 +45,7 @@ function scoreLevel(score: number): { color: string; level: string } {
   return { color: semantic.danger, level: '需提升' }
 }
 
-export default function RadarChart({ dimensions, overallScore, loading = false, updatedAt }: RadarChartProps) {
+export default function RadarChart({ dimensions, overallScore, loading = false, updatedAt, selectedKey, onDimensionClick }: RadarChartProps) {
   const chartData = useMemo(() => toChartData(dimensions), [dimensions])
   const { color, level } = scoreLevel(overallScore)
 
@@ -78,7 +80,8 @@ export default function RadarChart({ dimensions, overallScore, loading = false, 
         {dimensions.map((dim) => (
           <Tag key={dim.key} icon={ICON_MAP[dim.key]}
             color={dim.score >= 7 ? 'green' : dim.score >= 4 ? 'blue' : 'orange'}
-            style={{ fontSize: 12 }}>
+            style={{ fontSize: 12, cursor: 'pointer', fontWeight: dim.key === selectedKey ? 700 : 400 }}
+            onClick={() => onDimensionClick?.(dim.key)}>
             {dim.label}: {dim.score.toFixed(1)}
           </Tag>
         ))}

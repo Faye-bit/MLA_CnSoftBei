@@ -18,6 +18,7 @@ import {
 } from '@ant-design/icons'
 import ProfileDimensionCard from '../components/profile/ProfileDimensionCard'
 import RadarChart from '../components/profile/RadarChart'
+import DimensionDetail from '../components/profile/DimensionDetail'
 import {
   getStudentProfile,
   updateStudentProfile,
@@ -49,6 +50,7 @@ export default function StudentProfile() {
   const [radarOverall, setRadarOverall] = useState(0)
   const [radarUpdatedAt, setRadarUpdatedAt] = useState('')
   const [radarLoading, setRadarLoading] = useState(true)
+  const [selectedDimension, setSelectedDimension] = useState('practice_intensity')
 
   const loadProfile = useCallback(async () => {
     setLoading(true)
@@ -129,7 +131,7 @@ export default function StudentProfile() {
   }
 
   return (
-    <div style={{ maxWidth: 800, margin: '0 auto' }}>
+    <div style={{ margin: '-12px -12px 0 -12px' }}>
       {/* 顶部导航 */}
       <div style={{ marginBottom: 24, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <Space>
@@ -176,13 +178,22 @@ export default function StudentProfile() {
         </Paragraph>
       )}
 
-      {/* 学习行为雷达图 */}
-      <RadarChart
-        dimensions={radarDimensions}
-        overallScore={radarOverall}
-        loading={radarLoading}
-        updatedAt={radarUpdatedAt}
-      />
+      {/* 学习行为雷达图 (左) + 维度追踪卡片 (右) */}
+      <div style={{ display: 'flex', gap: 16, marginBottom: 24, minHeight: 400 }}>
+        <div style={{ flex: '0 0 420px' }}>
+          <RadarChart
+            dimensions={radarDimensions}
+            overallScore={radarOverall}
+            loading={radarLoading}
+            updatedAt={radarUpdatedAt}
+            selectedKey={selectedDimension}
+            onDimensionClick={setSelectedDimension}
+          />
+        </div>
+        <div style={{ flex: 1, minWidth: 300 }}>
+          <DimensionDetail dimensionKey={selectedDimension} />
+        </div>
+      </div>
 
       {/* 系统已了解的信息 (后台自动提取的记忆) */}
       {profile?.memories && profile.memories.length > 0 && (

@@ -32,12 +32,13 @@ interface ExerciseViewerProps {
   content: string           // JSON 格式的题库
   resourceId: string        // 资源 ID, 用于持久化进度
   resourceMetadata: Record<string, unknown>  // 资源元数据, 包含历史进度
+  /** 只读模式: 展示历史作答, 不可交互 (用于雷达图追踪卡片) */
+  readOnly?: boolean
 }
 
-export default function ExerciseViewer({ content, resourceId, resourceMetadata }: ExerciseViewerProps) {
+export default function ExerciseViewer({ content, resourceId, resourceMetadata, readOnly = false }: ExerciseViewerProps) {
   // ── 快问AI 触发器 ──
   const triggerQuickAsk = useQuickAskStore((s) => s.trigger)
-
   // ── 从 resource_metadata 中恢复历史作答进度 ──
   const saved = (resourceMetadata?.exercise_progress || {}) as {
     answers?: Record<string, number | number[] | string>
@@ -187,6 +188,7 @@ export default function ExerciseViewer({ content, resourceId, resourceMetadata }
 
   /** 选择答案: 更新状态 + 立即保存 (用于单选/多选/判断这类点击操作) */
   function handleOptionChange(q: ExerciseQuestion, value: number | number[]) {
+    if (readOnly) return
     const newAnswers = { ...userAnswers, [q.id]: value }
     setUserAnswers(newAnswers)
     doSave(newAnswers, submitted, currentIndex)
@@ -194,6 +196,7 @@ export default function ExerciseViewer({ content, resourceId, resourceMetadata }
 
   /** 文本输入: 更新状态 + 防抖保存 (避免每次击键都触发 API 调用) */
   function handleTextChange(q: ExerciseQuestion, value: string) {
+    if (readOnly) return
     const newAnswers = { ...userAnswers, [q.id]: value }
     setUserAnswers(newAnswers)
     // 防抖 800ms, 用户停止输入后保存
@@ -467,8 +470,11 @@ export default function ExerciseViewer({ content, resourceId, resourceMetadata }
           {currentQuestion && renderOptions(currentQuestion)}
         </div>
 
-        {currentQuestion && !submitted[currentQuestion.id] && (
+        {currentQuestion && !submitted[currentQuestion.id] && !readOnly && (
           <Button type="primary" onClick={handleSubmit}>提交答案</Button>
+        )}
+        {readOnly && (
+          <div style={{ color: '#888', fontSize: 12, marginTop: 8 }}>📋 历史作答记录 (只读)</div>
         )}
 
         {/* 结果反馈 */}

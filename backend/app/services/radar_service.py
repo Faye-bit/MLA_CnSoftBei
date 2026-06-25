@@ -63,14 +63,14 @@ RADAR_DIMENSIONS = [
     },
     {
         "key": "review_habit",
-        "label": "复习复盘习惯",
-        "tooltip": "高分: 善于复用历史学习资料，借助AI定期复盘巩固旧知识；低分: 学习一次性完成，课件浏览、AI学习后不再复盘，知识留存率低。",
+        "label": "知识留存度",
+        "tooltip": "高分: 定期回顾已学知识，及时在遗忘临界前复习，知识留存率高；低分: 学过即忘，很少回顾旧知识，长期记忆薄弱。",
         "icon": "sync",
     },
     {
         "key": "focus_level",
-        "label": "听课专注度",
-        "tooltip": "高分: 学习专注力强，单次学习时长充足，完整观看AI学习视频，深度研读资料；低分: 学习碎片化严重，浅度浏览资源，频繁中断学习、跳转页面。",
+        "label": "学习沉浸度",
+        "tooltip": "高分: 单次学习深度足、完成阶段多，能保持长时间专注学习；低分: 学习碎片化，浅度浏览，单次学习完成阶段少。",
         "icon": "eye",
     },
 ]
@@ -457,3 +457,441 @@ async def get_radar_data(
         "updated_at": _now_utc().isoformat(),
         "data_available": has_data,
     }
+
+
+# ============================================================================
+# 各维度详情查询 (点击雷达图维度时使用)
+# ============================================================================
+
+async def get_dimension_detail(
+    user_id: uuid.UUID,
+    dimension_key: str,
+    db: AsyncSession,
+) -> dict:
+    """
+    获取某个维度的详细追踪数据
+    返回该维度的细分指标、历史趋势和改进建议
+    """
+    since = _now_utc() - timedelta(days=DAYS_WINDOW)
+
+    handlers = {
+        "subject_balance": _detail_subject_balance,
+        "learning_discipline": _detail_learning_discipline,
+        "active_learning": _detail_active_learning,
+        "practice_intensity": _detail_practice_intensity,
+        "review_habit": _detail_review_habit,
+        "focus_level": _detail_focus_level,
+    }
+
+    handler = handlers.get(dimension_key)
+    if not handler:
+        return {"detail_items": [], "suggestion": ""}
+
+    score, items, suggestion = await handler(user_id, db, since)
+    dim = next((d for d in RADAR_DIMENSIONS if d["key"] == dimension_key), None)
+    return {
+        "key": dimension_key,
+        "label": dim["label"] if dim else dimension_key,
+        "score": round(score, 1),
+        "detail_items": items,
+        "suggestion": suggestion,
+    }
+
+
+async def _detail_subject_balance(user_id, db, since):
+    """学科均衡度明细: 各课程的行为分布"""
+    from app.models.learning import LearningSession
+    course_ids = await _get_user_course_ids(user_id, db)
+    if not course_ids:
+        return 0.0, [], "创建至少一门课程开始学习吧"
+
+    items = []
+    for cid in course_ids:
+        doc_cnt = (await db.execute(select(func.count(Document.id)).where(Document.course_id == cid))).scalar() or 0
+        session_cnt = (await db.execute(
+            select(func.count(LearningSession.id)).where(
+                LearningSession.course_id == cid, LearningSession.user_id == user_id
+            )
+        )).scalar() or 0
+        course = await db.get(Course, cid)
+        items.append({
+            "label": course.name if course else "未知课程",
+            "value": doc_cnt + session_cnt * 2,
+            "doc_count": doc_cnt,
+            "session_count": session_cnt,
+        })
+
+    counts = [i["value"] for i in items]
+    total = sum(counts) if counts else 0
+    mean = total / len(counts) if counts else 0
+    variance = sum((c - mean) ** 2 for c in counts) / len(counts) if counts else 0
+    std_dev = math.sqrt(variance)
+    max_std = mean * math.sqrt(len(counts) - 1) if len(counts) > 1 and mean > 0 else 1.0
+    score = max(0.0, 10.0 - (std_dev / max_std) * 10.0) if max_std > 0 else 10.0
+
+    if len(counts) <= 1:
+        suggestion = "尝试创建第二个课程, 在不同学科间均衡学习"
+    elif std_dev < mean * 0.3:
+        suggestion = "学科分布很均衡, 继续保持!"
+    else:
+        suggestion = f"「{items[counts.index(min(counts))]['label']}」投入较少, 可以增加学习时间"
+    return score, items, suggestion
+
+
+async def _detail_learning_discipline(user_id, db, since):
+    """学习自律度明细: 近30天每日活跃日历"""
+    conversations = await _get_user_conversations(user_id, db, since)
+    docs = await _get_user_documents(user_id, db, since)
+    from app.models.learning import LearningSession
+    sessions_stmt = (
+        select(LearningSession.created_at)
+        .where(LearningSession.user_id == user_id, LearningSession.created_at >= since)
+    )
+    sessions_result = await db.execute(sessions_stmt)
+    session_dates = [row[0].date() for row in sessions_result.all() if row[0]]
+
+    # 构建每日活跃日历
+    active_set: set = set()
+    for c in conversations:
+        if c.created_at: active_set.add(c.created_at.date())
+    for d in docs:
+        if d.created_at: active_set.add(d.created_at.date())
+    for sd in session_dates:
+        active_set.add(sd)
+
+    today = _now_utc().date()
+    days_list = []
+    for i in range(29, -1, -1):
+        d = today - timedelta(days=i)
+        days_list.append({"date": d.strftime("%Y-%m-%d"), "active": d in active_set})
+
+    active_count = len(active_set)
+    score = min(10.0, (active_count / 20.0) * 10.0)  # 20天活跃 → 满分
+
+    if active_count >= 20:
+        suggestion = "学习频率很高, 自律性优秀!"
+    elif active_count >= 10:
+        suggestion = "学习比较规律, 可以增加周末的学习频次"
+    else:
+        suggestion = "学习频率偏低, 建议每天至少安排30分钟学习时间"
+    return score, days_list, suggestion
+
+
+async def _detail_active_learning(user_id, db, since):
+    """主动学习意愿明细: 上传/提问/会话"""
+    docs = await _get_user_documents(user_id, db, since)
+    user_msg_count = await _get_user_message_count(user_id, db, since, role="user")
+    from app.models.learning import LearningSession
+    session_count = (await db.execute(
+        select(func.count(LearningSession.id)).where(
+            LearningSession.user_id == user_id, LearningSession.created_at >= since
+        )
+    )).scalar() or 0
+
+    items = [
+        {"label": "上传文档", "value": len(docs), "max": 10, "unit": "份"},
+        {"label": "AI 提问", "value": user_msg_count, "max": 50, "unit": "条"},
+        {"label": "开启学习", "value": session_count, "max": 5, "unit": "次"},
+    ]
+
+    upload_score = min(10.0, (len(docs) / 10.0) * 10.0)
+    question_score = min(10.0, (user_msg_count / 50.0) * 10.0)
+    session_score = min(10.0, (session_count / 5.0) * 10.0)
+    score = upload_score * 0.4 + question_score * 0.35 + session_score * 0.25
+
+    total_activity = len(docs) + user_msg_count + session_count
+    if total_activity >= 30:
+        suggestion = "学习非常主动, 保持这个节奏!"
+    elif total_activity >= 10:
+        suggestion = "可以多向 AI 提问, 深度探索感兴趣的知识点"
+    else:
+        suggestion = "尝试上传一些课程资料或开启一次 AI 学习会话"
+    return score, items, suggestion
+
+
+def _is_correct(q: dict, user_ans, q_score) -> bool:
+    """判断单题是否正确"""
+    qtype = q.get("type", "")
+    correct_ans = q.get("answer")
+    if qtype == "multiple_choice":
+        cs = set(int(x) for x in correct_ans) if isinstance(correct_ans, list) else set()
+        us = set(int(x) for x in user_ans) if isinstance(user_ans, list) else set(x for x in (user_ans or []))
+        return cs == us
+    elif qtype in ("single_choice", "true_false"):
+        expected = int(correct_ans) if not isinstance(correct_ans, bool) else (0 if correct_ans is True else 1)
+        return int(user_ans or -1) == expected
+    elif qtype in ("fill_blank", "short_answer"):
+        if q_score is not None:
+            return q_score >= 10
+        return False
+    return str(user_ans or "").strip() == str(correct_ans or "").strip()
+
+
+async def _detail_practice_intensity(user_id, db, since):
+    """刷题巩固强度明细: 按题目为单位统计, 课程→阶段→资源→题目 层级"""
+    import json
+    from collections import Counter
+    from app.models.learning import LearningSession, LearningStage, GeneratedResource
+    from app.models.course import Course as CourseModel
+
+    # 查询所有练习题资源 (带阶段和课程信息)
+    ex_stmt = (
+        select(
+            GeneratedResource.id, GeneratedResource.title, GeneratedResource.resource_type,
+            GeneratedResource.content, GeneratedResource.resource_metadata,
+            GeneratedResource.created_at,
+            LearningSession.course_id,
+            LearningStage.id, LearningStage.title, LearningStage.order_index,
+        )
+        .join(LearningStage, GeneratedResource.stage_id == LearningStage.id)
+        .join(LearningSession, LearningStage.session_id == LearningSession.id)
+        .where(
+            LearningSession.user_id == user_id,
+            GeneratedResource.resource_type.in_(("exercise", "code_practice", "assessment")),
+            GeneratedResource.created_at >= since,
+        )
+        .order_by(GeneratedResource.created_at.desc())
+    )
+    ex_result = await db.execute(ex_stmt)
+    ex_rows = ex_result.all()
+
+    # 按天统计: 每题提交=已答, 提交但错=答错 (基于 updated_at 为提交日)
+    ans_daily = Counter()   # 已答题数
+    wrong_daily = Counter() # 答错题数
+    for row in ex_rows:
+        metadata = row[4]
+        updated_at = getattr(row[0], 'updated_at', row[5]) if hasattr(row, '_mapping') else row[5]
+        # 用 updated_at 作为作答日期 (如果有的话), 否则用 created_at
+        # 实际: row 是 tuple, 无 updated_at 字段, 用 created_at
+        day = row[5].strftime("%a") if row[5] else None
+        if not day: continue
+
+        progress = (metadata or {}).get("exercise_progress", {})
+        submitted_map = progress.get("submitted", {})
+        answers = progress.get("answers", {})
+        scores = progress.get("scores", {})
+
+        try:
+            content_json = json.loads(row[3]) if isinstance(row[3], str) else row[3]
+            questions = content_json.get("questions", [])
+        except (json.JSONDecodeError, TypeError):
+            questions = []
+
+        for q in questions:
+            qid = q.get("id", "")
+            if submitted_map.get(qid):
+                ans_daily[day] += 1
+                # 判断对错
+                if not _is_correct(q, answers.get(qid), scores.get(qid, {}).get("score")):
+                    wrong_daily[day] += 1
+
+    today = _now_utc().date()
+    weekly_map = { (today - timedelta(days=i)).strftime("%a"): 0 for i in range(6, -1, -1) }
+    wrong_weekly = dict(weekly_map)
+    for k in weekly_map: weekly_map[k] = ans_daily.get(k, 0)
+    for k in wrong_weekly: wrong_weekly[k] = wrong_daily.get(k, 0)
+    weekly_stats = [{"day": k, "count": weekly_map[k], "wrong": wrong_weekly[k]} for k in weekly_map]
+
+    # 按 课程→阶段 组织数据
+    course_map: dict = {}  # course_name → {stages: {stage_title → {exercises: [...]}}}
+    total_questions = 0
+    answered_questions = 0
+    correct_questions = 0
+    score_sum = 0.0
+    score_count = 0
+    weak_points = []
+
+    for row in ex_rows:
+        rid, title, rtype, content, metadata, created_at, course_id, stage_id, stage_title, stage_order = row
+
+        # 课程名
+        course_name = "未知课程"
+        if course_id:
+            c = await db.get(CourseModel, course_id)
+            if c: course_name = c.name
+
+        if course_name not in course_map:
+            course_map[course_name] = {"stages": {}}
+        stages = course_map[course_name]["stages"]
+
+        stage_key = stage_title or f"阶段{stage_order}"
+        if stage_key not in stages:
+            stages[stage_key] = {"exercises": [], "question_count": 0}
+
+        # 解析题目
+        try:
+            content_json = json.loads(content) if isinstance(content, str) else content
+            questions = content_json.get("questions", [])
+        except (json.JSONDecodeError, TypeError):
+            questions = []
+
+        progress = (metadata or {}).get("exercise_progress", {})
+        answers = progress.get("answers", {})
+        submitted = progress.get("submitted", {})
+        scores = progress.get("scores", {})
+
+        exercise_questions = []
+        for q in questions:
+            qid = q.get("id", "")
+            is_submitted = submitted.get(qid, False)
+            user_ans = answers.get(qid)
+            is_correct = False
+
+            total_questions += 1
+            stages[stage_key]["question_count"] += 1
+
+            q_score = scores.get(qid, {}).get("score") if is_submitted else None
+            if is_submitted:
+                answered_questions += 1
+                is_correct = _is_correct(q, user_ans, q_score)
+
+                if is_correct:
+                    correct_questions += 1
+                else:
+                    weak_points.append({
+                        "title": q.get("question", qid)[:40],
+                        "exercise_title": title,
+                        "date": created_at.strftime("%m/%d") if created_at else "",
+                    })
+
+            exercise_questions.append({
+                "id": qid,
+                "text": q.get("question", "")[:60],
+                "answered": is_submitted,
+                "correct": is_correct if is_submitted else None,
+                "score": q_score if is_submitted else None,
+            })
+
+        stages[stage_key]["exercises"].append({
+            "id": str(rid),
+            "title": title,
+            "date": created_at.strftime("%m/%d") if created_at else "",
+            "questions": exercise_questions,
+            "content": content,  # 完整 JSON, 供前端 ExerciseViewer readOnly 渲染
+            "progress": progress,  # 作答进度
+        })
+
+    # 构建返回
+    courses_out = []
+    for cname, cdata in course_map.items():
+        stages_out = []
+        for sname, sdata in cdata["stages"].items():
+            stages_out.append({
+                "title": sname,
+                "question_count": sdata["question_count"],
+                "exercises": sdata["exercises"],
+            })
+        courses_out.append({"name": cname, "stages": stages_out})
+
+    # 正确率: 客观题正确数/已答数, 客观题满分占比
+    accuracy = round(correct_questions / max(answered_questions, 1) * 100, 0)
+
+    detail_items = [
+        {"label": "总生成量", "value": total_questions, "unit": "题"},
+        {"label": "已作答", "value": answered_questions, "unit": "题"},
+        {"label": "正确率", "value": int(accuracy), "unit": "%"},
+    ]
+
+    # 评分
+    completion_rate = answered_questions / max(total_questions, 1)
+    accuracy_rate = correct_questions / max(answered_questions, 1) if answered_questions > 0 else 0
+    score = round(min(10.0, completion_rate * 5.0 + accuracy_rate * 5.0), 1)
+
+    # 薄弱点去重
+    weak_dedup = []
+    seen = set()
+    for w in weak_points:
+        if w["title"] not in seen:
+            seen.add(w["title"])
+            weak_dedup.append(w)
+    weak_dedup = weak_dedup[:5]
+
+    if total_questions >= 30 and completion_rate >= 0.7:
+        suggestion = "刷题量和作答率都很高! 关注错题对应的知识点加强巩固"
+    elif total_questions >= 10:
+        suggestion = "继续增加练习量, 每道题都提交后系统会追踪薄弱知识点"
+    else:
+        suggestion = "去 AI 助学开启学习会话, 系统会为你生成练习题"
+
+    detail_data = {
+        "weekly_stats": weekly_stats,
+        "courses": courses_out,
+        "weak_points": weak_dedup,
+        "detail_items": detail_items,
+    }
+    return score, detail_data, suggestion
+
+
+async def _detail_review_habit(user_id, db, since):
+    """复习复盘习惯/知识留存度明细"""
+    from app.models.learning import LearningSession, LearningStage
+
+    stages_stmt = (
+        select(LearningStage.title, LearningStage.status, LearningStage.created_at, LearningStage.knowledge_point_ids)
+        .join(LearningSession, LearningStage.session_id == LearningSession.id)
+        .where(LearningSession.user_id == user_id, LearningStage.created_at >= since)
+        .order_by(LearningStage.created_at.desc())
+    )
+    stages_result = await db.execute(stages_stmt)
+    stages = stages_result.all()
+
+    items = []
+    completed = sum(1 for s in stages if s[1] == "completed")
+    total = len(stages)
+    for s in stages[:8]:
+        kp_names = (s[3] or [])[:3] if isinstance(s[3], list) else []
+        items.append({
+            "label": s[0],
+            "date": s[2].strftime("%m/%d") if s[2] else "",
+            "status": s[1],
+            "knowledge_points": kp_names,
+        })
+
+    score = min(10.0, (completed / max(total, 1)) * 10.0)
+
+    if completed >= 3:
+        suggestion = "复习习惯很好! 可以定期回顾已完成阶段的知识点"
+    elif completed >= 1:
+        suggestion = "完成学习后记得回顾之前学过但已遗忘的知识点"
+    else:
+        suggestion = "开启一次 AI 学习会话, 系统会帮你规划复习路径"
+    return score, items, suggestion
+
+
+async def _detail_focus_level(user_id, db, since):
+    """学习沉浸度明细: 学习会话分析"""
+    from app.models.learning import LearningSession, LearningStage
+    from app.models.conversation import Message
+
+    sessions_stmt = (
+        select(LearningSession.id, LearningSession.status, LearningSession.created_at)
+        .where(LearningSession.user_id == user_id, LearningSession.created_at >= since)
+        .order_by(LearningSession.created_at.desc())
+    )
+    sessions_result = await db.execute(sessions_stmt)
+    sessions = sessions_result.all()
+
+    items = []
+    total_stage_count = 0
+    for sess in sessions:
+        stage_count = (await db.execute(
+            select(func.count(LearningStage.id)).where(LearningStage.session_id == sess[0])
+        )).scalar() or 0
+        total_stage_count += stage_count
+        items.append({
+            "label": f"学习会话",
+            "date": sess[2].strftime("%m/%d") if sess[2] else "",
+            "status": sess[1],
+            "stage_count": stage_count,
+        })
+
+    # 基于会话的阶段完成数评分
+    score = min(10.0, (len(sessions) / 5.0) * 5.0 + (total_stage_count / 10.0) * 5.0)
+
+    if len(sessions) >= 3:
+        suggestion = "学习沉浸度不错! 每次会话完成后可以稍作休息再继续"
+    elif len(sessions) >= 1:
+        suggestion = "学习深度还可以加强, 试着每次学习完成 2-3 个阶段"
+    else:
+        suggestion = "开启 AI 助学进行一次完整的学习会话"
+    return score, items, suggestion
