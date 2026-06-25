@@ -332,7 +332,8 @@ CREATE TABLE generated_resources (
     content           TEXT        NOT NULL DEFAULT '',
     resource_metadata JSONB       NOT NULL DEFAULT '{}'::jsonb,
     order_index       INTEGER     NOT NULL DEFAULT 0,
-    created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 CREATE INDEX idx_generated_resources_stage_id ON generated_resources (stage_id);
 
