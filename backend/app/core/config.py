@@ -47,6 +47,11 @@ class Settings(BaseSettings):
     doc_parser_api_base: str = "https://api.openai.com/v1"
     doc_parser_model: str = "gpt-4o-mini"
 
+    # Poppler 工具路径 (PDF 渲染为图片的底层依赖, pdf2image 需要)
+    # macOS: 通常通过 homebrew 安装后不需要单独配置
+    # Windows: 需手动下载并指定 bin 目录, 如 D:/Poppler/poppler-24.08.0/Library/bin
+    poppler_path: str = ""
+
     # 文件上传配置
     upload_dir: str = "./uploads"
     max_upload_size_mb: int = 50
@@ -68,7 +73,13 @@ class Settings(BaseSettings):
     smtp_from: str = "744585348@qq.com"
     smtp_from_name: str = "MLA 智学引擎"
 
+    # ============ CORS 跨域配置 ============
+    # 允许的前端来源 (开发环境)
+    cors_origins: str = "http://localhost:5173,http://127.0.0.1:5173,http://localhost:3000,http://localhost:4173"
+
     # ============ TTS 语音合成配置 (火山引擎 seed-tts-2.0) ============
+    # API 端点地址
+    tts_api_url: str = "https://openspeech.bytedance.com/api/v3/tts/unidirectional"
     # 新版 API Key (推荐): 在 https://console.volcengine.com/speech/new/setting/apikeys 获取
     tts_api_key: str = ""
     # 旧版 App ID + Access Token (兼容): 在语音控制台获取

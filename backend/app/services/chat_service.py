@@ -18,7 +18,6 @@ import uuid
 import json
 import asyncio
 from typing import AsyncGenerator, Optional, List
-from openai import AsyncOpenAI
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.conversation import Conversation, Message
@@ -27,236 +26,18 @@ from app.core.database import async_session_factory
 from app.services.config_service import get_config_value
 from app.services.retriever import retrieve, RetrievedChunk
 from app.services.profile_service import get_user_memories, extract_memories_from_exchange
+from app.services.llm_utils import create_llm_client, sse_event
 from loguru import logger
 
-# ============================================================================
-# RAG 知识库对话 System Prompt
-# ============================================================================
-
-RAG_CHAT_SYSTEM_PROMPT = """你是 MLA (Multiple Learning Agent) 智学引擎的虚拟助教，一个专业的课程学习助手，专门为高校学生提供课程辅导。
-
-你的身份:
-- 你的名字是 Haru
-
-重要规则:
-1. 回答必须优先基于提供的「知识库参考资料」。如果知识库中有相关内容，请引用来回答。
-2. 如果知识库中没有相关内容，请基于你的通用知识来回答。
-3. 回答末尾列出引用的知识库来源编号，格式: 参考来源: [1] 文件名 - 切片#序号/页面#页号
-4. 如果学生的问题与课程无关，请友好地引导他们回到学习主题。
-5. 回答使用 Markdown 格式，支持标题、列表、代码块、表格等。
-6. 保持回答简洁、准确、有条理，适合学生学习阅读。
-
-{memories_section}"""
-
-
-# ============================================================================
-# 虚拟形象伙伴对话 System Prompt (Live2D 聊天)
-# ============================================================================
-
-COMPANION_SYSTEM_PROMPT = """你是 MLA 多学助手的虚拟学习伙伴，以亲切友好的方式和学生互动。
-
-你的身份:
-- 你的名字叫 Haru，是学生的 AI 学习伙伴
-
-重要规则:
-1. 用轻松自然的语气，像朋友一样交谈，多说鼓励的话。
-2. 最多回复 2-3 句话，保持简短。
-3. 不要用 Markdown 格式，用纯文本。
-4. 可以适当使用语气词 (呢、啦、哦、呀) 和表情 (^_^, ~, !)。
-5. 如果学生问学习相关的问题，给出简洁实用的建议而非长篇解释。
-6. 如果学生闲聊或表达情绪，用共情的方式回应。
-7. 多夸夸学生，关心他们的学习状态。
-
-{memories_section}"""
-
-
-# ============================================================================
-# 画像收集 System Prompt 模板 (专用收集模式，暂时保留)
-# ============================================================================
-
-PROFILE_COLLECTION_SYSTEM_PROMPT = """你是一个友好、专业的学生画像收集助手，名为 MLA (Multiple Learning Agent) 智学引擎。
-你的任务是通过自然对话的方式了解学生的学习情况，逐步收集以下信息用于构建个性化学习画像。
-
-需要收集的 6 个维度:
-1. 专业背景: 专业、年级、学历层次
-2. 知识基础: 已学知识、当前知识水平
-3. 学习目标: 应试/项目实践/科研入门/竞赛/就业技能等，当前在学内容
-4. 学习偏好: 内容偏好 (喜欢什么类型的学习资源)、风格偏好 (喜欢什么学习方式/节奏)
-5. 薄弱知识点: 易错点、卡点、困难主题
-6. 兴趣方向: 应用方向、行业场景、拓展主题
-
-对话规则:
-1. 以友好、自然的方式与用户交流，不要像填表一样机械提问。
-2. 每次对话聚焦 1-2 个维度，循序渐进，不要一次性问太多问题。
-3. 当用户回答后，给予积极的反馈和共情，然后自然地过渡到下一个话题。
-4. 如果用户表示不清楚或不想回答某个问题，不要强求，记录为缺失。
-5. 对话中适时总结已了解到的信息，让用户感受到被理解。
-
-{stage_hint}
-
-已收集到的信息:
-{collected_info}
-
-请继续自然、友好地与学生对话。"""
-
-
-# ============================================================================
-# 画像收集阶段配置 (6 个阶段)
-# ============================================================================
-
-PROFILE_STAGES = [
-    {"key": "academic_background", "label": "专业背景", "hint": "请了解学生的专业、年级和学历层次等背景信息。"},
-    {"key": "knowledge_basis", "label": "知识基础", "hint": "请了解学生目前已掌握的知识、已学知识和当前水平。"},
-    {"key": "learning_goals", "label": "学习目标", "hint": "请了解学生的学习目标: 是为了考试、做项目、科研还是就业? 目前在学什么?"},
-    {"key": "learning_preferences", "label": "学习偏好", "hint": "请了解学生喜欢什么类型的学习资源和学习方式/节奏。"},
-    {"key": "weak_areas", "label": "薄弱知识点", "hint": "请了解学生在哪些知识点上感到困难，有哪些易错点。"},
-    {"key": "interests", "label": "兴趣方向", "hint": "请了解学生对哪些应用方向、行业或拓展主题感兴趣。"},
-]
-
-
-# ============================================================================
-# 快问AI System Prompt (按上下文类型分支)
-# ============================================================================
-
-QUICK_ASK_SYSTEM_PROMPT = """你是 MLA (Multiple Learning Agent) 智学引擎的虚拟助教 Haru。
-
-{context_section}
-
-重要规则:
-1. 请针对上述内容进行清晰、易懂的解释，帮助学生理解。
-2. 使用 Markdown 格式，支持标题、列表、代码块、表格等。
-3. 如果涉及代码，请逐行解释代码含义和关键逻辑。
-4. 如果涉及练习题，请解释概念和方法，**不要直接给出答案**。
-5. 回答末尾列出引用的知识库来源编号 (如有)。
-
-{memories_section}"""
-
-
-def build_quick_ask_context(ctx: dict) -> str:
-    """
-    根据快问AI的上下文类型构建针对性的系统提示片段
-
-    :param ctx: quick_ask_context 字典, 包含 source_type, context_text 等
-    :return: 上下文描述文本
-    """
-    source_type = ctx.get("source_type", "general")
-    context_text = ctx.get("context_text", "")
-
-    if source_type == "kp":
-        return (
-            f"学生正在学习以下知识点，希望获得深入理解：\n\n"
-            f"{context_text}\n\n"
-            f"请帮助学生深入理解这个知识点，解释核心概念、关键原理以及应用场景。"
-        )
-    elif source_type == "code":
-        return (
-            f"学生在阅读以下代码时遇到了困难：\n\n"
-            f"```\n{context_text}\n```\n\n"
-            f"请逐行解释这段代码的功能、逻辑和关键概念，说明每部分的作用。"
-        )
-    elif source_type == "exercise":
-        return (
-            f"学生在做以下练习题时需要帮助：\n\n"
-            f"{context_text}\n\n"
-            f"请解释相关概念和解题思路，帮助学生理解题目考察的知识点。"
-            f"**重要: 不要直接给出答案，而是引导学生思考。**"
-        )
-    elif source_type == "document":
-        return (
-            f"学生在阅读以下文档内容时遇到了问题：\n\n"
-            f"{context_text}\n\n"
-            f"请帮助解释文档中的关键概念和要点。"
-        )
-    elif source_type == "text_selection":
-        return (
-            f"学生选中了以下内容，希望获得更多解释：\n\n"
-            f"{context_text}\n\n"
-            f"请针对选中的文本进行解释，说明其含义和背景。"
-        )
-    else:
-        return f"学生的问题是：\n\n{context_text}"
-
-
-def get_stage_hint(current_stage: Optional[str]) -> str:
-    """根据当前收集阶段生成引导提示"""
-    if current_stage is None or current_stage == "done":
-        first = PROFILE_STAGES[0]
-        return f"请从「{first['label']}」开始了解学生情况。{first['hint']}"
-
-    for i, stage in enumerate(PROFILE_STAGES):
-        if stage["key"] == current_stage:
-            if i + 1 < len(PROFILE_STAGES):
-                next_stage = PROFILE_STAGES[i + 1]
-                return (
-                    f"上一个维度「{stage['label']}」已基本了解。现在请过渡到下一个维度「{next_stage['label']}」。"
-                    f"{next_stage['hint']}"
-                )
-            else:
-                return "所有维度的信息都已基本收集完毕。请告诉用户画像信息已足够。"
-
-    first = PROFILE_STAGES[0]
-    return f"请从「{first['label']}」开始了解学生情况。{first['hint']}"
-
-
-def format_collected_info(profile_data: dict) -> str:
-    """将已收集的画像数据格式化为可读文本 (描述式)"""
-    if not profile_data:
-        return "（尚未收集到任何信息）"
-
-    lines: list[str] = []
-    dim_labels = {s["key"]: s["label"] for s in PROFILE_STAGES}
-    for key, label in dim_labels.items():
-        val = profile_data.get(key, "")
-        if isinstance(val, str) and val.strip():
-            lines.append(f"- {label}: {val}")
-        elif isinstance(val, dict) and any(v for v in val.values() if v):
-            # 兼容旧填空式数据
-            lines.append(f"- {label}: {json.dumps(val, ensure_ascii=False)}")
-    if not lines:
-        return "（尚未收集到任何信息）"
-    return "\n".join(lines)
-
-
-# ============================================================================
-# 记忆格式化 (注入 System Prompt)
-# ============================================================================
-
-def _format_memories(memories: list[str]) -> str:
-    """
-    将记忆列表格式化为 System Prompt 片段
-    :param memories: 记忆片段字符串列表
-    :return: 格式化后的记忆上下文, 无记忆时返回空字符串
-    """
-    if not memories:
-        return ""
-
-    lines = ["你对这位学生的了解 (基于之前的对话，帮助你更好地个性化辅导):"]
-    for i, mem in enumerate(memories):
-        lines.append(f"- {mem}")
-    lines.append("")
-
-    return "\n".join(lines)
-
-
-# ============================================================================
-# 对话标题自动生成
-# ============================================================================
-
-TITLE_GENERATION_PROMPT = """请用不超过 15 个字概括以下对话的核心主题。直接回复标题文本, 不要加引号、标点或任何前缀。"""
-
-
-# ============================================================================
-# AI 解释浓缩 Prompt (快问AI 功能)
-# ============================================================================
-
-CONDENSE_EXPLANATION_PROMPT = """请将以下 AI 助教的回复浓缩为一段简洁的知识点解释 (2-4 句话, 最多 200 字)。
-聚焦于核心概念和关键要点。去除人称代词 (如"你"、"学生"等), 保持客观、事实性陈述。
-不要包含任何问候语或过渡语。
-
-AI 回复:
-{full_response}
-
-请直接输出简洁解释：""".strip()
+# 从 chat_prompts.py 导入所有 System Prompt 和辅助函数
+from app.services.chat_prompts import (
+    RAG_CHAT_SYSTEM_PROMPT,
+    QUICK_ASK_SYSTEM_PROMPT,
+    build_quick_ask_context,
+    _format_memories,
+    TITLE_GENERATION_PROMPT,
+    CONDENSE_EXPLANATION_PROMPT,
+)
 
 
 async def generate_conversation_title(
@@ -294,7 +75,7 @@ async def generate_conversation_title(
             logger.debug(f"标题生成跳过: 已有 {user_msg_count} 条用户消息, 非首次对话")
             return
 
-        client = _create_llm_client()
+        client = create_llm_client()
         model = get_config_value("llm_model")
 
         response = await client.chat.completions.create(
@@ -413,16 +194,6 @@ async def get_recent_messages(
     return list(reversed(messages))
 
 
-# ============================================================================
-# LLM 客户端创建
-# ============================================================================
-
-def _create_llm_client() -> AsyncOpenAI:
-    """根据运行时配置创建 OpenAI 兼容客户端"""
-    api_key = get_config_value("llm_api_key")
-    api_base = get_config_value("llm_api_base")
-    return AsyncOpenAI(api_key=api_key, base_url=api_base)
-
 
 # ============================================================================
 # SSE 流式对话生成
@@ -451,7 +222,7 @@ async def chat_stream(
     # 1. 获取对话信息
     conversation = await db.get(Conversation, conversation_id)
     if not conversation:
-        yield _sse_event("error", {"message": "对话不存在"})
+        yield sse_event("error", {"message": "对话不存在"})
         return
 
     # 2. 保存用户消息到数据库 (附带快问AI上下文元数据)
@@ -519,13 +290,6 @@ async def chat_stream(
                 memories_section=memories_section,
             )
         system_prompt = system_prompt_text  # 保持一致性
-    elif conversation.conversation_type == "profile_collection":
-        stage_hint = get_stage_hint(conversation.profile_collection_stage)
-        collected_info = "（新对话, 开始收集信息）"
-        system_prompt = PROFILE_COLLECTION_SYSTEM_PROMPT.format(
-            stage_hint=stage_hint,
-            collected_info=collected_info,
-        )
     else:
         if rag_context:
             system_prompt = RAG_CHAT_SYSTEM_PROMPT.format(
@@ -549,7 +313,7 @@ async def chat_stream(
 
     # 6. 调用 LLM 流式生成
     try:
-        client = _create_llm_client()
+        client = create_llm_client()
         model = get_config_value("llm_model")
 
         stream = await client.chat.completions.create(
@@ -563,13 +327,13 @@ async def chat_stream(
         full_content: str = ""
 
         if sources:
-            yield _sse_event("sources", {"sources": sources})
+            yield sse_event("sources", {"sources": sources})
 
         async for chunk in stream:
             delta = chunk.choices[0].delta if chunk.choices else None
             if delta and delta.content:
                 full_content += delta.content
-                yield _sse_event("content", {"content": delta.content})
+                yield sse_event("content", {"content": delta.content})
 
         # 7. 保存 AI 回复到数据库
         assistant_msg = Message(
@@ -587,7 +351,7 @@ async def chat_stream(
         await db.refresh(assistant_msg)
 
         # 8. 立即发送完成事件 — 不等待标题/记忆的后台处理
-        yield _sse_event("done", {"message_id": str(assistant_msg.id)})
+        yield sse_event("done", {"message_id": str(assistant_msg.id)})
 
         # 9. 后台异步: 生成标题 + 提取用户记忆 (使用独立 DB 会话, 不阻塞 UI)
         asyncio.create_task(_postprocess_background(
@@ -608,7 +372,7 @@ async def chat_stream(
         db.add(error_msg_obj)
         await db.commit()
         await db.refresh(error_msg_obj)
-        yield _sse_event("error", {"message": error_msg, "message_id": str(error_msg_obj.id)})
+        yield sse_event("error", {"message": error_msg, "message_id": str(error_msg_obj.id)})
 
 
 # ============================================================================
@@ -678,7 +442,7 @@ async def condense_and_store_explanation(
             return ""
 
         # 调用 LLM 浓缩
-        client = _create_llm_client()
+        client = create_llm_client()
         model = get_config_value("llm_model")
 
         # 截断完整回复: 取前 4000 字符供浓缩
@@ -715,8 +479,3 @@ async def condense_and_store_explanation(
         logger.error(f"浓缩解释失败 (KP {kp_id}): {e}")
         return ""
 
-
-def _sse_event(event_type: str, data: dict) -> str:
-    """将事件数据格式化为 SSE 标准格式"""
-    payload = json.dumps({"type": event_type, **data}, ensure_ascii=False)
-    return f"data: {payload}\n\n"

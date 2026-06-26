@@ -5,8 +5,8 @@
  * 图形 Logo 即为完整品牌标识, 不再附加 MLA 文字。
  *
  * 变体:
- * - "vertical"   — Logo (高40px) + "智学引擎" 横向排布 (侧边栏展开)
- * - "compact"    — 仅 Logo, 高40px (侧边栏折叠)
+ * - "vertical"   — Logo (高50px) + "智学引擎" 横向排布 (侧边栏展开)
+ * - "compact"    — 仅 Logo, 高50px (侧边栏折叠)
  * - "horizontal" — 仅 Logo, 高24px (小空间)
  *
  * @see branding/MLA_BRAND_GUIDELINES.md
@@ -37,7 +37,7 @@ const SUBTITLE_STYLE: React.CSSProperties = {
 export default function MLALogo({ variant = 'vertical', style, onClick }: MLALogoProps) {
   switch (variant) {
     // ========================================================================
-    // vertical — 侧边栏展开: Logo 40px + "智学引擎" 横向排布
+    // vertical — 侧边栏展开: Logo 50px + "智学引擎" 横向排布
     // ========================================================================
     case 'vertical':
       return (
@@ -52,15 +52,15 @@ export default function MLALogo({ variant = 'vertical', style, onClick }: MLALog
           }}
           onClick={onClick}
         >
-          <img src={LOGO_SRC} alt="MLA 智学引擎" style={{ height: 40 }} />
-          <span style={{ ...SUBTITLE_STYLE, fontSize: 13 }}>
+          <img src={LOGO_SRC} alt="MLA 智学引擎" style={{ height: 50 }} />
+          <span style={{ ...SUBTITLE_STYLE, fontSize: 15 }}>
             智学引擎
           </span>
         </div>
       )
 
     // ========================================================================
-    // compact — 侧边栏折叠: 仅 Logo, 40px
+    // compact — 侧边栏折叠: 仅 Logo, 50px
     // ========================================================================
     case 'compact':
       return (
@@ -68,7 +68,7 @@ export default function MLALogo({ variant = 'vertical', style, onClick }: MLALog
           src={LOGO_SRC}
           alt="MLA 智学引擎"
           style={{
-            height: 40,
+            height: 50,
             display: 'block',
             cursor: onClick ? 'pointer' : 'default',
             userSelect: 'none',

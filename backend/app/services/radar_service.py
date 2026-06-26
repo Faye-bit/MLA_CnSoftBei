@@ -16,13 +16,16 @@
 
 import uuid
 import math
+import json
 from typing import Optional
 from datetime import datetime, timedelta, timezone
+from collections import Counter
 from sqlalchemy import select, func, and_, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.document import Document
 from app.models.course import Course
 from app.models.conversation import Conversation, Message
+from app.models.learning import LearningSession, LearningStage, GeneratedResource
 from loguru import logger
 
 # 当前 UTC 时间 (带时区, 兼容数据库 TIMESTAMPTZ 字段)
@@ -74,9 +77,6 @@ RADAR_DIMENSIONS = [
         "icon": "eye",
     },
 ]
-
-# 近 30 天的时间窗口
-DAYS_WINDOW = 30
 
 
 # ============================================================================
@@ -627,14 +627,17 @@ def _is_correct(q: dict, user_ans, q_score) -> bool:
     return str(user_ans or "").strip() == str(correct_ans or "").strip()
 
 
-async def _detail_practice_intensity(user_id, db, since):
-    """刷题巩固强度明细: 按题目为单位统计, 课程→阶段→资源→题目 层级"""
-    import json
-    from collections import Counter
-    from app.models.learning import LearningSession, LearningStage, GeneratedResource
-    from app.models.course import Course as CourseModel
+async def _query_practice_weekly_stats(
+    user_id, db: AsyncSession, since,
+) -> tuple[list, list[dict]]:
+    """
+    查询练习数据并按天统计已答/错题数, 生成近 7 天周统计
 
-    # 查询所有练习题资源 (带阶段和课程信息)
+    :param user_id: 用户 ID
+    :param db:      数据库会话
+    :param since:   时间窗口起始
+    :return:        (ex_rows, weekly_stats)
+    """
     ex_stmt = (
         select(
             GeneratedResource.id, GeneratedResource.title, GeneratedResource.resource_type,
@@ -655,16 +658,14 @@ async def _detail_practice_intensity(user_id, db, since):
     ex_result = await db.execute(ex_stmt)
     ex_rows = ex_result.all()
 
-    # 按天统计: 每题提交=已答, 提交但错=答错 (基于 updated_at 为提交日)
-    ans_daily = Counter()   # 已答题数
-    wrong_daily = Counter() # 答错题数
+    # 按天统计已答/错题
+    ans_daily = Counter()
+    wrong_daily = Counter()
     for row in ex_rows:
         metadata = row[4]
-        updated_at = getattr(row[0], 'updated_at', row[5]) if hasattr(row, '_mapping') else row[5]
-        # 用 updated_at 作为作答日期 (如果有的话), 否则用 created_at
-        # 实际: row 是 tuple, 无 updated_at 字段, 用 created_at
         day = row[5].strftime("%a") if row[5] else None
-        if not day: continue
+        if not day:
+            continue
 
         progress = (metadata or {}).get("exercise_progress", {})
         submitted_map = progress.get("submitted", {})
@@ -681,24 +682,36 @@ async def _detail_practice_intensity(user_id, db, since):
             qid = q.get("id", "")
             if submitted_map.get(qid):
                 ans_daily[day] += 1
-                # 判断对错
                 if not _is_correct(q, answers.get(qid), scores.get(qid, {}).get("score")):
                     wrong_daily[day] += 1
 
+    # 构建周统计 (周一~周日)
     today = _now_utc().date()
-    weekly_map = { (today - timedelta(days=i)).strftime("%a"): 0 for i in range(6, -1, -1) }
+    weekly_map = {(today - timedelta(days=i)).strftime("%a"): 0 for i in range(6, -1, -1)}
     wrong_weekly = dict(weekly_map)
-    for k in weekly_map: weekly_map[k] = ans_daily.get(k, 0)
-    for k in wrong_weekly: wrong_weekly[k] = wrong_daily.get(k, 0)
+    for k in weekly_map:
+        weekly_map[k] = ans_daily.get(k, 0)
+    for k in wrong_weekly:
+        wrong_weekly[k] = wrong_daily.get(k, 0)
     weekly_stats = [{"day": k, "count": weekly_map[k], "wrong": wrong_weekly[k]} for k in weekly_map]
 
-    # 按 课程→阶段 组织数据
-    course_map: dict = {}  # course_name → {stages: {stage_title → {exercises: [...]}}}
+    return ex_rows, weekly_stats
+
+
+async def _build_practice_course_hierarchy(
+    db: AsyncSession, ex_rows: list,
+) -> tuple[list, int, int, int, list]:
+    """
+    从练习数据行构建 课程→阶段→练习题 层级结构
+
+    :param db:      数据库会话
+    :param ex_rows: _query_practice_weekly_stats 查询结果
+    :return:        (courses_out, total_questions, answered_questions, correct_questions, weak_points)
+    """
+    course_map: dict = {}
     total_questions = 0
     answered_questions = 0
     correct_questions = 0
-    score_sum = 0.0
-    score_count = 0
     weak_points = []
 
     for row in ex_rows:
@@ -707,8 +720,9 @@ async def _detail_practice_intensity(user_id, db, since):
         # 课程名
         course_name = "未知课程"
         if course_id:
-            c = await db.get(CourseModel, course_id)
-            if c: course_name = c.name
+            c = await db.get(Course, course_id)
+            if c:
+                course_name = c.name
 
         if course_name not in course_map:
             course_map[course_name] = {"stages": {}}
@@ -718,7 +732,6 @@ async def _detail_practice_intensity(user_id, db, since):
         if stage_key not in stages:
             stages[stage_key] = {"exercises": [], "question_count": 0}
 
-        # 解析题目
         try:
             content_json = json.loads(content) if isinstance(content, str) else content
             questions = content_json.get("questions", [])
@@ -744,7 +757,6 @@ async def _detail_practice_intensity(user_id, db, since):
             if is_submitted:
                 answered_questions += 1
                 is_correct = _is_correct(q, user_ans, q_score)
-
                 if is_correct:
                     correct_questions += 1
                 else:
@@ -767,11 +779,11 @@ async def _detail_practice_intensity(user_id, db, since):
             "title": title,
             "date": created_at.strftime("%m/%d") if created_at else "",
             "questions": exercise_questions,
-            "content": content,  # 完整 JSON, 供前端 ExerciseViewer readOnly 渲染
-            "progress": progress,  # 作答进度
+            "content": content,
+            "progress": progress,
         })
 
-    # 构建返回
+    # 扁平化为输出列表
     courses_out = []
     for cname, cdata in course_map.items():
         stages_out = []
@@ -783,21 +795,29 @@ async def _detail_practice_intensity(user_id, db, since):
             })
         courses_out.append({"name": cname, "stages": stages_out})
 
-    # 正确率: 客观题正确数/已答数, 客观题满分占比
-    accuracy = round(correct_questions / max(answered_questions, 1) * 100, 0)
+    return courses_out, total_questions, answered_questions, correct_questions, weak_points
 
+
+def _compute_practice_score(
+    total_questions: int, answered_questions: int, correct_questions: int, weak_points: list,
+) -> tuple[int, list, list, str]:
+    """
+    计算刷题巩固强度评分、薄弱点和建议
+
+    :return: (score, detail_items, weak_dedup, suggestion)
+    """
+    accuracy = round(correct_questions / max(answered_questions, 1) * 100, 0)
     detail_items = [
         {"label": "总生成量", "value": total_questions, "unit": "题"},
         {"label": "已作答", "value": answered_questions, "unit": "题"},
         {"label": "正确率", "value": int(accuracy), "unit": "%"},
     ]
 
-    # 评分
     completion_rate = answered_questions / max(total_questions, 1)
     accuracy_rate = correct_questions / max(answered_questions, 1) if answered_questions > 0 else 0
     score = round(min(10.0, completion_rate * 5.0 + accuracy_rate * 5.0), 1)
 
-    # 薄弱点去重
+    # 薄弱点去重 Top 5
     weak_dedup = []
     seen = set()
     for w in weak_points:
@@ -812,6 +832,26 @@ async def _detail_practice_intensity(user_id, db, since):
         suggestion = "继续增加练习量, 每道题都提交后系统会追踪薄弱知识点"
     else:
         suggestion = "去 AI 助学开启学习会话, 系统会为你生成练习题"
+
+    return int(score), detail_items, weak_dedup, suggestion
+
+
+async def _detail_practice_intensity(user_id, db, since):
+    """
+    刷题巩固强度明细: 按题目为单位统计, 课程→阶段→资源→题目 层级
+
+    拆分为三个子步骤:
+      1. _query_practice_weekly_stats() → 查询数据 + 周统计
+      2. _build_practice_course_hierarchy() → 构建层级结构
+      3. _compute_practice_score() → 计算评分和薄弱点
+    """
+    ex_rows, weekly_stats = await _query_practice_weekly_stats(user_id, db, since)
+
+    courses_out, total_q, answered_q, correct_q, weak_points = \
+        await _build_practice_course_hierarchy(db, ex_rows)
+
+    score, detail_items, weak_dedup, suggestion = \
+        _compute_practice_score(total_q, answered_q, correct_q, weak_points)
 
     detail_data = {
         "weekly_stats": weekly_stats,

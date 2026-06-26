@@ -21,6 +21,8 @@ backend/chroma_data/*
 # Live2D 模型和 SDK (二进制资源)
 frontend/public/models/*
 frontend/public/CubismSdkForWeb-5-r.5/*
+CubismSdkForWeb-5-r.5/
+models/
 
 # Node
 node_modules/
@@ -39,7 +41,6 @@ pgdata/
 OS_PDF/
 backend/.vite/
 Sessions/
-docs/
 
 # vibeCoding
 .claude

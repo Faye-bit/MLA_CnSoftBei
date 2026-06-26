@@ -228,8 +228,65 @@ async def batch_create_knowledge_points(
 
 # ===== AI 知识点自动分类 =====
 
-CLASSIFY_PROMPT = """将知识点按主题分组，输出 JSON:
-[{"category":"分类名","items":[{"title":"知识点","description":"描述","difficulty":"easy|medium|hard"}]}]"""
+CLASSIFY_PROMPT = """你是一位专业的课程知识图谱构建专家，擅长将零散的知识点按主题逻辑进行科学分类。
+
+你的任务是将给定的知识点列表按主题分组，形成清晰的树形知识结构。
+
+## 分类规则 (必须严格遵守)
+
+1. **必须全覆盖**: 每一个知识点都必须被归入某个分类，不允许遗漏任何一个，对于零散的独立知识点，统一归入“独立知识点”类
+2. **分类粒度适中**: 每个分类下应有 2-8 个知识点，避免分类过粗（一个分类包含过多知识点）或过细（每个分类只有 1 个知识点）
+3. **分类命名规范**:
+   - 分类名应简洁准确，使用学科通用术语（如"进程管理"、"内存管理"、"死锁"等）
+   - 分类名控制在 10 字以内
+   - 分类名应反映该组知识点的共同主题
+4. **分类逻辑**:
+   - 按知识点之间的逻辑关联分组（如：概念相近、同属一个子领域、有前后依赖关系）
+   - 同一分类内的知识点应具有明显的主题关联性
+   - 避免创建"其他"或"杂项"等模糊分类（除非确实存在零星不相关的知识点）
+
+## 输出格式
+
+严格输出以下 JSON 数组，不要包含任何解释文字或 markdown 标记:
+
+```json
+[
+  {
+    "category": "分类名称",
+    "items": [
+      {"title": "知识点名称", "description": "知识点描述", "difficulty": "easy|medium|hard"}
+    ]
+  }
+]
+```
+
+## 示例
+
+输入知识点: ["进程概念", "线程概念", "进程调度", "内存分配", "虚拟内存", "页面置换"]
+
+正确输出:
+```json
+[
+  {
+    "category": "进程与线程",
+    "items": [
+      {"title": "进程概念", "description": "进程的定义与特征", "difficulty": "easy"},
+      {"title": "线程概念", "description": "线程的定义与特征", "difficulty": "easy"},
+      {"title": "进程调度", "description": "进程调度算法", "difficulty": "medium"}
+    ]
+  },
+  {
+    "category": "内存管理",
+    "items": [
+      {"title": "内存分配", "description": "内存分配策略", "difficulty": "medium"},
+      {"title": "虚拟内存", "description": "虚拟内存技术", "difficulty": "medium"},
+      {"title": "页面置换", "description": "页面置换算法", "difficulty": "hard"}
+    ]
+  }
+]
+```
+
+现在请严格按照以上规则，对给定的知识点列表进行分类。记住：每个知识点都必须被归类！"""
 
 
 async def classify_knowledge_points(kp_list: list[dict], batch_size: int = 30) -> list[dict]:
@@ -263,9 +320,9 @@ async def classify_knowledge_points(kp_list: list[dict], batch_size: int = 30) -
     ], ensure_ascii=False, indent=2)
     try:
         resp = await client.chat.completions.create(
-            model=model, temperature=0.2, max_tokens=2000,
+            model=model, temperature=0.1, max_tokens=4000,
             messages=[{"role": "system", "content": CLASSIFY_PROMPT},
-                       {"role": "user", "content": f"分类:\n{kp_summary}"}])
+                       {"role": "user", "content": f"请对以下 {len(kp_list)} 个知识点进行分类，每个知识点都必须被归入某个分类:\n{kp_summary}"}])
         raw = resp.choices[0].message.content or ""
     except Exception as e:
         logger.error(f"LLM 分类失败: {e}")

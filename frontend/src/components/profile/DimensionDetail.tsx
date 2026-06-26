@@ -7,6 +7,7 @@ import { Card, Typography, Progress, Tag, Spin, Empty, Space, Collapse } from 'a
 import { CheckCircleOutlined, CloseCircleOutlined, MinusCircleOutlined } from '@ant-design/icons'
 import { BarChart, Bar, XAxis, ResponsiveContainer, Tooltip } from 'recharts'
 import { useAuthStore } from '../../store'
+import { getApiBaseUrl } from '../../services/api'
 import { blue, gray, semantic } from '../../styles/tokens'
 import ExerciseViewer from '../learning/ExerciseViewer'
 
@@ -46,7 +47,7 @@ export default function DimensionDetail({ dimensionKey = 'practice_intensity' }:
     setLoading(true)
     setData(null) // 清空旧数据, 避免渲染未匹配
     const token = useAuthStore.getState().token
-    fetch(`http://localhost:8000/api/v1/profile/radar/${dimensionKey}`, {
+    fetch(`${getApiBaseUrl()}/api/v1/profile/radar/${dimensionKey}`, {
       headers: token ? { Authorization: `Bearer ${token}` } : {},
     })
       .then(r => r.json()).then(r => { if (r.code === 0) setData(r.data); else setData(null) })

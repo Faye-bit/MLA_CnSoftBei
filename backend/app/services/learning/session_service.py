@@ -10,21 +10,16 @@ from sqlalchemy import select, func, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 from app.models.learning import (
-    LearningSession, LearningStage, GeneratedResource, AgentTask,
+    LearningSession, LearningStage, GeneratedResource,
 )
 from app.models.course import Course
 from app.models.profile import StudentProfile
 from loguru import logger
 
+
 # ============================================================================
 # 画像快照
 # ============================================================================
-
-PROFILE_DIMENSIONS = [
-    "academic_background", "knowledge_basis", "learning_goals",
-    "learning_preferences", "weak_areas", "interests",
-]
-
 
 async def _snapshot_profile(
     user_id: uuid.UUID,
@@ -61,6 +56,7 @@ async def get_or_create_session(
     user_id: uuid.UUID,
     course_id: uuid.UUID,
     db: AsyncSession,
+    resource_types: list[str] | None = None,
 ) -> Tuple[LearningSession, bool]:
     """
     获取用户在该课程下的活跃会话, 不存在则创建新会话
@@ -109,6 +105,7 @@ async def get_or_create_session(
             "total_agent_tasks": 0,
             "total_resources": 0,
             "total_token_usage": 0,
+            "resource_types": resource_types or ["handout", "mindmap", "exercise"],
         },
     )
     db.add(session)
@@ -566,39 +563,6 @@ async def save_learning_state(
 
 
 # ============================================================================
-# 智能体任务管理
-# ============================================================================
-
-async def create_agent_task(
-    session_id: uuid.UUID,
-    agent_name: str,
-    resource_id: Optional[uuid.UUID] = None,
-    input_summary: Optional[str] = None,
-    db: AsyncSession = None,
-) -> AgentTask:
-    """
-    创建智能体任务追踪记录
-
-    :param session_id: 会话 ID
-    :param agent_name: Agent 角色名称
-    :param resource_id: 关联资源 ID (可选)
-    :param input_summary: 输入摘要
-    :param db: 数据库会话
-    :return: 创建的任务对象
-    """
-    task = AgentTask(
-        session_id=session_id,
-        agent_name=agent_name,
-        resource_id=resource_id,
-        status="running",
-        input_summary=input_summary,
-    )
-    db.add(task)
-    await db.flush()
-    return task
-
-
-# ============================================================================
 # 收藏管理
 # ============================================================================
 
@@ -687,39 +651,3 @@ async def build_download_content(
     content = "\n".join(lines)
     filename = f"{course_name}_学习资源.md"
     return filename, content
-
-
-async def complete_agent_task(
-    task_id: uuid.UUID,
-    output_summary: Optional[str] = None,
-    latency_ms: Optional[int] = None,
-    token_count: Optional[int] = None,
-    error_message: Optional[str] = None,
-    db: AsyncSession = None,
-) -> Optional[AgentTask]:
-    """
-    完成智能体任务 (成功或失败)
-
-    :param task_id: 任务 ID
-    :param output_summary: 输出摘要
-    :param latency_ms: 执行耗时 (毫秒)
-    :param token_count: Token 消耗
-    :param error_message: 错误信息 (失败时传入)
-    :param db: 数据库会话
-    :return: 更新后的任务对象
-    """
-    task = await db.get(AgentTask, task_id)
-    if not task:
-        return None
-
-    task.status = "failed" if error_message else "completed"
-    task.output_summary = output_summary
-    task.latency_ms = latency_ms
-    task.token_count = token_count
-    task.error_message = error_message
-
-    from datetime import datetime as dt
-    task.completed_at = dt.now()
-
-    await db.flush()
-    return task

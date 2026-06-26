@@ -16,6 +16,10 @@ from pydantic import BaseModel, Field
 class LearningSessionCreate(BaseModel):
     """创建学习会话请求体"""
     course_id: uuid.UUID = Field(..., description="目标课程 ID")
+    resource_types: Optional[list[str]] = Field(
+        default=None,
+        description="用户选择的资源类型列表。默认: handout, mindmap, exercise"
+    )
 
 
 class LearningSessionResponse(BaseModel):

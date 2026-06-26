@@ -17,8 +17,8 @@ from app.core.config import settings
 from app.services.config_service import get_config_value
 from loguru import logger
 
-# 火山引擎 TTS API 端点 (HTTP 单向流式)
-_TTS_API_URL = "https://openspeech.bytedance.com/api/v3/tts/unidirectional"
+# 火山引擎 TTS API 端点 (HTTP 单向流式), 可通过 .env TTS_API_URL 覆盖
+_TTS_API_URL = settings.tts_api_url
 
 # TTS 临时音频输出目录
 _TTS_OUTPUT_DIR = Path(settings.upload_dir) / "tts_cache"

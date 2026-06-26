@@ -1,7 +1,7 @@
 /**
- * 练习题查看器
+ * 练习题查看器 (容器组件)
  * 交互式练习题: 展示题目、选择答案、查看解析
- * 支持单选/多选/判断/填空/简答题型
+ * 支持单选/多选/判断/填空/简答题型 (按题型拆分为子组件)
  * 作答进度持久化: 在提交答案、切换题目、选择选项、组件卸载时保存到后端
  *
  * 保存策略: 多重保障
@@ -13,7 +13,7 @@
 
 import { useState, useMemo, useEffect, useRef, useCallback } from 'react'
 import {
-  Card, Radio, Checkbox, Input, Button, Typography,
+  Card, Button, Typography,
   Tag, Space, Progress, Empty, message,
 } from 'antd'
 import {
@@ -25,6 +25,13 @@ import { saveExerciseProgress, scoreExerciseAnswer } from '../../services/api'
 import { useQuickAskStore } from '../../store/quickAsk'
 import { useAppStore } from '../../store'
 import type { ExerciseSet, ExerciseQuestion } from '../../types'
+import {
+  SingleChoiceCard,
+  MultiChoiceCard,
+  TrueFalseCard,
+  FillBlankCard,
+  ShortAnswerCard,
+} from './exercise'
 
 const { Text, Title, Paragraph } = Typography
 
@@ -302,6 +309,7 @@ export default function ExerciseViewer({ content, resourceId, resourceMetadata, 
     )
   }
 
+  /** 难度 → Ant Design Tag 颜色映射 */
   function getDifficultyColor(d: string) {
     switch (d) {
       case 'easy': return 'success'
@@ -311,6 +319,7 @@ export default function ExerciseViewer({ content, resourceId, resourceMetadata, 
     }
   }
 
+  /** 题型代码 → 中文标签映射 */
   function getTypeLabel(t: string) {
     switch (t) {
       case 'single_choice': return '单选'
@@ -322,84 +331,56 @@ export default function ExerciseViewer({ content, resourceId, resourceMetadata, 
     }
   }
 
-  function renderOptions(q: ExerciseQuestion) {
+  /** 按题型号向到子组件 */
+  function renderQuestionCard(q: ExerciseQuestion) {
     const submittedAnswer = submitted[q.id]
     const currentAnswer = userAnswers[q.id]
 
-    if (q.type === 'single_choice') {
-      return (
-        <Radio.Group
-          value={currentAnswer as number}
-          onChange={e => handleOptionChange(q, e.target.value)}
-          disabled={submittedAnswer}
-          style={{ width: '100%' }}
-        >
-          <Space direction="vertical" style={{ width: '100%' }}>
-            {(q.options || []).map((opt, i) => (
-              <Radio
-                key={i}
-                value={i}
-                style={{
-                  padding: '8px 12px', borderRadius: 6,
-                  background: submittedAnswer && i === q.answer ? '#DCFCE7'
-                    : submittedAnswer && i === currentAnswer && !isAnswerCorrect(q, i) ? '#FEE2E2'
-                    : '#F8FAFC',
-                  border: submittedAnswer && i === q.answer ? '1px solid #BBF7D0'
-                    : submittedAnswer && i === currentAnswer && !isAnswerCorrect(q, i) ? '1px solid #FECACA'
-                    : '1px solid transparent',
-                  width: '100%',
-                }}
-              >
-                {opt}
-              </Radio>
-            ))}
-          </Space>
-        </Radio.Group>
-      )
+    const commonProps = {
+      question: q,
+      userAnswer: currentAnswer,
+      submitted: submittedAnswer,
     }
 
-    if (q.type === 'multiple_choice') {
-      return (
-        <Checkbox.Group
-          value={currentAnswer as number[]}
-          onChange={vals => handleOptionChange(q, vals as number[])}
-          disabled={submittedAnswer}
-          style={{ width: '100%' }}
-        >
-          <Space direction="vertical" style={{ width: '100%' }}>
-            {(q.options || []).map((opt, i) => (
-              <Checkbox key={i} value={i} style={{ padding: '8px 12px', width: '100%' }}>
-                {opt}
-              </Checkbox>
-            ))}
-          </Space>
-        </Checkbox.Group>
-      )
+    switch (q.type) {
+      case 'single_choice':
+        return (
+          <SingleChoiceCard
+            {...commonProps}
+            onChange={(val) => handleOptionChange(q, val)}
+          />
+        )
+      case 'multiple_choice':
+        return (
+          <MultiChoiceCard
+            {...commonProps}
+            onChange={(vals) => handleOptionChange(q, vals)}
+          />
+        )
+      case 'true_false':
+        return (
+          <TrueFalseCard
+            {...commonProps}
+            onChange={(val) => handleOptionChange(q, val)}
+          />
+        )
+      case 'fill_blank':
+        return (
+          <FillBlankCard
+            {...commonProps}
+            onChange={(val) => handleTextChange(q, val)}
+          />
+        )
+      case 'short_answer':
+        return (
+          <ShortAnswerCard
+            {...commonProps}
+            onChange={(val) => handleTextChange(q, val)}
+          />
+        )
+      default:
+        return <Empty description={`不支持的题型: ${q.type}`} />
     }
-
-    if (q.type === 'true_false') {
-      return (
-        <Radio.Group
-          value={currentAnswer as number}
-          onChange={e => handleOptionChange(q, e.target.value)}
-          disabled={submittedAnswer}
-        >
-          <Radio value={0} style={{ marginRight: 24 }}>正确</Radio>
-          <Radio value={1}>错误</Radio>
-        </Radio.Group>
-      )
-    }
-
-    return (
-      <Input.TextArea
-        value={(currentAnswer as string) || ''}
-        onChange={e => handleTextChange(q, e.target.value)}
-        disabled={submittedAnswer}
-        placeholder={q.type === 'fill_blank' ? '请输入答案' : '请输入你的理解...'}
-        autoSize={{ minRows: 1, maxRows: 10 }}
-        style={{ maxWidth: 600 }}
-      />
-    )
   }
 
   // ── 统计 ──
@@ -467,7 +448,7 @@ export default function ExerciseViewer({ content, resourceId, resourceMetadata, 
         </div>
 
         <div style={{ marginBottom: 16 }}>
-          {currentQuestion && renderOptions(currentQuestion)}
+          {currentQuestion && renderQuestionCard(currentQuestion)}
         </div>
 
         {currentQuestion && !submitted[currentQuestion.id] && !readOnly && (

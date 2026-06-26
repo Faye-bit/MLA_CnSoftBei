@@ -290,7 +290,7 @@ class AgentTask(Base):
     #               teaching_design (教学设计) / handout (讲义) / mindmap (思维导图) /
     #               exercise (练习题) / reading (拓展阅读) / coding_practice (编程练习) /
     #               video_script (动画脚本) / document (参考文档) / assessment (自测评估) /
-    #               safety (安全核查)
+    #               safety (综合审查)
     agent_name: Mapped[str] = mapped_column(
         String(30), nullable=False
     )

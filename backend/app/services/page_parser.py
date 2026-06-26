@@ -16,40 +16,59 @@ from typing import List, Optional
 from loguru import logger
 from sqlalchemy.ext.asyncio import AsyncSession
 from openai import AsyncOpenAI
+from app.core.config import settings
 
 # Poppler 工具路径 (pdf2image 底层依赖, 用于 PDF 渲染为图片)
-# Windows 下需手动下载 poppler 并指定 bin 目录路径
 _POPPLER_PATH = None
+
 
 def _get_poppler_path() -> str | None:
     """
     自动检测 poppler 工具路径
-    优先检查环境变量 POPPLER_PATH, 其次检查常见安装位置
-    :return: poppler bin 目录路径, 找不到返回 None
+    优先级: settings.poppler_path > 环境变量 POPPLER_PATH > 常见安装位置 > 系统 PATH
+    :return: poppler bin 目录路径, 找不到返回空字符串
     """
     global _POPPLER_PATH
     if _POPPLER_PATH is not None:
         return _POPPLER_PATH if _POPPLER_PATH else None
 
-    # 1. 环境变量
+    # 判断 pdftoppm 可执行文件是否存在
+    def _check_bin(path: str) -> bool:
+        exe = "pdftoppm.exe" if os.name == "nt" else "pdftoppm"
+        return os.path.exists(os.path.join(path, exe))
+
+    # 1. 应用配置 (settings.poppler_path)
+    if settings.poppler_path and _check_bin(settings.poppler_path):
+        _POPPLER_PATH = settings.poppler_path
+        return settings.poppler_path
+
+    # 2. 环境变量
     env_path = os.environ.get("POPPLER_PATH", "")
-    if env_path and os.path.exists(os.path.join(env_path, "pdftoppm.exe")):
+    if env_path and _check_bin(env_path):
         _POPPLER_PATH = env_path
         return env_path
 
-    # 2. 常见安装位置 (Windows)
-    candidates = [
-        "D:/Poppler/poppler-24.08.0/Library/bin",
-        "C:/Poppler/bin",
-        "C:/Program Files/poppler/bin",
-        "E:/poppler/bin",
-    ]
+    # 3. 常见安装位置 (跨平台)
+    candidates: list[str] = []
+    if os.name == "nt":
+        candidates = [
+            "D:/Poppler/poppler-24.08.0/Library/bin",
+            "C:/Poppler/bin",
+            "C:/Program Files/poppler/bin",
+            "E:/poppler/bin",
+        ]
+    else:
+        # macOS/Linux: homebrew / apt 安装后 pdftoppm 直接在 PATH 中
+        import shutil
+        if shutil.which("pdftoppm"):
+            _POPPLER_PATH = ""
+            return ""
     for candidate in candidates:
-        if os.path.exists(os.path.join(candidate, "pdftoppm.exe")):
+        if _check_bin(candidate):
             _POPPLER_PATH = candidate
             return candidate
 
-    # 3. 系统 PATH (pdftoppm 可直接调用时返回空字符串即可)
+    # 4. 系统 PATH (最后尝试)
     _POPPLER_PATH = ""
     return ""
 

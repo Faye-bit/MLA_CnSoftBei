@@ -90,6 +90,7 @@ async def create_or_resume_session(
     session, is_new = await session_service.get_or_create_session(
         user_id=current_user.id,
         course_id=body.course_id,
+        resource_types=body.resource_types,
         db=db,
     )
     return ApiResponse(

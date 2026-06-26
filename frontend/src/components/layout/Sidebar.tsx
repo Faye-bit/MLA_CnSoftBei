@@ -133,7 +133,7 @@ export default function Sidebar({ collapsed }: { collapsed: boolean }) {
       {/* ================================================================ */}
       <div
         style={{
-          height: 64,
+          height: 56,
           display: 'flex',
           alignItems: 'center',
           paddingLeft: collapsed ? undefined : 24,

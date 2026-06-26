@@ -11,7 +11,7 @@ import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   Card, Select, Button, Typography, Progress, Tag, Spin,
-  Empty, message, Popconfirm, Modal, Divider,
+  Empty, message, Popconfirm, Modal, Divider, Checkbox, Row, Col,
 } from 'antd'
 import {
   PlusOutlined, BookOutlined, StarOutlined, StarFilled,
@@ -40,6 +40,29 @@ export default function LearningHub() {
   const [loadingSessions, setLoadingSessions] = useState(true)
   const [starting, setStarting] = useState(false)
   const [newModalOpen, setNewModalOpen] = useState(false)
+
+  /**
+   * 资源类型选择状态
+   * 默认选中: 讲义(handout)、思维导图(mindmap)、练习题(exercise)
+   * 可选: 拓展阅读(reading)、编程实操(coding_practice)、交互动画(video_script)
+   */
+  const RESOURCE_TYPE_CONFIG = [
+    { type: 'handout',         label: '讲义',        desc: '核心学习材料', required: true },
+    { type: 'mindmap',         label: '思维导图',    desc: '知识结构可视化', required: true },
+    { type: 'exercise',        label: '练习题',      desc: '巩固知识要点', required: true },
+    { type: 'reading',         label: '拓展阅读',    desc: '深化理解', required: false },
+    { type: 'coding_practice', label: '编程实操',    desc: '动手实践', required: false },
+    { type: 'video_script',    label: '交互动画',    desc: '直观演示', required: false },
+  ]
+  const [selectedResourceTypes, setSelectedResourceTypes] = useState<string[]>(
+    RESOURCE_TYPE_CONFIG.filter(r => r.required).map(r => r.type)
+  )
+
+  function toggleResourceType(type: string, checked: boolean) {
+    setSelectedResourceTypes(prev =>
+      checked ? [...prev, type] : prev.filter(t => t !== type)
+    )
+  }
 
   async function loadCourses() {
     try {
@@ -78,7 +101,7 @@ export default function LearningHub() {
     }
     setStarting(true)
     try {
-      const session = await createOrResumeSession(selectedCourseId)
+      const session = await createOrResumeSession(selectedCourseId, selectedResourceTypes)
       const stages = session.learning_path?.stages
       const isNew = !stages || stages.length === 0
 
@@ -409,6 +432,31 @@ export default function LearningHub() {
             notFoundContent={loadingCourses ? <Spin size="small" /> : <Empty description="暂无课程" />}
           />
 
+          <Text type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 8, marginTop: 16 }}>
+            学习资源选择（可多选）
+          </Text>
+          <Row gutter={[8, 6]} style={{ marginBottom: 20 }}>
+            {RESOURCE_TYPE_CONFIG.map(rt => (
+              <Col span={12} key={rt.type}>
+                <Checkbox
+                  checked={selectedResourceTypes.includes(rt.type)}
+                  disabled={rt.required}
+                  onChange={e => toggleResourceType(rt.type, e.target.checked)}
+                  style={{ fontSize: 13 }}
+                >
+                  <span style={{ fontWeight: rt.required ? 600 : 400 }}>
+                    {rt.label}
+                  </span>
+                  {!rt.required && (
+                    <Text type="secondary" style={{ fontSize: 11, marginLeft: 4 }}>
+                      {rt.desc}
+                    </Text>
+                  )}
+                </Checkbox>
+              </Col>
+            ))}
+          </Row>
+
           <Button
             type="primary"
             size="large"
@@ -423,7 +471,8 @@ export default function LearningHub() {
           </Button>
 
           <Paragraph type="secondary" style={{ marginTop: 12, fontSize: 12, marginBottom: 0 }}>
-            MLA将调用多智能体编排系统，为你规划个性化学习路线并生成学习资源。生成过程约需1-3分钟。
+            MLA将调用多智能体编排系统，为你规划个性化学习路线。
+            当前选择 {selectedResourceTypes.length} 种资源类型，预计生成约需 {selectedResourceTypes.length <= 3 ? '30秒-1分钟' : selectedResourceTypes.length <= 4 ? '1-2分钟' : '2-4分钟'}。
           </Paragraph>
         </div>
       </Modal>

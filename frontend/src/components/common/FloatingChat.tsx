@@ -1,83 +1,87 @@
 /**
- * 悬浮 AI 助手组件
- * 默认显示为悬浮按钮, 点击展开为聊天窗口 (380×520px)
- * 支持拖动改变位置, 松开后自动吸附到最近的边缘
- *
- * 设计规范 (MLA Brand v2.0):
- * - 使用品牌 token 替代硬编码色值
- * - 标题栏使用纯色品牌蓝, 禁止 AI 渐变
+ * 悬浮 AI 助手容器组件
+ * 悬浮按钮: 固定在屏幕右侧, 可纵向拖动, 点击呼出聊天面板
+ * 聊天面板: 可拖动标题栏移动位置, 可拖拽右下角缩放尺寸
+ * 面板位置与按钮位置互不关联
  */
-
-import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
-import { Button, Spin, Typography, message } from 'antd'
-import {
-  MessageOutlined, CloseOutlined, SendOutlined, StopOutlined,
-  ExpandOutlined, MinusOutlined, DeleteOutlined, PlusOutlined,
-  SaveOutlined, BulbOutlined,
-} from '@ant-design/icons'
-import ChatMessage from '../chat/ChatMessage'
-import { getConversationDetail, createConversation, streamChat, condenseAndStoreExplanation, deleteAIExplanation } from '../../services/api'
+import { useState, useEffect, useRef, useCallback } from 'react'
+import { message } from 'antd'
+import { getConversationDetail, createConversation, condenseAndStoreExplanation, deleteAIExplanation } from '../../services/api'
+import { useStreamChat } from '../../hooks/useStreamChat'
+import { useDraggable } from '../../hooks/useDraggable'
 import { useQuickAskStore } from '../../store/quickAsk'
 import type { QuickAskContext } from '../../store/quickAsk'
-import type { Conversation, Message, ChatSource } from '../../types'
-import { blue, gray } from '../../styles/tokens'
+import type { Conversation, Message } from '../../types'
+import { FloatingButton } from './FloatingButton'
+import { ChatPanel } from './ChatPanel'
 
-const { Text } = Typography
 const LAST_CONVERSATION_KEY = 'mla-floating-chat-conversation-id'
-const PANEL_WIDTH = 380
-const PANEL_HEIGHT = 520
 const BUTTON_SIZE = 52
+const DEFAULT_PANEL_WIDTH = 380
+const DEFAULT_PANEL_HEIGHT = 520
 
 export default function FloatingChat() {
   const [visible, setVisible] = useState(false)
-  const [position, setPosition] = useState<{ x: number; y: number } | null>(null)
-  const [dragging, setDragging] = useState(false)
-  const [snapSide, setSnapSide] = useState<'left' | 'right'>('right')
-  const dragStart = useRef<{ mouseX: number; mouseY: number; elemX: number; elemY: number } | null>(null)
-  const floatRef = useRef<HTMLDivElement>(null)
   const collapseBtnRef = useRef<HTMLDivElement>(null)
+  const [collapseTop, setCollapseTop] = useState<number | null>(null)
+
+  // 面板可拖拽定位 (无吸附, 居中默认)
+  const { position, dragging, panelRef, onDragStart, updateSize } = useDraggable(DEFAULT_PANEL_WIDTH, DEFAULT_PANEL_HEIGHT)
+
+  // 面板可缩放尺寸
+  const [panelSize, setPanelSize] = useState({ width: DEFAULT_PANEL_WIDTH, height: DEFAULT_PANEL_HEIGHT })
+
+  const handleResize = useCallback((width: number, height: number) => {
+    setPanelSize({ width, height })
+    updateSize(width, height)
+  }, [updateSize])
 
   const [conversation, setConversation] = useState<Conversation | null>(null)
-  const [messages, setMessages] = useState<Message[]>([])
   const [messagesLoading, setMessagesLoading] = useState(false)
   const [inputValue, setInputValue] = useState('')
 
-  const [streaming, setStreaming] = useState(false)
-  const [streamingContent, setStreamingContent] = useState('')
-  const [streamingSources, setStreamingSources] = useState<ChatSource[]>([])
-  const streamingContentRef = useRef('')
-  const streamingSourcesRef = useRef<ChatSource[]>([])
-  const abortControllerRef = useRef<AbortController | null>(null)
-  /**
-   * 追踪用户是否已在本轮会话中发送过消息
-   * 用于防止 loadConversationById 在流式进行中覆盖本地消息状态
-   */
-  const hasSentMessageRef = useRef(false)
-  /** IME 组合状态: 输入法激活时 Enter 只选词不发送 */
-  const isComposingRef = useRef(false)
-  /** 输入框 DOM 引用 — 用于自适应高度 */
-  const textareaRef = useRef<HTMLTextAreaElement>(null)
+  // SSE 流式对话管理
+  const {
+    messages,
+    setMessages,
+    streaming,
+    streamingContent,
+    streamingSources,
+    sendMessage,
+    stopStreaming,
+    abortStreaming,
+    hasSentMessageRef,
+  } = useStreamChat()
 
   // ========== 快问AI 集成 ==========
 
-  /** 快问AI 上下文 (从各触发点通过 QuickAskStore 传入) */
   const quickAskContext = useQuickAskStore((s) => s.context)
   const clearQuickAsk = useQuickAskStore((s) => s.clear)
 
-  /**
-   * 追踪可保存到知识库的消息对: AI消息ID -> { kpId, saved }
-   * 当用户点击"保存到知识库"后, saved 变为 true
-   */
   const saveableMessagesRef = useRef<Map<string, { kpId: string; saved: boolean }>>(new Map())
+  const kpIdForPendingMessageRef = useRef<string | null>(null)
 
-  // 监听快问AI上下文: 展开面板 + 发送预填充问题
+  // 流式完成后标注可保存消息
+  const prevStreamingRef = useRef(streaming)
+  useEffect(() => {
+    if (prevStreamingRef.current && !streaming) {
+      const kpId = kpIdForPendingMessageRef.current
+      if (kpId && messages.length > 0) {
+        const lastMsg = messages[messages.length - 1]
+        if (lastMsg.role === 'assistant') {
+          saveableMessagesRef.current.set(lastMsg.id, { kpId, saved: false })
+        }
+        kpIdForPendingMessageRef.current = null
+      }
+    }
+    prevStreamingRef.current = streaming
+  }, [streaming, messages])
+
+  // 监听快问AI: 展开面板 + 发送预填充问题
   useEffect(() => {
     if (!quickAskContext) return
-    // 展开聊天面板
     setVisible(true)
-    // 延迟执行以确保面板已经渲染, 等待 conversation 就绪后发送
     const timeout = setTimeout(async () => {
-      // ensureConversationReady 返回可用的 conversation (新建或复用)
       const conv = await ensureConversationReady(quickAskContext)
       if (conv) {
         await handleQuickAskSend(conv, quickAskContext)
@@ -87,17 +91,13 @@ export default function FloatingChat() {
     return () => clearTimeout(timeout)
   }, [quickAskContext])
 
-  /**
-   * 确保有可用的对话: 如果不存在或没有关联课程则创建新对话
-   * @returns Conversation 对象 (直接返回, 不依赖 React state)
-   */
+  // ========== 对话管理 ==========
+
   async function ensureConversationReady(ctx: QuickAskContext): Promise<Conversation | null> {
     const courseId = ctx.metadata.courseId
-    // 如果已有对话且课程匹配, 直接复用
     if (conversation && (!courseId || conversation.course_id === courseId)) {
       return conversation
     }
-    // 否则创建新对话
     hasSentMessageRef.current = false
     try {
       const conv = await createConversation({
@@ -114,9 +114,6 @@ export default function FloatingChat() {
     }
   }
 
-  /**
-   * 根据快问上下文类型生成智能预填充问题
-   */
   function generateQuickAskQuestion(ctx: QuickAskContext): string {
     const text = ctx.contextText.slice(0, 200)
     switch (ctx.sourceType) {
@@ -129,37 +126,10 @@ export default function FloatingChat() {
     }
   }
 
-  /**
-   * 快问AI发送: 构建 quickAskMetadata 并发送预填充问题
-   * @param conv 当前可用的对话对象 (直接传入, 避免 stale state)
-   * @param ctx 快问上下文
-   */
   async function handleQuickAskSend(conv: Conversation, ctx: QuickAskContext) {
     if (streaming) return
-
     const question = ctx.prefillQuestion || generateQuickAskQuestion(ctx)
     if (!question.trim()) return
-
-    hasSentMessageRef.current = true
-
-    const userMsg: Message = {
-      id: 'temp-qa-' + Date.now(),
-      conversation_id: conv.id,
-      role: 'user',
-      content: question,
-      sources: null,
-      message_metadata: null,
-      created_at: new Date().toISOString(),
-    }
-    setMessages((prev) => [...prev, userMsg])
-
-    streamingContentRef.current = ''
-    streamingSourcesRef.current = []
-    setStreaming(true)
-    setStreamingContent('')
-    setStreamingSources([])
-
-    // 构建快问元数据传给后端
     const quickAskMetadata: Record<string, unknown> = {
       source_type: ctx.sourceType,
       context_text: ctx.contextText,
@@ -168,85 +138,14 @@ export default function FloatingChat() {
       chapter_id: ctx.metadata.chapterId,
       document_id: ctx.metadata.documentId,
     }
-
-    // 记录可保存的消息 (仅 kp 类型)
-    const kpId = ctx.metadata.kpId
-
-    abortControllerRef.current = streamChat(
-      conv.id,
-      question,
-      ctx.metadata.courseId || conv.course_id,
-      {
-        onContent: (chunk) => {
-          streamingContentRef.current += chunk
-          setStreamingContent(streamingContentRef.current)
-        },
-        onSources: (sources) => {
-          streamingSourcesRef.current = sources
-          setStreamingSources(sources)
-        },
-        onDone: (messageId) => {
-          const finalContent = streamingContentRef.current
-          const finalSources = streamingSourcesRef.current
-          setMessages((prev) => [
-            ...prev,
-            {
-              id: messageId,
-              conversation_id: conv.id,
-              role: 'assistant',
-              content: finalContent,
-              sources: finalSources.length > 0 ? finalSources : null,
-              message_metadata: null,
-              created_at: new Date().toISOString(),
-            },
-          ])
-          // 标记此 AI 回复可保存到知识库
-          if (kpId) {
-            saveableMessagesRef.current.set(messageId, { kpId, saved: false })
-          }
-          setStreaming(false)
-          setStreamingContent('')
-          setStreamingSources([])
-          streamingContentRef.current = ''
-          streamingSourcesRef.current = []
-        },
-        onError: (error) => {
-          message.error('回复生成失败: ' + error)
-          const partial = streamingContentRef.current
-          if (partial) {
-            setMessages((prev) => [
-              ...prev,
-              {
-                id: 'error-' + Date.now(),
-                conversation_id: conv.id,
-                role: 'assistant',
-                content: partial + '\n\n[回复中断: ' + error + ']',
-                sources: streamingSourcesRef.current.length > 0 ? streamingSourcesRef.current : null,
-                message_metadata: null,
-                created_at: new Date().toISOString(),
-              },
-            ])
-          }
-          setStreaming(false)
-          setStreamingContent('')
-          setStreamingSources([])
-          streamingContentRef.current = ''
-          streamingSourcesRef.current = []
-        },
-      },
-      undefined, // systemPrompt — 后端会根据 quick_ask_context 自动构建
-      quickAskMetadata,
-    )
+    kpIdForPendingMessageRef.current = ctx.metadata.kpId || null
+    sendMessage(conv.id, question, ctx.metadata.courseId || conv.course_id, undefined, quickAskMetadata)
   }
 
-  /**
-   * 保存 AI 回复到知识库: 调用后端浓缩 + 存储
-   */
   async function handleSaveToKnowledgeBase(messageId: string, kpId: string, fullResponse: string, userQuestion: string) {
     try {
       const entry = saveableMessagesRef.current.get(messageId)
       if (!entry || entry.saved) return
-
       message.loading({ content: '正在浓缩并存储 AI 解释…', key: 'save-kp' })
       await condenseAndStoreExplanation(kpId, fullResponse, userQuestion)
       entry.saved = true
@@ -258,21 +157,14 @@ export default function FloatingChat() {
     }
   }
 
-  /** 查找某个 AI 回复对应的用户提问文本 */
   function findUserQuestion(aiMsgIndex: number): string {
-    // 向前查找最近的 user 消息
     for (let i = aiMsgIndex - 1; i >= 0; i--) {
-      if (messages[i].role === 'user') {
-        return messages[i].content
-      }
+      if (messages[i].role === 'user') return messages[i].content
     }
     return ''
   }
 
-  useEffect(() => { return () => { abortControllerRef.current?.abort() } }, [])
-
-  const messagesEndRef = useRef<HTMLDivElement>(null)
-  useEffect(() => { messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [messages, streamingContent])
+  // ========== 对话生命周期 ==========
 
   useEffect(() => {
     if (!visible) return
@@ -286,17 +178,15 @@ export default function FloatingChat() {
     setMessagesLoading(true)
     try {
       const detail = await getConversationDetail(id)
-      /**
-       * 仅在用户未发送消息时才覆盖 conversation 和 messages
-       * 如果已发送, 状态由 handleSend/onDone/onError 管理,
-       * 避免慢速 API 响应覆盖已更新的本地状态;
-       * 同时也避免重置 streamingContentRef 干扰正在进行的流式输出
-       */
       if (!hasSentMessageRef.current) {
-        /** 对齐 Chat.tsx handleSelectConversation: 加载对话前重置流式状态 */
-        setStreaming(false); setStreamingContent(''); setStreamingSources([])
-        streamingContentRef.current = ''; streamingSourcesRef.current = []
-        setConversation({ id: detail.id, user_id: detail.user_id, course_id: detail.course_id, title: detail.title, conversation_type: detail.conversation_type, profile_collection_stage: detail.profile_collection_stage, message_count: detail.message_count, created_at: detail.created_at, updated_at: detail.updated_at })
+        abortStreaming()
+        setConversation({
+          id: detail.id, user_id: detail.user_id, course_id: detail.course_id,
+          title: detail.title, conversation_type: detail.conversation_type,
+          profile_collection_stage: detail.profile_collection_stage,
+          message_count: detail.message_count, created_at: detail.created_at,
+          updated_at: detail.updated_at,
+        })
         setMessages(detail.messages || [])
       }
     } finally { setMessagesLoading(false) }
@@ -313,7 +203,6 @@ export default function FloatingChat() {
   }
 
   async function handleDeleteAndNew() {
-    /** 不再删除旧会话 — 保留在数据库中供"AI问答"页面访问 */
     setConversation(null); setMessages([])
     localStorage.removeItem(LAST_CONVERSATION_KEY)
     await createNewConversation()
@@ -323,204 +212,92 @@ export default function FloatingChat() {
   async function handleSend() {
     const content = inputValue.trim()
     if (!content || streaming || !conversation) return
-
-    /** 标记本会话已发送消息, 防止 loadConversationById 覆盖本地消息 */
-    hasSentMessageRef.current = true
-
-    const userMsg: Message = { id: 'temp-' + Date.now(), conversation_id: conversation.id, role: 'user', content, sources: null, message_metadata: null, created_at: new Date().toISOString() }
-    setMessages((prev) => [...prev, userMsg]); setInputValue('')
-    /** 发送后重置输入框高度 */
-    const el = textareaRef.current
-    if (el) { el.style.height = 'auto' }
-
-    streamingContentRef.current = ''; streamingSourcesRef.current = []
-    setStreaming(true); setStreamingContent(''); setStreamingSources([])
-    const convSnapshot = conversation
-
-    abortControllerRef.current = streamChat(convSnapshot.id, content, convSnapshot.course_id, {
-      onContent: (chunk) => { streamingContentRef.current += chunk; setStreamingContent(streamingContentRef.current) },
-      onSources: (sources) => { streamingSourcesRef.current = sources; setStreamingSources(sources) },
-      onDone: (messageId) => {
-        /** 必须先将 ref 内容保存到局部变量, 再调用 setMessages
-         *  React 19 自动批处理状态下, setMessages 的 updater 回调
-         *  可能在 streamingContentRef 被重置之后才执行,
-         *  导致 AI 回复内容丢失 (空气泡 bug) */
-        const finalContent = streamingContentRef.current
-        const finalSources = streamingSourcesRef.current
-        setMessages((prev) => [...prev, { id: messageId, conversation_id: convSnapshot.id, role: 'assistant', content: finalContent, sources: finalSources.length > 0 ? finalSources : null, message_metadata: null, created_at: new Date().toISOString() }])
-        setStreaming(false); setStreamingContent(''); setStreamingSources([]); streamingContentRef.current = ''; streamingSourcesRef.current = []
-      },
-      onError: (error) => {
-        message.error('回复生成失败: ' + error)
-        const partial = streamingContentRef.current
-        if (partial) setMessages((prev) => [...prev, { id: 'error-' + Date.now(), conversation_id: convSnapshot.id, role: 'assistant', content: partial + '\n\n[回复中断: ' + error + ']', sources: streamingSourcesRef.current.length > 0 ? streamingSourcesRef.current : null, message_metadata: null, created_at: new Date().toISOString() }])
-        setStreaming(false); setStreamingContent(''); setStreamingSources([]); streamingContentRef.current = ''; streamingSourcesRef.current = []
-      },
-    })
+    setInputValue('')
+    sendMessage(conversation.id, content, conversation.course_id)
   }
 
   function handleStop() {
-    abortControllerRef.current?.abort()
+    stopStreaming()
     hasSentMessageRef.current = false
-    const partial = streamingContentRef.current
-    if (partial && conversation) setMessages((prev) => [...prev, { id: 'partial-' + Date.now(), conversation_id: conversation.id, role: 'assistant', content: partial + '\n\n[已停止]', sources: streamingSourcesRef.current.length > 0 ? streamingSourcesRef.current : null, message_metadata: null, created_at: new Date().toISOString() }])
-    setStreaming(false); setStreamingContent(''); setStreamingSources([]); streamingContentRef.current = ''; streamingSourcesRef.current = []
   }
 
-  /**
-   * 输入框自适应高度 — 根据文字内容自动伸缩
-   * 最小 1 行高度 (≈34px), 最大不超过 120px
-   */
-  const autoResize = () => {
-    const el = textareaRef.current
-    if (el) { el.style.height = 'auto'; el.style.height = Math.min(el.scrollHeight, 120) + 'px' }
-  }
-
-  // Drag handlers
-  const handleDragStart = useCallback((e: React.MouseEvent) => {
-    e.preventDefault(); const el = floatRef.current; if (!el) return
-    dragStart.current = { mouseX: e.clientX, mouseY: e.clientY, elemX: el.getBoundingClientRect().left, elemY: el.getBoundingClientRect().top }
-    setDragging(true)
-  }, [])
-
-  useEffect(() => {
-    if (!dragging) return
-    const mm = (e: MouseEvent) => { if (!dragStart.current) return; setPosition({ x: dragStart.current.elemX + e.clientX - dragStart.current.mouseX, y: dragStart.current.elemY + e.clientY - dragStart.current.mouseY }) }
-    const mu = () => { setDragging(false); dragStart.current = null; if (floatRef.current) { const r = floatRef.current.getBoundingClientRect(); setSnapSide(r.left + r.width / 2 < window.innerWidth / 2 ? 'left' : 'right'); setPosition(null) } }
-    window.addEventListener('mousemove', mm); window.addEventListener('mouseup', mu)
-    return () => { window.removeEventListener('mousemove', mm); window.removeEventListener('mouseup', mu) }
-  }, [dragging])
+  // ========== 悬浮按钮: 点击 vs 拖动区分 ==========
 
   const collapseDragStart = useRef<{ mouseY: number; top: number } | null>(null)
-  const [collapseTop, setCollapseTop] = useState<number | null>(null)
 
-  const handleCollapseDragStart = useCallback((e: React.MouseEvent) => {
-    e.preventDefault(); e.stopPropagation(); const btn = collapseBtnRef.current; if (!btn) return
+  const handleCollapseMouseDown = (e: React.MouseEvent) => {
+    e.preventDefault()
+    const btn = collapseBtnRef.current
+    if (!btn) return
+
+    const startY = e.clientY
+    let moved = false
+
     collapseDragStart.current = { mouseY: e.clientY, top: btn.getBoundingClientRect().top }
-    const mm = (ev: MouseEvent) => { if (!collapseDragStart.current) return; setCollapseTop(Math.max(60, Math.min(window.innerHeight - BUTTON_SIZE - 20, collapseDragStart.current.top + ev.clientY - collapseDragStart.current.mouseY))) }
-    const mu = () => { collapseDragStart.current = null; window.removeEventListener('mousemove', mm); window.removeEventListener('mouseup', mu) }
-    window.addEventListener('mousemove', mm); window.addEventListener('mouseup', mu)
-  }, [])
-
-  const panelStyle = useMemo((): React.CSSProperties => {
-    if (position) return { position: 'fixed', left: position.x, top: position.y, width: PANEL_WIDTH, height: PANEL_HEIGHT, zIndex: 1050 }
-    return { position: 'fixed', [snapSide]: 12, top: collapseTop != null ? collapseTop : 'calc(50vh - 260px)', width: PANEL_WIDTH, height: PANEL_HEIGHT, zIndex: 1050, transition: dragging ? 'none' : 'left 0.25s ease, right 0.25s ease' }
-  }, [position, snapSide, collapseTop, dragging])
-
-  const collapseBtnStyle = useMemo((): React.CSSProperties => ({
-    position: 'fixed', [snapSide]: -4, top: collapseTop != null ? collapseTop : 'calc(50vh - 26px)',
-    width: BUTTON_SIZE, height: BUTTON_SIZE, zIndex: 1049, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'grab', transition: 'all 0.25s ease',
-    borderRadius: snapSide === 'left' ? '0 12px 12px 0' : '12px 0 0 12px',
-  }), [snapSide, collapseTop])
+    const mm = (ev: MouseEvent) => {
+      if (!collapseDragStart.current) return
+      if (Math.abs(ev.clientY - startY) > 3) moved = true
+      setCollapseTop(Math.max(60, Math.min(
+        window.innerHeight - BUTTON_SIZE - 20,
+        collapseDragStart.current.top + ev.clientY - collapseDragStart.current.mouseY,
+      )))
+    }
+    const mu = () => {
+      collapseDragStart.current = null
+      window.removeEventListener('mousemove', mm)
+      window.removeEventListener('mouseup', mu)
+      if (!moved) setVisible(true)
+    }
+    window.addEventListener('mousemove', mm)
+    window.addEventListener('mouseup', mu)
+  }
 
   function handleClose() {
-    /** 仅在实际流式进行中时才中止请求, 避免已完成流式上的副作用 */
-    if (streaming) abortControllerRef.current?.abort()
-    /** 重置发送标记, 下次打开面板时允许从服务器加载最新消息 */
+    if (streaming) abortStreaming()
     hasSentMessageRef.current = false
-    setVisible(false); setStreaming(false); setStreamingContent(''); setStreamingSources([])
-    streamingContentRef.current = ''; streamingSourcesRef.current = []
+    setVisible(false)
+    setMessages([])
   }
+
+  // ========== 渲染 ==========
+
+  const saveableCopy = new Map(saveableMessagesRef.current)
 
   return (
     <>
       {!visible && (
-        <div ref={collapseBtnRef} style={collapseBtnStyle} onMouseDown={handleCollapseDragStart}>
-          <Button type="primary" shape="circle" size="large" icon={<MessageOutlined style={{ fontSize: 20 }} />}
-            onClick={() => setVisible(true)}
-            style={{ width: BUTTON_SIZE, height: BUTTON_SIZE, boxShadow: `0 4px 16px rgba(59,130,246,0.35)`, cursor: 'pointer' }} />
-        </div>
+        <FloatingButton
+          collapseTop={collapseTop}
+          onDragStart={handleCollapseMouseDown}
+          buttonRef={collapseBtnRef}
+        />
       )}
 
       {visible && (
-        <div ref={floatRef} style={{ ...panelStyle, background: '#FFFFFF', borderRadius: 12, boxShadow: `0 8px 40px rgba(15,23,42,0.12)`, display: 'flex', flexDirection: 'column', overflow: 'hidden', border: `1px solid ${gray[200]}`, userSelect: dragging ? 'none' : 'auto' }}>
-          {/* 标题栏 — 纯色品牌蓝, 禁止渐变 */}
-          <div onMouseDown={handleDragStart} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 12px', background: blue[500], color: '#FFFFFF', cursor: dragging ? 'grabbing' : 'grab', flexShrink: 0, userSelect: 'none' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <img src="/brand/字母标Logo.svg" alt="MLA" style={{ width: 18, height: 18 }} />
-              <span style={{ fontWeight: 600, fontSize: 14 }}>{conversation?.title || 'AI 助手'}</span>
-            </div>
-            <div style={{ display: 'flex', gap: 2 }}>
-              <Button type="text" size="small" icon={<PlusOutlined />} onClick={(e) => { e.stopPropagation(); handleDeleteAndNew() }} style={{ color: '#FFFFFF' }} title="新对话" />
-              <Button type="text" size="small" icon={<MinusOutlined />} onClick={(e) => { e.stopPropagation(); handleClose() }} style={{ color: '#FFFFFF' }} title="最小化" />
-            </div>
-          </div>
-
-          {/* 消息列表 */}
-          <div style={{ flex: 1, overflow: 'auto', padding: '12px 14px', background: gray[50], minHeight: 0 }}>
-            {messagesLoading ? (
-              <div style={{ textAlign: 'center', padding: 40 }}><Spin size="small" /></div>
-            ) : messages.length === 0 && !streaming ? (
-              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', gap: 8, opacity: 0.6 }}>
-                <img src="/brand/字母标Logo.svg" alt="MLA 智学引擎" style={{ width: 80, height: 80, opacity: 0.85 }} />
-                <Text type="secondary" style={{ fontSize: 13 }}>基于课程知识库的 AI 助手</Text>
-                <Text type="secondary" style={{ fontSize: 12 }}>输入你的问题, 我会在资料中寻找答案</Text>
-              </div>
-            ) : (
-              <>
-                {messages.map((msg, idx) => {
-                  const saveEntry = msg.role === 'assistant' ? saveableMessagesRef.current.get(msg.id) : null
-                  return (
-                    <div key={msg.id}>
-                      <ChatMessage
-                        role={msg.role}
-                        content={msg.content}
-                        sources={msg.sources}
-                        createdAt={msg.created_at}
-                      />
-                      {/* "保存到知识库" 按钮: 仅快问AI 触发且 sourceType=kp 的 AI 回复显示 */}
-                      {msg.role === 'assistant' && saveEntry && !saveEntry.saved && (
-                        <div style={{ padding: '0 0 8px', textAlign: 'right' }}>
-                          <Button
-                            type="primary"
-                            ghost
-                            size="small"
-                            icon={<SaveOutlined />}
-                            onClick={() => handleSaveToKnowledgeBase(msg.id, saveEntry.kpId, msg.content, findUserQuestion(idx))}
-                            style={{ borderRadius: 6, fontSize: 12 }}
-                          >
-                            保存到知识库
-                          </Button>
-                        </div>
-                      )}
-                      {/* 已保存标记 */}
-                      {msg.role === 'assistant' && saveEntry && saveEntry.saved && (
-                        <div style={{ padding: '0 0 8px', textAlign: 'right' }}>
-                          <Text type="success" style={{ fontSize: 11 }}>
-                            <BulbOutlined /> 已保存到知识卡片
-                          </Text>
-                        </div>
-                      )}
-                    </div>
-                  )
-                })}
-                {streaming && streamingContent && <ChatMessage role="assistant" content={streamingContent} sources={streamingSources} streaming />}
-                {streaming && !streamingContent && <div style={{ textAlign: 'center', padding: 16 }}><Spin size="small" /> <Text type="secondary" style={{ fontSize: 12 }}>思考中...</Text></div>}
-                <div ref={messagesEndRef} />
-              </>
-            )}
-          </div>
-
-          {/* 输入区域 */}
-          <div style={{ borderTop: `1px solid ${gray[200]}`, padding: '8px 10px', background: '#FFFFFF', flexShrink: 0 }}>
-            <div style={{ display: 'flex', gap: 6, alignItems: 'flex-end' }}>
-              <textarea ref={textareaRef} value={inputValue}
-                onChange={(e) => { setInputValue(e.target.value); autoResize() }}
-                onKeyDown={(e) => { if (e.key === 'Enter' && !isComposingRef.current && !e.shiftKey) { e.preventDefault(); handleSend() } }}
-                onCompositionStart={() => { isComposingRef.current = true }}
-                onCompositionEnd={() => { isComposingRef.current = false }}
-                placeholder="输入问题, Enter 发送, Shift+Enter 换行" rows={1} disabled={streaming || messagesLoading}
-                style={{ flex: 1, resize: 'none', border: `1px solid ${gray[300]}`, borderRadius: 8, padding: '8px 10px', fontSize: 13, lineHeight: 1.4, outline: 'none', fontFamily: 'inherit', maxHeight: 120, minHeight: 34 }}
-                onFocus={(e) => { e.target.style.borderColor = blue[500]; e.target.style.boxShadow = '0 0 0 3px rgba(59,130,246,0.15)' }}
-                onBlur={(e) => { e.target.style.borderColor = gray[300]; e.target.style.boxShadow = 'none' }} />
-              {streaming ? (
-                <Button type="primary" danger size="small" icon={<StopOutlined />} onClick={handleStop} />
-              ) : (
-                <Button type="primary" size="small" icon={<SendOutlined />} onClick={handleSend} disabled={!inputValue.trim() || messagesLoading} />
-              )}
-            </div>
-          </div>
-        </div>
+        <ChatPanel
+          ref={panelRef}
+          conversation={conversation}
+          messages={messages}
+          streaming={streaming}
+          streamingContent={streamingContent}
+          streamingSources={streamingSources}
+          messagesLoading={messagesLoading}
+          inputValue={inputValue}
+          position={position}
+          dragging={dragging}
+          panelWidth={panelSize.width}
+          panelHeight={panelSize.height}
+          onDragStart={onDragStart}
+          onClose={handleClose}
+          onSend={handleSend}
+          onStop={handleStop}
+          onInputChange={setInputValue}
+          onNewConversation={handleDeleteAndNew}
+          onResize={handleResize}
+          onSaveToKb={handleSaveToKnowledgeBase}
+          saveableMessages={saveableCopy}
+          findUserQuestion={findUserQuestion}
+        />
       )}
     </>
   )

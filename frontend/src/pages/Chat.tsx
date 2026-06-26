@@ -20,9 +20,10 @@ import ChatMessage from '../components/chat/ChatMessage'
 import ChatInput from '../components/chat/ChatInput'
 import {
   getConversations, getConversationDetail, createConversation,
-  deleteConversation, updateConversation, streamChat,
+  deleteConversation, updateConversation,
 } from '../services/api'
-import type { Conversation, Message, ChatSource } from '../types'
+import { useStreamChat } from '../hooks/useStreamChat'
+import type { Conversation, Message } from '../types'
 import { blue, gray } from '../styles/tokens'
 
 const { Text } = Typography
@@ -43,19 +44,26 @@ export default function Chat() {
   const [conversations, setConversations] = useState<Conversation[]>([])
   const [conversationsLoading, setConversationsLoading] = useState(true)
   const [activeConversation, setActiveConversation] = useState<Conversation | null>(null)
-  const [messages, setMessages] = useState<Message[]>([])
   const [messagesLoading, setMessagesLoading] = useState(false)
-  const [streaming, setStreaming] = useState(false)
-  const [streamingContent, setStreamingContent] = useState('')
-  const [streamingSources, setStreamingSources] = useState<ChatSource[]>([])
-  const streamingContentRef = useRef('')
-  const streamingSourcesRef = useRef<ChatSource[]>([])
-  const abortControllerRef = useRef<AbortController | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const messagesContainerRef = useRef<HTMLDivElement>(null)
   const [userScrolledUp, setUserScrolledUp] = useState(false)
   /** 新建对话后自动聚焦输入框 */
   const [shouldFocusInput, setShouldFocusInput] = useState(false)
+
+  // 使用 useStreamChat hook 管理 SSE 流式逻辑
+  const {
+    messages,
+    setMessages,
+    streaming,
+    streamingContent,
+    streamingSources,
+    sendMessage,
+    stopStreaming,
+    abortStreaming,
+  } = useStreamChat({
+    onStreamDone: () => silentRefreshConversations(),
+  })
 
   const loadConversations = useCallback(async () => {
     setConversationsLoading(true)
@@ -99,11 +107,8 @@ export default function Chat() {
   const handleSelectConversation = useCallback(async (conv: Conversation) => {
     setActiveConversation(conv)
     setMessagesLoading(true)
+    abortStreaming()  // 中止当前流并清理状态
     setMessages([])
-    setStreamingContent('')
-    setStreaming(false)
-    streamingContentRef.current = ''
-    streamingSourcesRef.current = []
 
     try {
       const detail = await getConversationDetail(conv.id)
@@ -158,52 +163,13 @@ export default function Chat() {
 
   const handleSendMessage = useCallback(async (content: string, courseId: string | null) => {
     if (!activeConversation) return
-
-    const userMsg: Message = {
-      id: 'temp-' + Date.now(), conversation_id: activeConversation.id,
-      role: 'user', content, sources: null,
-      message_metadata: null, created_at: new Date().toISOString(),
-    }
-    setMessages((prev) => [...prev, userMsg])
-
-    streamingContentRef.current = ''; streamingSourcesRef.current = []
-    setStreaming(true); setStreamingContent(''); setStreamingSources([])
     scrollAfterSend()
-
-    const conversationSnapshot = activeConversation
-    abortControllerRef.current = streamChat(conversationSnapshot.id, content, courseId, {
-      onContent: (chunk) => { streamingContentRef.current += chunk; setStreamingContent(streamingContentRef.current) },
-      onSources: (sources) => { streamingSourcesRef.current = sources; setStreamingSources(sources) },
-      onDone: (messageId) => {
-        /** 必须先将 ref 内容保存到局部变量, 再调用 setMessages
-         *  React 19 自动批处理状态下, setMessages 的 updater 回调
-         *  可能在 streamingContentRef 被重置之后才执行 */
-        const finalContent = streamingContentRef.current
-        const finalSources = streamingSourcesRef.current
-        setMessages((prev) => [...prev, { id: messageId, conversation_id: conversationSnapshot.id, role: 'assistant', content: finalContent, sources: finalSources.length > 0 ? finalSources : null, message_metadata: null, created_at: new Date().toISOString() }])
-        setStreaming(false); setStreamingContent(''); setStreamingSources([])
-        streamingContentRef.current = ''; streamingSourcesRef.current = []
-        silentRefreshConversations()
-      },
-      onError: (error) => {
-        message.error('生成回复失败: ' + error)
-        const partial = streamingContentRef.current
-        if (partial) setMessages((prev) => [...prev, { id: 'error-' + Date.now(), conversation_id: conversationSnapshot.id, role: 'assistant', content: partial + '\n\n[回复生成过程中断: ' + error + ']', sources: streamingSourcesRef.current.length > 0 ? streamingSourcesRef.current : null, message_metadata: null, created_at: new Date().toISOString() }])
-        setStreaming(false); setStreamingContent(''); setStreamingSources([])
-        streamingContentRef.current = ''; streamingSourcesRef.current = []
-      },
-    })
-  }, [activeConversation, silentRefreshConversations, scrollAfterSend])
+    sendMessage(activeConversation.id, content, courseId)
+  }, [activeConversation, scrollAfterSend, sendMessage])
 
   const handleStopStreaming = useCallback(() => {
-    abortControllerRef.current?.abort()
-    const partial = streamingContentRef.current
-    if (partial && activeConversation) {
-      setMessages((prev) => [...prev, { id: 'partial-' + Date.now(), conversation_id: activeConversation.id, role: 'assistant', content: partial + '\n\n[已停止生成]', sources: streamingSourcesRef.current.length > 0 ? streamingSourcesRef.current : null, message_metadata: null, created_at: new Date().toISOString() }])
-    }
-    setStreaming(false); setStreamingContent(''); setStreamingSources([])
-    streamingContentRef.current = ''; streamingSourcesRef.current = []
-  }, [activeConversation])
+    stopStreaming()
+  }, [stopStreaming])
 
   /** 自动滚动 */
   useEffect(() => {

@@ -12,7 +12,7 @@ import {
   LoadingOutlined, CheckCircleOutlined, CloseCircleOutlined,
   ClockCircleOutlined, DeploymentUnitOutlined, UserOutlined,
   SearchOutlined, ExperimentOutlined, ThunderboltOutlined,
-  SafetyCertificateOutlined, CheckOutlined, RocketOutlined,
+  AuditOutlined, CheckOutlined, RocketOutlined,
 } from '@ant-design/icons'
 import type { AgentStatus } from '../../types'
 import { blue, gray, semantic } from '../../styles/tokens'
@@ -26,7 +26,7 @@ const AGENT_CONFIG: Record<string, { icon: React.ReactNode, color: string, label
   retrieval: { icon: <SearchOutlined />, color: '#0891B2', label: '检索' },
   teaching_design: { icon: <ExperimentOutlined />, color: '#DB2777', label: '教学设计' },
   resource_generation: { icon: <ThunderboltOutlined />, color: semantic.warning, label: '资源生成' },
-  fact_check: { icon: <SafetyCertificateOutlined />, color: semantic.success, label: '安全核查' },
+  fact_check: { icon: <AuditOutlined />, color: semantic.success, label: '综合审查' },
   summary: { icon: <CheckOutlined />, color: blue[600], label: '汇总' },
   // 子生成器
   handout: { icon: <ThunderboltOutlined />, color: semantic.warning, label: '讲义' },

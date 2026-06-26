@@ -5,6 +5,7 @@
 
 import axios, { AxiosError } from 'axios'
 import { useAuthStore } from '../store'
+import { API_BASE, getApiBaseUrl, getPageImageUrl, getAvatarUrl, getDownloadUrl } from '../utils/urls'
 import type {
   ApiResponse,
   PaginatedResponse,
@@ -38,11 +39,23 @@ import type {
   StudentProfile,
   ProfileUpdateRequest,
   ProfileVersion,
+  // Phase 3: AI 助学
+  LearningSession, LearningSessionListItem, LearningSessionDetail,
+  LearningStageDetail, GeneratedResourceDetail,
+  SessionInitEvent, StageStartEvent, AgentStartEvent, AgentProgressEvent,
+  AgentDoneEvent, ResourceReadyEvent, PathUpdateEvent,
+  StageCompleteEvent, SessionCompleteEvent, SSEErrorEvent,
+  FavoriteToggleResponse,
+  // 雷达图
+  RadarResponse,
+  // 仪表盘增强统计
+  TodayStatsResponse, WeeklyStatsResponse, FavoritesResponse,
+  Todo, TodoCreate, TodoUpdate,
 } from '../types'
 
 // 创建 axios 实例, 配置基础 URL 和超时
 const api = axios.create({
-  baseURL: 'http://localhost:8000/api/v1',
+  baseURL: `${API_BASE}/api/v1`,
   timeout: 600000,  // 文档上传 + 解析可能需要较长时间
   headers: { 'Content-Type': 'application/json' },
 })
@@ -262,11 +275,6 @@ export async function createExtractedKP(
   return res.data.data!
 }
 
-/** 获取页面图片完整 URL */
-export function getPageImageUrl(courseId: string, documentId: string, pageNumber: number): string {
-  return `http://localhost:8000/api/v1/courses/${courseId}/documents/${documentId}/pages/${pageNumber}/image`
-}
-
 /** 关联页面到知识点 */
 export async function linkPageToKp(courseId: string, pageId: string, knowledgePointIds: string[]) {
   await api.put(
@@ -363,13 +371,6 @@ export async function uploadAvatar(file: File) {
   return res.data.data!
 }
 
-/** 获取头像完整 URL */
-export function getAvatarUrl(avatarPath: string | null | undefined): string | null {
-  if (!avatarPath) return null
-  if (avatarPath.startsWith('http')) return avatarPath
-  return `http://localhost:8000${avatarPath}`
-}
-
 // ==================== 管理员 API ====================
 
 /** 获取用户列表 (管理员) */
@@ -452,10 +453,104 @@ export async function deleteConversation(conversationId: string) {
   await api.delete(`/chat/conversations/${conversationId}`)
 }
 
-/** 获取对话消息列表 */
-export async function getConversationMessages(conversationId: string) {
-  const res = await api.get<ApiResponse<Message[]>>(`/chat/conversations/${conversationId}/messages`)
-  return res.data.data!
+// ============================================================================
+// 通用 SSE 流式读取工具
+// ============================================================================
+
+/**
+ * SSE 流式请求通用函数
+ * 封装 fetch + ReadableStream SSE 读取循环, 消除 4 个流式函数中的重复代码
+ *
+ * @param url       - 完整的请求 URL
+ * @param options   - fetch 选项 (method, body, headers 等)
+ * @param onEvent   - 事件分发回调, 接收解析后的 JSON 事件对象
+ * @param onError   - 错误回调
+ * @returns AbortController 用于外部取消请求
+ */
+function fetchSSEStream(
+  url: string,
+  options: {
+    method?: string
+    body?: string
+    headers?: Record<string, string>
+    externalSignal?: AbortSignal
+  },
+  onEvent: (event: Record<string, unknown>) => void,
+  onError: (message: string) => void,
+): AbortController {
+  const controller = new AbortController()
+  const signal = options.externalSignal || controller.signal
+  const token = useAuthStore.getState().token
+
+  const headers: Record<string, string> = {
+    Accept: 'text/event-stream',
+    ...(options.headers || {}),
+  }
+  if (token) headers.Authorization = `Bearer ${token}`
+
+  fetch(url, {
+    method: options.method || 'GET',
+    headers,
+    body: options.body || undefined,
+    signal,
+  })
+    .then(async (response) => {
+      if (!response.ok) {
+        let msg = `请求失败 (${response.status})`
+        try {
+          const errorData = await response.json()
+          msg = errorData?.detail || msg
+        } catch { /* use default msg */ }
+        onError(msg)
+        return
+      }
+
+      const reader = response.body?.getReader()
+      if (!reader) {
+        onError('无法读取响应流')
+        return
+      }
+
+      const decoder = new TextDecoder()
+      let buffer = ''
+
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+
+        buffer += decoder.decode(value, { stream: true })
+        const lines = buffer.split('\n\n')
+        buffer = lines.pop() || ''
+
+        for (const line of lines) {
+          if (!line.trim() || !line.startsWith('data: ')) continue
+          try {
+            const event = JSON.parse(line.slice(6))
+            onEvent(event)
+          } catch {
+            // 跳过无法解析的行
+          }
+        }
+      }
+
+      // 处理缓冲区中可能残留的完整 SSE 事件
+      if (buffer.trim()) {
+        try {
+          const trimmed = buffer.trim()
+          if (trimmed.startsWith('data: ')) {
+            const event = JSON.parse(trimmed.slice(6))
+            onEvent(event)
+          }
+        } catch { /* 最后一个片段可能不完整, 忽略 */ }
+      }
+    })
+    .catch((err: Error & { name: string }) => {
+      if (err.name !== 'AbortError') {
+        onError(err.message || '网络错误')
+      }
+    })
+
+  return controller
 }
 
 /**
@@ -481,104 +576,29 @@ export function streamChat(
   systemPrompt?: string,
   quickAskMetadata?: Record<string, unknown>,
 ): AbortController {
-  const controller = new AbortController()
-  const token = useAuthStore.getState().token
-
-  // 构建请求 URL 和 Body
-  const url = `http://localhost:8000/api/v1/chat/conversations/${conversationId}/messages`
+  const url = `${API_BASE}/api/v1/chat/conversations/${conversationId}/messages`
   const body: Record<string, unknown> = { content }
   if (courseId) body.course_id = courseId
   if (systemPrompt) body.system_prompt = systemPrompt
   if (quickAskMetadata) body.quick_ask_context = quickAskMetadata
 
-  fetch(url, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+  return fetchSSEStream(
+    url,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
     },
-    body: JSON.stringify(body),
-    signal: controller.signal,
-  })
-    .then(async (response) => {
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => null)
-        const msg = errorData?.detail || `请求失败 (${response.status})`
-        callbacks.onError(msg)
-        return
+    (event) => {
+      switch (event.type) {
+        case 'content':  callbacks.onContent(event.content as string); break
+        case 'sources':  callbacks.onSources((event.sources || []) as ChatSource[]); break
+        case 'done':     callbacks.onDone(event.message_id as string); break
+        case 'error':    callbacks.onError((event.message || '未知错误') as string); break
       }
-
-      const reader = response.body?.getReader()
-      if (!reader) {
-        callbacks.onError('无法读取响应流')
-        return
-      }
-
-      const decoder = new TextDecoder()
-      let buffer = ''
-
-      /**
-       * 解析并分发一个完整的 SSE 事件行
-       * 格式: data: {"type":"...","key":"value",...}
-       */
-      const dispatchEvent = (line: string) => {
-        if (!line.trim() || !line.startsWith('data: ')) return
-        try {
-          const jsonStr = line.slice(6)  // 去掉 "data: " 前缀
-          const event = JSON.parse(jsonStr)
-          switch (event.type) {
-            case 'content':
-              callbacks.onContent(event.content)
-              break
-            case 'sources':
-              callbacks.onSources(event.sources || [])
-              break
-            case 'done':
-              callbacks.onDone(event.message_id)
-              break
-            case 'error':
-              callbacks.onError(event.message || '未知错误')
-              break
-          }
-        } catch {
-          // 忽略解析错误的行
-        }
-      }
-
-      // 逐块读取 SSE 流
-      while (true) {
-        const { done, value } = await reader.read()
-        if (done) break
-
-        buffer += decoder.decode(value, { stream: true })
-
-        // 解析 SSE 事件 (每行格式: data: {...}\n\n)
-        const lines = buffer.split('\n\n')
-        buffer = lines.pop() || ''  // 最后一个可能不完整, 保留在 buffer 中
-
-        for (const line of lines) {
-          dispatchEvent(line)
-        }
-      }
-
-      /**
-       * 处理缓冲区中可能残留的完整 SSE 事件
-       * 当 SSE 流结束但 buffer 中仍有完整 data: {...} 行时,
-       * (例如最后一个事件被 split 误判为不完整, 或流结束时
-       * trailing \n\n 未正确到达) 需要在这里集中处理,
-       * 防止最后一个事件 (尤其是 done) 丢失导致流永不结束
-       */
-      if (buffer.trim()) {
-        dispatchEvent(buffer)
-      }
-    })
-    .catch((err) => {
-      if (err.name !== 'AbortError') {
-        callbacks.onError(err.message || '网络错误')
-      }
-    })
-
-  return controller
+    },
+    callbacks.onError,
+  )
 }
 
 // ==================== 学生画像 API ====================
@@ -662,20 +682,11 @@ export async function markAllReviewsComplete() {
 
 // ==================== Phase 3: AI 助学 API ====================
 
-import type {
-  LearningSession, LearningSessionListItem, LearningSessionDetail,
-  LearningStageDetail, GeneratedResourceDetail,
-  LearningSessionCreate, StageCompleteRequest,
-  SessionInitEvent, StageStartEvent, AgentStartEvent, AgentProgressEvent,
-  AgentDoneEvent, ResourceReadyEvent, PathUpdateEvent,
-  StageCompleteEvent, SessionCompleteEvent, SSEErrorEvent,
-  FavoriteToggleResponse,
-} from '../types'
-
 /** 创建或恢复学习会话 */
-export async function createOrResumeSession(courseId: string) {
+export async function createOrResumeSession(courseId: string, resourceTypes?: string[]) {
   const res = await api.post<ApiResponse<LearningSession>>('/learning/sessions', {
     course_id: courseId,
+    resource_types: resourceTypes,
   })
   return res.data.data!
 }
@@ -709,13 +720,6 @@ export async function toggleFavorite(sessionId: string) {
     `/learning/sessions/${sessionId}/favorite`
   )
   return res.data.data!
-}
-
-/** 获取下载会话资源的 URL (直接返回 URL, 由前端触发下载) */
-export function getDownloadUrl(sessionId: string, stageIndex?: number): string {
-  const base = `http://localhost:8000/api/v1/learning/sessions/${sessionId}/download`
-  const params = stageIndex !== undefined ? `?stage_index=${stageIndex}` : ''
-  return base + params
 }
 
 /** 获取阶段详情 */
@@ -768,94 +772,27 @@ export function streamLearningSession(
   callbacks: LearningStreamCallbacks,
   signal?: AbortSignal,
 ): AbortController {
-  const controller = new AbortController()
-  const combinedSignal = signal || controller.signal
-
-  const url = `http://localhost:8000/api/v1/learning/sessions/${sessionId}/stream`
-  const token = useAuthStore.getState().token
-
-  fetch(url, {
-    headers: {
-      Authorization: `Bearer ${token}`,
-      Accept: 'text/event-stream',
+  return fetchSSEStream(
+    `${API_BASE}/api/v1/learning/sessions/${sessionId}/stream`,
+    { externalSignal: signal },
+    (event) => {
+      const handlers: Record<string, (d: any) => void> = {
+        session_init:      callbacks.onSessionInit,
+        stage_start:       callbacks.onStageStart,
+        agent_start:       callbacks.onAgentStart,
+        agent_progress:    callbacks.onAgentProgress,
+        agent_done:        callbacks.onAgentDone,
+        resource_ready:    callbacks.onResourceReady,
+        path_update:       callbacks.onPathUpdate,
+        stage_complete:    callbacks.onStageComplete,
+        session_complete:  callbacks.onSessionComplete,
+        error:             callbacks.onError,
+      }
+      const handler = handlers[event.type as string]
+      if (handler) handler(event)
     },
-    signal: combinedSignal,
-  })
-    .then(async (response) => {
-      if (!response.ok) {
-        const errorText = await response.text().catch(() => '')
-        callbacks.onError(`HTTP ${response.status}: ${errorText || response.statusText}`)
-        return
-      }
-
-      const reader = response.body?.getReader()
-      if (!reader) {
-        callbacks.onError('无法读取响应流')
-        return
-      }
-
-      const decoder = new TextDecoder()
-      let buffer = ''
-
-      while (true) {
-        const { done, value } = await reader.read()
-        if (done) break
-
-        buffer += decoder.decode(value, { stream: true })
-        const lines = buffer.split('\n\n')
-        buffer = lines.pop() || ''
-
-        for (const line of lines) {
-          if (!line.startsWith('data: ')) continue
-          try {
-            const eventData = JSON.parse(line.slice(6))
-            const eventType = eventData.type
-
-            switch (eventType) {
-              case 'session_init':
-                callbacks.onSessionInit(eventData)
-                break
-              case 'stage_start':
-                callbacks.onStageStart(eventData)
-                break
-              case 'agent_start':
-                callbacks.onAgentStart(eventData)
-                break
-              case 'agent_progress':
-                callbacks.onAgentProgress(eventData)
-                break
-              case 'agent_done':
-                callbacks.onAgentDone(eventData)
-                break
-              case 'resource_ready':
-                callbacks.onResourceReady(eventData)
-                break
-              case 'path_update':
-                callbacks.onPathUpdate(eventData)
-                break
-              case 'stage_complete':
-                callbacks.onStageComplete(eventData)
-                break
-              case 'session_complete':
-                callbacks.onSessionComplete(eventData)
-                break
-              case 'error':
-                callbacks.onError(eventData)
-                break
-            }
-          } catch {
-            // 跳过无法解析的行
-          }
-        }
-      }
-    })
-    .catch((err) => {
-      if (err.name !== 'AbortError') {
-        callbacks.onError(err.message || '网络错误')
-      }
-    })
-
-  return controller
+    (msg) => callbacks.onError(msg),
+  )
 }
 
 /**
@@ -866,69 +803,30 @@ export function streamCompleteStage(
   stageIndex: number,
   callbacks: LearningStreamCallbacks,
 ): AbortController {
-  const controller = new AbortController()
-
-  const url = `http://localhost:8000/api/v1/learning/sessions/${sessionId}/stages/${stageIndex}/complete`
-  const token = useAuthStore.getState().token
-
-  fetch(url, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${token}`,
-      Accept: 'text/event-stream',
-      'Content-Type': 'application/json',
+  return fetchSSEStream(
+    `${API_BASE}/api/v1/learning/sessions/${sessionId}/stages/${stageIndex}/complete`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ completed: true }),
     },
-    body: JSON.stringify({ completed: true }),
-    signal: controller.signal,
-  })
-    .then(async (response) => {
-      if (!response.ok) {
-        callbacks.onError(`HTTP ${response.status}`)
-        return
+    (event) => {
+      const handlers: Record<string, (d: any) => void> = {
+        stage_start:       callbacks.onStageStart,
+        agent_start:       callbacks.onAgentStart,
+        agent_progress:    callbacks.onAgentProgress,
+        agent_done:        callbacks.onAgentDone,
+        resource_ready:    callbacks.onResourceReady,
+        path_update:       callbacks.onPathUpdate,
+        stage_complete:    callbacks.onStageComplete,
+        session_complete:  callbacks.onSessionComplete,
+        error:             callbacks.onError,
       }
-
-      const reader = response.body?.getReader()
-      if (!reader) { callbacks.onError('无法读取响应流'); return }
-
-      const decoder = new TextDecoder()
-      let buffer = ''
-
-      while (true) {
-        const { done, value } = await reader.read()
-        if (done) break
-
-        buffer += decoder.decode(value, { stream: true })
-        const lines = buffer.split('\n\n')
-        buffer = lines.pop() || ''
-
-        for (const line of lines) {
-          if (!line.startsWith('data: ')) continue
-          try {
-            const eventData = JSON.parse(line.slice(6))
-            const handlers: Record<string, (d: never) => void> = {
-              stage_start: callbacks.onStageStart,
-              agent_start: callbacks.onAgentStart,
-              agent_progress: callbacks.onAgentProgress,
-              agent_done: callbacks.onAgentDone,
-              resource_ready: callbacks.onResourceReady,
-              path_update: callbacks.onPathUpdate,
-              stage_complete: callbacks.onStageComplete,
-              session_complete: callbacks.onSessionComplete,
-              error: callbacks.onError,
-            }
-            const handler = handlers[eventData.type]
-            if (handler) handler(eventData)
-          } catch { /* skip */ }
-        }
-      }
-    })
-    .catch((err) => {
-      if (err.name !== 'AbortError') {
-        callbacks.onError(err.message || '网络错误')
-      }
-    })
-
-  return controller
+      const handler = handlers[event.type as string]
+      if (handler) handler(event)
+    },
+    (msg) => callbacks.onError(msg),
+  )
 }
 
 /**
@@ -942,48 +840,22 @@ export function streamRegenerateResource(
     onError: (msg: string) => void
   },
 ): AbortController {
-  const controller = new AbortController()
-  const url = `http://localhost:8000/api/v1/learning/resources/${resourceId}`
-  const token = useAuthStore.getState().token
-
-  fetch(url, {
-    method: 'PUT',
-    headers: {
-      Authorization: `Bearer ${token}`,
-      Accept: 'text/event-stream',
-      'Content-Type': 'application/json',
+  return fetchSSEStream(
+    `${API_BASE}/api/v1/learning/resources/${resourceId}`,
+    {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({}),
     },
-    body: JSON.stringify({}),
-    signal: controller.signal,
-  })
-    .then(async (response) => {
-      if (!response.ok) { callbacks.onError(`HTTP ${response.status}`); return }
-      const reader = response.body?.getReader()
-      if (!reader) { callbacks.onError('无法读取响应流'); return }
-      const decoder = new TextDecoder()
-      let buffer = ''
-      while (true) {
-        const { done, value } = await reader.read()
-        if (done) break
-        buffer += decoder.decode(value, { stream: true })
-        const lines = buffer.split('\n\n')
-        buffer = lines.pop() || ''
-        for (const line of lines) {
-          if (!line.startsWith('data: ')) continue
-          try {
-            const eventData = JSON.parse(line.slice(6))
-            if (eventData.type === 'agent_start') callbacks.onAgentStart(eventData)
-            else if (eventData.type === 'resource_ready') callbacks.onResourceReady(eventData)
-            else if (eventData.type === 'error') callbacks.onError(eventData.message)
-          } catch { /* skip */ }
-        }
+    (event) => {
+      switch (event.type) {
+        case 'agent_start':    callbacks.onAgentStart(event as AgentStartEvent); break
+        case 'resource_ready': callbacks.onResourceReady(event as ResourceReadyEvent); break
+        case 'error':          callbacks.onError(event.message as string); break
       }
-    })
-    .catch((err) => {
-      if (err.name !== 'AbortError') callbacks.onError(err.message || '网络错误')
-    })
-
-  return controller
+    },
+    callbacks.onError,
+  )
 }
 
 // ==================== 练习题进度 API ====================
@@ -1034,16 +906,11 @@ export async function scoreExerciseAnswer(
 
 /** 获取学习行为雷达图 */
 export async function getRadarData() {
-  const res = await api.get<ApiResponse<import('../types').RadarResponse>>('/profile/radar')
+  const res = await api.get<ApiResponse<RadarResponse>>('/profile/radar')
   return res.data.data!
 }
 
 // ==================== 仪表盘增强统计 API ====================
-
-import type {
-  TodayStatsResponse, WeeklyStatsResponse, FavoritesResponse,
-  Todo, TodoCreate, TodoUpdate,
-} from '../types'
 
 /** 获取今日待办数据 (双源合并: 学习阶段 + 自定义待办) */
 export async function getTodayStats() {
@@ -1169,4 +1036,45 @@ export async function reportAIExplanation(kpId: string) {
     `/courses/knowledge-points/${kpId}/report-ai-explanation`,
   )
   return res.data.data!
+}
+
+// ============================================================================
+// 工具函数
+// ============================================================================
+
+// Re-export URL utility functions from utils/urls.ts for backward compatibility
+export { getApiBaseUrl, getPageImageUrl, getAvatarUrl, getDownloadUrl }
+
+/**
+ * 带认证的文件下载工具 (blob 方式)
+ * 自动处理 Content-Disposition 头解析文件名、创建临时 URL 触发下载
+ *
+ * @param url - 完整的下载 URL
+ * @param defaultFilename - 解析不到 Content-Disposition 时的兜底文件名
+ */
+export async function downloadFile(url: string, defaultFilename: string = 'download'): Promise<void> {
+  const token = useAuthStore.getState().token
+  const response = await fetch(url, {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+  if (!response.ok) throw new Error(`下载失败: ${response.status}`)
+
+  const blob = await response.blob()
+  const contentDisposition = response.headers.get('Content-Disposition')
+  let filename = defaultFilename
+  if (contentDisposition) {
+    const match = contentDisposition.match(/filename\*?=(?:UTF-8'')?([^;\s]+)/i)
+    if (match) {
+      filename = decodeURIComponent(match[1].replace(/^"|"$/g, ''))
+    }
+  }
+
+  const objectUrl = URL.createObjectURL(blob)
+  const anchor = document.createElement('a')
+  anchor.href = objectUrl
+  anchor.download = filename
+  document.body.appendChild(anchor)
+  anchor.click()
+  document.body.removeChild(anchor)
+  URL.revokeObjectURL(objectUrl)
 }

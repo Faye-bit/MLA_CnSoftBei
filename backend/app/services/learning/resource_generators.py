@@ -13,68 +13,10 @@
 """
 
 import json
-from openai import AsyncOpenAI
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.services.config_service import get_config_value
+from app.services.llm_utils import create_llm_client, parse_json_output
 from loguru import logger
-
-# ============================================================================
-# LLM 客户端创建 (复用现有模式)
-# ============================================================================
-
-def _create_llm_client() -> AsyncOpenAI:
-    """
-    创建 OpenAI 兼容的异步 LLM 客户端
-    使用运行时配置中的 API key 和 base URL
-    """
-    api_key = get_config_value("llm_api_key")
-    api_base = get_config_value("llm_api_base")
-    return AsyncOpenAI(api_key=api_key, base_url=api_base)
-
-
-# ============================================================================
-# JSON 解析辅助函数 (复用现有模式)
-# ============================================================================
-
-def _parse_json_output(raw: str) -> dict | list:
-    """
-    鲁棒的 JSON 解析: 处理 markdown 代码块包裹和常见格式问题
-
-    :param raw: LLM 原始输出字符串
-    :return: 解析后的 dict 或 list
-    """
-    raw = raw.strip()
-    # 去除 markdown 代码块包裹
-    if raw.startswith("```json"):
-        raw = raw[7:]
-    elif raw.startswith("```"):
-        raw = raw[3:]
-    if raw.endswith("```"):
-        raw = raw[:-3]
-    raw = raw.strip()
-
-    # 查找 JSON 数组或对象边界
-    try:
-        return json.loads(raw)
-    except json.JSONDecodeError:
-        # 尝试提取 JSON 数组
-        start = raw.find("[")
-        end = raw.rfind("]")
-        if start != -1 and end != -1 and end > start:
-            try:
-                return json.loads(raw[start:end + 1])
-            except json.JSONDecodeError:
-                pass
-        # 尝试提取 JSON 对象
-        start = raw.find("{")
-        end = raw.rfind("}")
-        if start != -1 and end != -1 and end > start:
-            try:
-                return json.loads(raw[start:end + 1])
-            except json.JSONDecodeError:
-                pass
-    logger.warning(f"JSON 解析失败, 返回空: {raw[:200]}")
-    return {} if raw.strip().startswith("{") else []
 
 
 # ============================================================================
@@ -95,31 +37,42 @@ HANDOUT_SYSTEM_PROMPT = """你是一位资深的大学课程讲师, 擅长根据
 
 MINDMAP_SYSTEM_PROMPT = """你是一位知识图谱专家, 擅长将课程知识点整理成结构化的思维导图。
 
-请根据提供的知识点和主题, 生成 Mermaid mindmap 语法的思维导图。即使没有详细参考资料, 也应基于你对主题的专业知识充分展开。
+请根据提供的知识点和主题, 生成 Mermaid mindmap 语法的思维导图。
 
-语法参考 (严格遵循此格式):
+语法格式 (严格遵循):
 mindmap
-  root((根节点主题))
-    分类一
-      子知识点 A
-        细节 1
-        细节 2
-      子知识点 B
-    分类二
-      子知识点 C
-      子知识点 D
-    ))重点标记((
-    )难点标记(
+  root((课程主题))
+    核心概念
+      子概念A
+        要点1
+        要点2
+      子概念B
+        要点3
+    关键机制
+      机制A
+      机制B
+    应用实践
+      场景1
+      场景2
 
 语法规则 (必须遵守):
 1. 必须以 `mindmap` 关键字开头 (独占第一行, 没有缩进)
-2. 根节点用 `root((主题名称))` 格式
-3. 每层缩进 2 个空格 (不可省略缩进)
-4. 节点名称只包含纯文本, 不含特殊字符 (如 # * [ ] { } 等)
-5. 方形节点: `节点名` , 圆形节点: `((节点名))`, 云形节点: `)节点名(`
-6. 至少展开 3 层, 总共至少 10 个节点 — 这是硬性要求, 必须满足
+2. 根节点用 `root((主题名称))` 格式, 如 `root((操作系统概述))`
+3. 每层缩进 2 个空格, 不可用 Tab
+4. 节点文本中禁止包含以下字符, 会导致语法错误: ( ) [ ] { } "  #
+   - 错误示例: `进程(Process)调度` — 括号会破坏语法
+   - 正确做法: `进程调度` 或 `Process进程调度`
+   - 错误示例: `IP[Internet Protocol]` — 方括号会破坏语法
+   - 正确做法: `IP协议` 或 `Internet Protocol`
+5. 如需强调某节点格外重要, 使用 `**文本**` 加粗语义 (不是 Markdown 语法, 纯视觉提示)
+6. 至少展开 3 层深度, 总共至少 12 个节点 — 硬性要求
 7. 不需要 ``` 包裹, 直接以 mindmap 开头输出
-8. 根节点的直接子级至少要有 3 个分类维度, 不要只列一个子节点"""
+8. 根节点的直接子级至少要有 3 个分类维度
+
+你只需要输出 Mermaid 代码, 不要添加任何解释或说明。"""
+
+
+OLD_MINDMAP_SYSTEM_PROMPT_RETIRED = """(旧版提示词已废弃, 因其自相矛盾的语法规则导致 LLM 输出不可靠)"""
 
 
 EXERCISE_SYSTEM_PROMPT = """你是一位大学课程助教, 负责编写高质量的练习题。
@@ -248,7 +201,7 @@ async def generate_handout(
     :param db: 数据库会话
     :return: Markdown 格式的讲义内容
     """
-    client = _create_llm_client()
+    client = create_llm_client()
     model = get_config_value("llm_model")
 
     # 构建知识上下文文本
@@ -297,7 +250,7 @@ async def generate_mindmap(
     :param db: 数据库会话
     :return: Mermaid mindmap 语法字符串
     """
-    client = _create_llm_client()
+    client = create_llm_client()
     model = get_config_value("llm_model")
 
     kp_text = _format_knowledge_context(knowledge_context)
@@ -314,8 +267,9 @@ async def generate_mindmap(
 2. 从根节点分出至少 3 个主要分类维度 (如: 核心概念、关键机制、典型应用、发展历程等)
 3. 每个分类下展开至少 2-3 层子节点
 4. 总共至少 12 个节点 (根节点 + 至少 11 个子节点)
-5. 使用 ))重点概念(( 和 )难点( 标记关键和困难的知识点
-6. 直接输出 Mermaid mindmap 语法, 不要用 ``` 包裹"""
+5. 用 `**文本**` 标记重点概念, 用 `~~文本~~` 标记难点 (纯视觉提示, 不影响 Mermaid 解析)
+6. 所有节点文本中严禁出现 ( ) [ ] {{ }} " 字符
+7. 直接输出 Mermaid mindmap 语法, 不要用 ``` 包裹"""
 
     last_error = None
     for attempt in range(3):
@@ -342,17 +296,55 @@ async def generate_mindmap(
                     lines = lines[:-1]
                 content = "\n".join(lines).strip()
 
-            # 验证: 统计节点数量 (每行一个节点)
+            # ── 语法验证: 检查 Mermaid mindmap 常见错误 ──
             node_lines = [l for l in content.split("\n") if l.strip() and not l.strip().startswith("```")]
             node_count = len(node_lines)
 
-            if node_count < 5 and attempt < 2:
+            # 检查 1: 根节点语法
+            has_root = any("root((" in l for l in node_lines)
+            has_mindmap = node_lines and node_lines[0].strip() == "mindmap"
+
+            # 检查 2: 括号平衡 (排除 root((...)) 和形状节点如 (( )), ) ( 后)
+            # 统计所有括号, 排除 root(( 和 )) 的形状双括号
+            paren_open = content.count("(")
+            paren_close = content.count(")")
+            paren_balanced = paren_open == paren_close
+
+            # 检查 3: 在节点文本中查找裸括号 (单个孤立的括号是语法错误)
+            has_bare_parens = False
+            for line in node_lines[1:]:  # 跳过 mindmap 行
+                stripped = line.strip()
+                # 计算该行的括号差 (考虑了 (( )) 和 ) ( 形状)
+                line_open = stripped.count("(")
+                line_close = stripped.count(")")
+                if line_open != line_close:
+                    has_bare_parens = True
+                    break
+
+            validation_failed = (
+                (not has_mindmap or not has_root) or
+                (has_bare_parens) or
+                (node_count < 5)
+            )
+
+            if validation_failed and attempt < 2:
+                reason = []
+                if not has_mindmap or not has_root:
+                    reason.append("缺少mindmap头或root节点")
+                if has_bare_parens:
+                    reason.append("节点文本中包含不平衡括号")
+                if node_count < 5:
+                    reason.append(f"节点数不足({node_count})")
                 logger.warning(
-                    f"思维导图节点过少 ({node_count} 个), 重试第 {attempt + 1} 次 "
+                    f"思维导图验证失败 ({', '.join(reason)}), 重试第 {attempt + 1} 次 "
                     f"(topic={topic})"
                 )
-                last_error = f"节点数不足 (仅 {node_count} 个)"
-                user_prompt += f"\n\n【上次输出被拒绝】节点数只有 {node_count} 个，远不满足要求。请充分展开内容，确保至少 12 个节点。"
+                last_error = f"验证失败: {', '.join(reason)}"
+                user_prompt += (
+                    f"\n\n【上次输出被拒绝】原因: {'; '.join(reason)}。"
+                    f"请确保: 1) 以 mindmap 开头 2) root((...)) 语法正确"
+                    f" 3) 节点文本不含 ( ) [ ] {{ }} 字符 4) 至少 12 个节点。"
+                )
                 continue
 
             logger.info(
@@ -388,7 +380,7 @@ async def generate_exercise(
     :param db: 数据库会话
     :return: 包含 questions 数组的 dict
     """
-    client = _create_llm_client()
+    client = create_llm_client()
     model = get_config_value("llm_model")
 
     kp_text = _format_knowledge_context(knowledge_context)
@@ -416,7 +408,7 @@ async def generate_exercise(
             max_tokens=4000,
         )
         raw = response.choices[0].message.content or ""
-        result = _parse_json_output(raw)
+        result = parse_json_output(raw)
 
         # 确保返回结果始终有 questions 字段
         if not isinstance(result, dict):
@@ -452,7 +444,7 @@ async def generate_reading(
     :param db: 数据库会话
     :return: Markdown 格式的阅读推荐
     """
-    client = _create_llm_client()
+    client = create_llm_client()
     model = get_config_value("llm_model")
 
     kp_text = _format_knowledge_context(knowledge_context)
@@ -499,7 +491,7 @@ async def generate_coding_practice(
     :param db: 数据库会话
     :return: Markdown 格式的编程练习
     """
-    client = _create_llm_client()
+    client = create_llm_client()
     model = get_config_value("llm_model")
 
     kp_text = _format_knowledge_context(knowledge_context)
@@ -548,7 +540,7 @@ async def generate_video_script(
     :param db: 数据库会话
     :return: 完整的 HTML 文档字符串 (<!DOCTYPE html> 开头)
     """
-    client = _create_llm_client()
+    client = create_llm_client()
     model = get_config_value("llm_model")
 
     kp_text = _format_knowledge_context(knowledge_context)
@@ -583,7 +575,7 @@ async def generate_video_script(
                 {"role": "user", "content": user_prompt},
             ],
             temperature=0.4,
-            max_tokens=20000,  # HTML 动画页面需要充足空间 (CSS + JS + 文本)
+            max_tokens=8000,  # 单个知识点的交互动画，8000 tokens 足够 (CSS + JS + 文本)
         )
         content = response.choices[0].message.content or ""
         # 清理可能残留的 markdown 代码块包裹
@@ -649,7 +641,7 @@ async def generate_video_script(
                 {"role": "user", "content": retry_prompt},
             ],
             temperature=0.25,
-            max_tokens=20000,
+            max_tokens=8000,
         )
         content2 = response2.choices[0].message.content or ""
         content2 = content2.strip()

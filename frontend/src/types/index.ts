@@ -226,13 +226,6 @@ export interface CourseCreate {
   cover_image?: string
 }
 
-/** 更新课程请求 (所有字段可选) */
-export interface CourseUpdate {
-  name?: string
-  description?: string
-  cover_image?: string
-}
-
 export interface ChapterCreate {
   title: string
   description?: string
@@ -395,28 +388,6 @@ export interface ChatSource {
   page_number?: number
 }
 
-/** 创建对话请求 */
-export interface ConversationCreate {
-  course_id?: string
-  title?: string
-  conversation_type?: 'chat' | 'profile_collection'
-}
-
-/** 发送消息请求 */
-export interface SendMessageRequest {
-  content: string
-  course_id?: string | null
-  quick_ask_context?: Record<string, unknown> | null
-}
-
-/** AI 解释响应 (快问AI 功能) */
-export interface AIExplanationResponse {
-  ai_explanation: string | null
-  ai_explanation_generated_at: string | null
-  ai_explanation_report_count: number
-  condensed_text?: string | null
-}
-
 // ==================== 学生画像相关 (描述式) ====================
 
 /** 完整画像数据 (6 个维度, 每个为自然语言描述文本) */
@@ -447,11 +418,6 @@ export interface StudentProfile {
 export interface ProfileUpdateRequest {
   profile_data?: Partial<ProfileData>
   summary?: string
-}
-
-/** 画像提取请求 */
-export interface ProfileExtractionRequest {
-  conversation_id: string
 }
 
 /** 画像版本 */
@@ -558,22 +524,6 @@ export interface GeneratedResourceDetail extends GeneratedResource {
 /** 资源类型 */
 export type ResourceType = 'handout' | 'mindmap' | 'exercise' | 'reading' | 'coding_practice' | 'video_script'
 
-/** 资源类型显示配置 */
-export interface ResourceTypeConfig {
-  type: ResourceType
-  label: string
-  icon: React.ReactNode  // 将由组件层注入
-}
-
-/** 创建学习会话请求 */
-export interface LearningSessionCreate {
-  course_id: string
-}
-
-/** 完成阶段请求 */
-export interface StageCompleteRequest {
-  completed: boolean
-}
 
 // ==================== SSE 事件类型 ====================
 

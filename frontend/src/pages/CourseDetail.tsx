@@ -49,6 +49,7 @@ import {
   deleteKnowledgePoint,
   uploadDocument,
   reportAIExplanation,
+  getApiBaseUrl,
 } from '../services/api'
 import { useAuthStore, useAppStore } from '../store'
 import { useQuickAskStore } from '../store/quickAsk'
@@ -59,7 +60,7 @@ const { Title, Text } = Typography
 const { Dragger } = Upload
 
 /** 后端 API 基础地址, 用于拼接页面图片完整 URL */
-const API_BASE = 'http://localhost:8000'
+const API_BASE = getApiBaseUrl()
 
 export default function CourseDetailPage() {
   const { id } = useParams<{ id: string }>()

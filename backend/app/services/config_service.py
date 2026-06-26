@@ -2,36 +2,62 @@
 动态配置服务
 从数据库读取用户配置, 为空时回退到 .env 默认值
 内存缓存 + 数据库持久化, 运行时修改即时生效
+
+可配置项通过反射从 Settings 类自动生成, 无需手动维护列表。
+新增 Settings 字段会自动成为可配置项 (除非加入 _CONFIG_EXCLUDE_FIELDS 排除)。
 """
 
 from typing import Optional
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.config import SystemConfig
-from app.core.config import settings
+from app.core.config import Settings, settings
 from loguru import logger
 
+# ============================================================================
+# 自动从 Settings 生成配置项列表
+# ============================================================================
 
-# 可配置的键名
-CONFIG_KEYS = [
-    "llm_api_key",
-    "llm_api_base",
-    "llm_model",
-    "embedding_api_key",
-    "embedding_api_base",
-    "embedding_model",
-    "doc_parser_api_key",
-    "doc_parser_api_base",
-    "doc_parser_model",
-    "tts_api_key",
-    "tts_app_id",
-    "tts_access_token",
-    "tts_voice",
-    "tts_speed",
+# 排除非用户可配置的字段: 应用元数据、路径、JWT、SMTP、验证码等
+_CONFIG_EXCLUDE_FIELDS: set[str] = {
+    "app_name", "app_version", "debug",
+    "database_url", "chroma_persist_dir",
+    "upload_dir", "max_upload_size_mb",
+    "chunk_size", "chunk_overlap",
+    "jwt_secret", "jwt_algorithm", "jwt_expire_minutes",
+    "smtp_host", "smtp_port", "smtp_user", "smtp_password", "smtp_from", "smtp_from_name",
+    "cors_origins", "tts_api_url", "poppler_path",
+    "verification_code_expire_minutes", "verification_code_cooldown_seconds",
+}
+
+# 通过反射从 Settings 类获取所有字段名，排除非可配置字段
+CONFIG_KEYS: list[str] = [
+    name for name in Settings.model_fields
+    if name not in _CONFIG_EXCLUDE_FIELDS
 ]
 
-# 各配置项的标签 (前端展示用)
+# 标签: 从 snake_case 字段名自动生成人类可读标签
+def _field_label(name: str) -> str:
+    """将 snake_case 字段名转为人类可读标签 (如 llm_api_key → LLM API Key)"""
+    parts = name.split("_")
+    # 首字母大写的缩写和大写片段保持原样, 其余首字母大写
+    result: list[str] = []
+    for i, p in enumerate(parts):
+        if p in ():  # 预留特殊处理
+            result.append(p.upper())
+        elif len(p) <= 3 and p.isalpha():
+            # 短片段保持大写 (如 api, tts, id, key)
+            result.append(p.upper() if i > 0 else p.capitalize())
+        else:
+            result.append(p.capitalize())
+    return " ".join(result)
+
 CONFIG_LABELS: dict[str, str] = {
+    key: _field_label(key) for key in CONFIG_KEYS
+}
+
+# 手动覆盖部分标签以提高可读性
+_LABEL_OVERRIDES: dict[str, str] = {
     "llm_api_key": "LLM API Key",
     "llm_api_base": "LLM API 地址",
     "llm_model": "LLM 模型名称",
@@ -47,24 +73,13 @@ CONFIG_LABELS: dict[str, str] = {
     "tts_voice": "TTS 音色",
     "tts_speed": "TTS 语速",
 }
+CONFIG_LABELS.update(_LABEL_OVERRIDES)
 
-# .env 静态默认值 (启动时加载, 不会变)
-ENV_DEFAULTS: dict[str, str] = {
-    "llm_api_key": settings.llm_api_key,
-    "llm_api_base": settings.llm_api_base,
-    "llm_model": settings.llm_model,
-    "embedding_api_key": settings.embedding_api_key,
-    "embedding_api_base": settings.embedding_api_base,
-    "embedding_model": settings.embedding_model,
-    "doc_parser_api_key": settings.doc_parser_api_key,
-    "doc_parser_api_base": settings.doc_parser_api_base,
-    "doc_parser_model": settings.doc_parser_model,
-    "tts_api_key": settings.tts_api_key,
-    "tts_app_id": settings.tts_app_id,
-    "tts_access_token": settings.tts_access_token,
-    "tts_voice": settings.tts_voice,
-    "tts_speed": str(settings.tts_speed),
-}
+# .env 静态默认值: 从 Settings 实例读取各字段值并转为字符串
+ENV_DEFAULTS: dict[str, str] = {}
+for _key in CONFIG_KEYS:
+    _val = getattr(settings, _key, "")
+    ENV_DEFAULTS[_key] = str(_val) if not isinstance(_val, str) else _val
 
 # 内存缓存: 用户通过前端修改后立即更新
 _cache: dict[str, str] = {}
