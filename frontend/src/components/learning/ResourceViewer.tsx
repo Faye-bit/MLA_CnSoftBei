@@ -5,6 +5,9 @@
  * - mindmap → MindMapViewer
  * - exercise → ExerciseViewer
  * - coding_practice → CodePracticeViewer
+ *
+ * 阅读器模式: 讲义、拓展阅读、编程实操、练习题采用居中排版 (max-width: 900px)
+ * 可视化模式: 思维导图、交互动画采用全宽展示
  */
 
 import { Spin, Typography, Empty, Tag } from 'antd'
@@ -132,6 +135,15 @@ export default function ResourceViewer({
 
   const typeLabel = TYPE_LABELS[resource.resource_type] || resource.resource_type
 
+  /**
+   * 判断当前资源类型是否使用「阅读器模式」居中排版
+   * 讲义、拓展阅读、编程实操、练习题 → 居中展示 (max-width: 900px)
+   * 思维导图、交互动画 → 全宽展示
+   */
+  const isReaderType: boolean = ['handout', 'reading', 'coding_practice', 'exercise'].includes(
+    resource.resource_type
+  )
+
   return (
     <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
       {/* 资源标题栏 */}
@@ -150,9 +162,19 @@ export default function ResourceViewer({
         )}
       </div>
 
-      {/* 资源正文 */}
+      {/* 资源正文 — 阅读器类型居中展示，思维导图/动画全宽展示 */}
       <div style={{ flex: 1, minHeight: 0, overflow: 'auto' }}>
-        {renderContent()}
+        {isReaderType ? (
+          <div style={{
+            maxWidth: 900,
+            margin: '0 auto',
+            padding: '20px 24px',
+          }}>
+            {renderContent()}
+          </div>
+        ) : (
+          renderContent()
+        )}
       </div>
     </div>
   )

@@ -18,10 +18,10 @@ import {
 } from '@ant-design/icons'
 import {
   getLearningSessionDetail, getResourceDetail,
-  streamLearningSession, streamCompleteStage,
   toggleFavorite, deleteLearningSession, getDownloadUrl,
 } from '../services/api'
 import { useAuthStore } from '../store'
+import { useLearningSSE } from '../hooks/useLearningSSE'
 import { gray } from '../styles/tokens'
 import LearningPathDrawer from '../components/learning/LearningPathDrawer'
 import ResourceTree from '../components/learning/ResourceTree'
@@ -30,7 +30,7 @@ import ResourceViewer from '../components/learning/ResourceViewer'
 import GenerationProgress from '../components/learning/GenerationProgress'
 import type {
   LearningSessionDetail, GeneratedResource, GeneratedResourceDetail,
-  AgentStatus, LearningPathStage,
+  LearningPathStage,
 } from '../types'
 
 const { Content, Sider } = Layout
@@ -59,26 +59,34 @@ export default function LearningSessionPage() {
   const [selectedResource, setSelectedResource] = useState<GeneratedResourceDetail | null>(null)
   const [resourceLoading, setResourceLoading] = useState(false)
 
-  // SSE 生成进度状态
-  const [showProgress, setShowProgress] = useState(isNew)
-  const [agents, setAgents] = useState<AgentStatus[]>(
-    PIPELINE_ORDER.map(name => ({
-      name,
-      displayName: name,
-      status: 'pending' as const,
-      message: '',
-      resultSummary: null,
-    }))
-  )
-  const [progressMessage, setProgressMessage] = useState('')
-  const [overallProgress, setOverallProgress] = useState(0)
-
-  // 下一阶段生成状态
-  const [generatingNext, setGeneratingNext] = useState(false)
-
-  // 资源就绪状态
-  const [allResourcesReady, setAllResourcesReady] = useState(false)
-  const [readyResourceCount, setReadyResourceCount] = useState(0)
+  // SSE 生成进度状态 — 使用 useLearningSSE hook
+  const {
+    agents,
+    progressMessage,
+    overallProgress,
+    allResourcesReady,
+    generatingNext,
+    showProgress,
+    readyResourceCount,
+    startGeneration,
+    completeStage: hookCompleteStage,
+    cancelGeneration: hookCancelGeneration,
+    dismissProgress,
+  } = useLearningSSE(id || '', PIPELINE_ORDER, {
+    onPathUpdate: (data) => {
+      setSession(prev => prev ? {
+        ...prev,
+        learning_path: data.learning_path,
+      } : null)
+    },
+    onSessionComplete: () => {
+      generationDoneRef.current = true
+      loadSession()
+    },
+    onError: (msg) => {
+      message.error(msg)
+    },
+  })
 
   // 资源目录折叠状态
   const [siderCollapsed, setSiderCollapsed] = useState(false)
@@ -89,8 +97,6 @@ export default function LearningSessionPage() {
   const generationDoneRef = useRef(false)
   /** 标记: SSE 是否已启动 (防止 session 状态变化导致重复 connect) */
   const sseStartedRef = useRef(false)
-
-  const abortRef = useRef<AbortController | null>(null)
 
   // ============================================================
   // 加载会话详情
@@ -159,200 +165,34 @@ export default function LearningSessionPage() {
   }
 
   // ============================================================
-  // SSE 生成进度处理 (新会话)
+  // SSE 生成进度处理 — 委托给 useLearningSSE hook
   // ============================================================
 
-  function startSSEGeneration() {
-    if (!id) return
-
-    const updateAgent = (agentName: string, updates: Partial<AgentStatus>) => {
-      setAgents(prev => prev.map(a =>
-        a.name === agentName ? { ...a, ...updates } : a
-      ))
-    }
-
-    // 计算进度: 按流水线顺序
-    const calcProgress = (completedAgents: string[]) => {
-      const totalWeight = PIPELINE_ORDER.length
-      let weight = 0
-      for (const name of completedAgents) {
-        weight += 1
-        // resource_generation 权重更高 (并行生成)
-        if (name === 'resource_generation') weight += 0.5
-      }
-      return Math.min(95, (weight / totalWeight) * 100)
-    }
-
-    const completedAgents: string[] = []
-
-    abortRef.current = streamLearningSession(id, {
-      onSessionInit: (data) => {
-        setProgressMessage(`正在为 "${data.course_name}" 生成学习方案...`)
-      },
-
-      onStageStart: (data) => {
-        setProgressMessage(`第 ${data.stage_index + 1} 阶段: ${data.stage_title}`)
-      },
-
-      onAgentStart: (data) => {
-        updateAgent(data.agent, {
-          status: 'running',
-          message: data.message,
-          resultSummary: null,
-        })
-      },
-
-      onAgentProgress: (data) => {
-        updateAgent(data.agent, { message: data.message })
-        setProgressMessage(data.message)
-      },
-
-      onAgentDone: (data) => {
-        updateAgent(data.agent, {
-          status: 'completed',
-          resultSummary: data.result_summary,
-        })
-        completedAgents.push(data.agent)
-        setOverallProgress(calcProgress(completedAgents))
-      },
-
-      onResourceReady: (data) => {
-        setProgressMessage(`已生成: ${data.title}`)
-      },
-
-      onPathUpdate: (data) => {
-        // 路径更新时同步会话状态
-        if (session) {
-          setSession(prev => prev ? {
-            ...prev,
-            learning_path: data.learning_path,
-          } : null)
-        }
-      },
-
-      onStageComplete: (data) => {
-        setOverallProgress(100)
-        // 记录服务端返回的实际资源数量
-        if (data.resources && data.resources.length > 0) {
-          setReadyResourceCount(data.resources.length)
-        }
-      },
-
-      onSessionComplete: () => {
-        setOverallProgress(100)
-        generationDoneRef.current = true
-        // 自动关闭进度弹窗并重新加载会话数据 (不再需要用户手动点"开始学习")
-        setShowProgress(false)
-        loadSession()
-      },
-
-      onError: (data) => {
-        const msg = typeof data === 'string' ? data : data.message
-        message.error('生成失败: ' + msg)
-        setShowProgress(false)
-      },
-    })
-  }
-
-  // ============================================================
-  // 完成阶段 → 生成下一阶段
-  // ============================================================
-
-  function handleCompleteStage() {
+  /** 完成阶段 → 生成下一阶段 (组件层守卫, 委托 hook 执行 SSE) */
+  const handleCompleteStage = useCallback(() => {
     if (!id || !session) return
-
-    setViewStageIndex(null) // 重置复习模式, 回到当前进度
+    setViewStageIndex(null)
     const stages = session.learning_path?.stages || []
     const currentIndex = session.current_stage_index
-
     if (currentIndex >= stages.length) {
       message.success('全部阶段已完成!')
       return
     }
-
-    setGeneratingNext(true)
-    setShowProgress(true)
-    setOverallProgress(0)
-    setAllResourcesReady(false)
-    setReadyResourceCount(0)
-
-    // 重置 Agent 状态
-    setAgents(PIPELINE_ORDER.map(name => ({
-      name, displayName: name,
-      status: 'pending' as const,
-      message: '', resultSummary: null,
-    })))
-
-    const completedAgents: string[] = []
-    const updateAgent = (agentName: string, updates: Partial<AgentStatus>) => {
-      setAgents(prev => prev.map(a =>
-        a.name === agentName ? { ...a, ...updates } : a
-      ))
-    }
-
-    abortRef.current = streamCompleteStage(id, currentIndex, {
-      onSessionInit: () => {},
-      onStageStart: (data) => {
-        setProgressMessage(`${data.stage_title}`)
-      },
-      onAgentStart: (data) => {
-        updateAgent(data.agent, { status: 'running', message: data.message })
-      },
-      onAgentProgress: (data) => {
-        updateAgent(data.agent, { message: data.message })
-      },
-      onAgentDone: (data) => {
-        updateAgent(data.agent, {
-          status: 'completed', resultSummary: data.result_summary,
-        })
-        completedAgents.push(data.agent)
-        setOverallProgress(Math.min(95, (completedAgents.length / 4) * 100))
-      },
-      onResourceReady: (data) => {
-        setProgressMessage(`已生成: ${data.title}`)
-      },
-      onPathUpdate: () => {},
-      onStageComplete: (data) => {
-        setOverallProgress(100)
-        // 记录服务端返回的实际资源数量
-        if (data.resources && data.resources.length > 0) {
-          setReadyResourceCount(data.resources.length)
-        }
-      },
-      onSessionComplete: () => {
-        setOverallProgress(100)
-        generationDoneRef.current = true
-        setShowProgress(false)
-        setGeneratingNext(false)
-        loadSession()
-      },
-      onError: (data) => {
-        const msg = typeof data === 'string' ? data : data.message
-        message.error('生成下一阶段失败: ' + msg)
-        setShowProgress(false)
-        setGeneratingNext(false)
-      },
-    })
-  }
+    generationDoneRef.current = false
+    hookCompleteStage(currentIndex)
+  }, [id, session, hookCompleteStage])
 
   /** 取消 SSE 连接 */
-  function handleCancelGeneration() {
-    abortRef.current?.abort()
+  const handleCancelGeneration = useCallback(() => {
+    hookCancelGeneration()
     generationDoneRef.current = true
-    setShowProgress(false)
-    setGeneratingNext(false)
     loadSession()
-  }
+  }, [hookCancelGeneration, loadSession])
 
-  /** 用户点击"开始学习" — 关闭进度弹窗, 加载会话数据 (保留兼容旧流程) */
+  /** 用户点击"开始学习" — 关闭进度弹窗, 加载会话数据 */
   async function handleStartLearning() {
-    // 标记生成已完成, 防止 useEffect 重新触发 SSE
     generationDoneRef.current = true
-    setShowProgress(false)
-    setGeneratingNext(false)
-    setAllResourcesReady(false)
-    setReadyResourceCount(0)
-    // 重新从服务器加载会话, 获取持久化后的资源
+    dismissProgress()
     await loadSession()
   }
 
@@ -436,22 +276,17 @@ export default function LearningSessionPage() {
     )
     if (hasResources) {
       // 已有资源 (可能是断点恢复), 关闭进度弹窗
-      setShowProgress(false)
+      dismissProgress()
       generationDoneRef.current = true
       return
     }
 
     // 标记已启动, 防止此 effect 或 session 更新导致重复连接
     sseStartedRef.current = true
-    startSSEGeneration()
-  }, [isNew, id, session])
+    startGeneration()
+  }, [isNew, id, session, dismissProgress, startGeneration])
 
-  // 清理 SSE
-  useEffect(() => {
-    return () => {
-      abortRef.current?.abort()
-    }
-  }, [])
+  // SSE 清理由 hook 内部处理 (useEffect cleanup in useLearningSSE)
 
   // ============================================================
   // 渲染
@@ -495,7 +330,7 @@ export default function LearningSessionPage() {
   const resources = currentStage?.resources || []
 
   return (
-    <Layout style={{ height: 'calc(100vh - 64px)', background: '#FFFFFF' }}>
+    <Layout style={{ height: 'calc(100vh - 56px)', margin: '-24px', background: '#FFFFFF' }}>
       {/* SSE 生成进度弹窗 */}
       <GenerationProgress
         open={showProgress}
