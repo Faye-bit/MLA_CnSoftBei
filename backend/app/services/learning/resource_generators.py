@@ -5,7 +5,7 @@
 
 资源类型:
 - handout: 课程讲义 (Markdown)
-- mindmap: 思维导图 (Mermaid 语法)
+- mindmap: 思维导图 (Markdown 标题层级)
 - exercise: 练习题 (JSON 格式)
 - reading: 拓展阅读 (Markdown)
 - coding_practice: 代码实操 (Markdown + 代码块)
@@ -37,42 +37,34 @@ HANDOUT_SYSTEM_PROMPT = """你是一位资深的大学课程讲师, 擅长根据
 
 MINDMAP_SYSTEM_PROMPT = """你是一位知识图谱专家, 擅长将课程知识点整理成结构化的思维导图。
 
-请根据提供的知识点和主题, 生成 Mermaid mindmap 语法的思维导图。
+请根据提供的知识点和主题, 生成 Markdown 标题层级结构的思维导图。
 
 语法格式 (严格遵循):
-mindmap
-  root((课程主题))
-    核心概念
-      子概念A
-        要点1
-        要点2
-      子概念B
-        要点3
-    关键机制
-      机制A
-      机制B
-    应用实践
-      场景1
-      场景2
+# 课程主题
+## 核心概念
+### 子概念A
+#### 要点1
+#### 要点2
+### 子概念B
+#### 要点3
+## 关键机制
+### 机制A
+### 机制B
+## 应用实践
+### 场景1
+### 场景2
 
 语法规则 (必须遵守):
-1. 必须以 `mindmap` 关键字开头 (独占第一行, 没有缩进)
-2. 根节点用 `root((主题名称))` 格式, 如 `root((操作系统概述))`
-3. 每层缩进 2 个空格, 不可用 Tab
-4. 节点文本中禁止包含以下字符, 会导致语法错误: ( ) [ ] { } "  #
-   - 错误示例: `进程(Process)调度` — 括号会破坏语法
-   - 正确做法: `进程调度` 或 `Process进程调度`
-   - 错误示例: `IP[Internet Protocol]` — 方括号会破坏语法
-   - 正确做法: `IP协议` 或 `Internet Protocol`
-5. 如需强调某节点格外重要, 使用 `**文本**` 加粗语义 (不是 Markdown 语法, 纯视觉提示)
-6. 至少展开 3 层深度, 总共至少 12 个节点 — 硬性要求
-7. 不需要 ``` 包裹, 直接以 mindmap 开头输出
-8. 根节点的直接子级至少要有 3 个分类维度
+1. 以 `# 主题名称` 作为根节点 (一级标题), 一个主题只能有一个一级标题
+2. 二级标题 `##` 为第一层分支, 至少 3 个分类维度 (如核心概念、关键机制、应用实践)
+3. 三级标题 `###` 为第二层子节点, 四级标题 `####` 为第三层细节
+4. 每层至少展开 2-3 个节点
+5. 总共至少 12 个标题行 (一行标题算一个节点)
+6. 至少 3 层深度 (即至少包含 #, ##, ### 三级标题) — 硬性要求
+7. 可以用 `**文本**` 标记重点概念 (Markdown 加粗语法)
+8. 直接输出 Markdown 标题, 不要用 ``` 代码块包裹, 不要添加额外解释
 
-你只需要输出 Mermaid 代码, 不要添加任何解释或说明。"""
-
-
-OLD_MINDMAP_SYSTEM_PROMPT_RETIRED = """(旧版提示词已废弃, 因其自相矛盾的语法规则导致 LLM 输出不可靠)"""
+你只需要输出 Markdown 标题层级, 不要添加任何解释或说明。"""
 
 
 EXERCISE_SYSTEM_PROMPT = """你是一位大学课程助教, 负责编写高质量的练习题。
@@ -141,7 +133,6 @@ CODING_PRACTICE_SYSTEM_PROMPT = """你是一位编程实践导师, 擅长将任�
 3. 代码应包含详细的注释, 便于学生理解
 4. 难度适中, 既要有基础实现, 也要有提升空间
 5. 如果涉及算法或数据结构, 提供可视化的思路说明
-6. 优先使用 Python 作为实现语言 (简洁易懂), 除非知识点本身要求其他语言
 
 请直接输出 Markdown 格式, 不要用代码块包裹整个输出。"""
 
@@ -243,19 +234,19 @@ async def generate_mindmap(
     db: AsyncSession = None,
 ) -> str:
     """
-    生成思维导图 (Mermaid mindmap 语法)
+    生成思维导图 (Markdown 标题层级, 前端用 markmap 渲染为交互式 SVG)
 
     :param topic: 阶段主题
     :param knowledge_context: 知识上下文
     :param db: 数据库会话
-    :return: Mermaid mindmap 语法字符串
+    :return: Markdown 标题层级字符串
     """
     client = create_llm_client()
     model = get_config_value("llm_model")
 
     kp_text = _format_knowledge_context(knowledge_context)
 
-    user_prompt = f"""请为以下主题生成一份详细的知识思维导图:
+    user_prompt = f"""请为以下主题生成一份详细的知识思维导图 (Markdown 标题层级格式):
 
 主题: {topic}
 
@@ -263,13 +254,12 @@ async def generate_mindmap(
 {kp_text}
 
 要求:
-1. 以 "{topic}" 为根节点 (使用 root(({topic})) 语法)
+1. 以 "# {topic}" 作为根节点 (一级标题)
 2. 从根节点分出至少 3 个主要分类维度 (如: 核心概念、关键机制、典型应用、发展历程等)
-3. 每个分类下展开至少 2-3 层子节点
-4. 总共至少 12 个节点 (根节点 + 至少 11 个子节点)
-5. 用 `**文本**` 标记重点概念, 用 `~~文本~~` 标记难点 (纯视觉提示, 不影响 Mermaid 解析)
-6. 所有节点文本中严禁出现 ( ) [ ] {{ }} " 字符
-7. 直接输出 Mermaid mindmap 语法, 不要用 ``` 包裹"""
+3. 每个分类下展开至少 2-3 层子节点 (###, ####)
+4. 总共至少 12 个标题行
+5. 用 `**文本**` 标记重点概念 (Markdown 加粗)
+6. 直接输出 Markdown 标题, 不要用 ``` 代码块包裹"""
 
     last_error = None
     for attempt in range(3):
@@ -289,52 +279,52 @@ async def generate_mindmap(
             content = content.strip()
             if content.startswith("```"):
                 lines = content.split("\n")
-                # 去掉首尾的 ``` 行
                 if lines[0].startswith("```"):
                     lines = lines[1:]
                 if lines and lines[-1].startswith("```"):
                     lines = lines[:-1]
                 content = "\n".join(lines).strip()
 
-            # ── 语法验证: 检查 Mermaid mindmap 常见错误 ──
-            node_lines = [l for l in content.split("\n") if l.strip() and not l.strip().startswith("```")]
-            node_count = len(node_lines)
+            # ── 语法验证: 检查 Markdown 标题层级 ──
+            heading_lines = [
+                l.strip() for l in content.split("\n")
+                if l.strip().startswith("#")
+            ]
+            node_count = len(heading_lines)
 
-            # 检查 1: 根节点语法
-            has_root = any("root((" in l for l in node_lines)
-            has_mindmap = node_lines and node_lines[0].strip() == "mindmap"
+            # 检查 1: 根节点 — 至少有一个一级标题 (不以 ## 开头)
+            has_root = any(
+                l.startswith("# ") and not l.startswith("## ")
+                for l in heading_lines
+            )
 
-            # 检查 2: 括号平衡 (排除 root((...)) 和形状节点如 (( )), ) ( 后)
-            # 统计所有括号, 排除 root(( 和 )) 的形状双括号
-            paren_open = content.count("(")
-            paren_close = content.count(")")
-            paren_balanced = paren_open == paren_close
+            # 检查 2: 至少 3 级深度 (# , ## , ### 或更深)
+            depths = set()
+            for line in heading_lines:
+                level = 0
+                for ch in line:
+                    if ch == '#':
+                        level += 1
+                    else:
+                        break
+                depths.add(level)
+            has_min_depth = len(depths) >= 3
 
-            # 检查 3: 在节点文本中查找裸括号 (单个孤立的括号是语法错误)
-            has_bare_parens = False
-            for line in node_lines[1:]:  # 跳过 mindmap 行
-                stripped = line.strip()
-                # 计算该行的括号差 (考虑了 (( )) 和 ) ( 形状)
-                line_open = stripped.count("(")
-                line_close = stripped.count(")")
-                if line_open != line_close:
-                    has_bare_parens = True
-                    break
+            # 检查 3: 至少 10 个标题节点
+            has_min_nodes = node_count >= 10
 
             validation_failed = (
-                (not has_mindmap or not has_root) or
-                (has_bare_parens) or
-                (node_count < 5)
+                not has_root or not has_min_depth or not has_min_nodes
             )
 
             if validation_failed and attempt < 2:
                 reason = []
-                if not has_mindmap or not has_root:
-                    reason.append("缺少mindmap头或root节点")
-                if has_bare_parens:
-                    reason.append("节点文本中包含不平衡括号")
-                if node_count < 5:
-                    reason.append(f"节点数不足({node_count})")
+                if not has_root:
+                    reason.append("缺少一级标题(根节点)")
+                if not has_min_depth:
+                    reason.append(f"标题深度不足(当前{depths or set()}级, 需要至少3级)")
+                if not has_min_nodes:
+                    reason.append(f"标题节点数不足({node_count}, 至少10个)")
                 logger.warning(
                     f"思维导图验证失败 ({', '.join(reason)}), 重试第 {attempt + 1} 次 "
                     f"(topic={topic})"
@@ -342,14 +332,15 @@ async def generate_mindmap(
                 last_error = f"验证失败: {', '.join(reason)}"
                 user_prompt += (
                     f"\n\n【上次输出被拒绝】原因: {'; '.join(reason)}。"
-                    f"请确保: 1) 以 mindmap 开头 2) root((...)) 语法正确"
-                    f" 3) 节点文本不含 ( ) [ ] {{ }} 字符 4) 至少 12 个节点。"
+                    f"请确保: 1) 以 # 标题作为根节点"
+                    f" 2) 至少包含 #, ##, ### 三级标题"
+                    f" 3) 至少 12 个标题行。"
                 )
                 continue
 
             logger.info(
                 f"思维导图生成完成: {topic} "
-                f"({len(content)} 字符, {node_count} 个节点)"
+                f"({len(content)} 字符, {node_count} 个标题节点, {len(depths)} 层深度)"
             )
             return content
 
@@ -360,7 +351,19 @@ async def generate_mindmap(
                 break
 
     logger.error(f"思维导图生成最终失败: {topic}, last_error={last_error}")
-    return f"mindmap\n  root(({topic}))\n    生成失败: {last_error}"
+    return (
+        f"# {topic}\n\n"
+        f"## 核心概念\n"
+        f"### 基本定义\n"
+        f"### 关键特性\n"
+        f"## 关键机制\n"
+        f"### 工作原理\n"
+        f"### 重要算法\n"
+        f"## 应用实践\n"
+        f"### 典型场景\n"
+        f"### 常见误区\n"
+        f"\n生成失败: {last_error}"
+    )
 
 
 async def generate_exercise(

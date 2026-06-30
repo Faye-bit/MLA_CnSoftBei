@@ -186,7 +186,7 @@ class GeneratedResource(Base):
     """
     生成资源表
     各个 Agent 生成的单个学习资源文件, 如讲义、思维导图、练习题等
-    资源内容以 Markdown / JSON / Mermaid 语法等形式存储在 content 字段中
+    资源内容以 Markdown / JSON / Markdown 标题等形式存储在 content 字段中
     """
     __tablename__ = "generated_resources"
 
@@ -219,7 +219,7 @@ class GeneratedResource(Base):
     )
 
     # 资源内容: Markdown 格式 (讲义/拓展阅读/动画脚本/编程练习),
-    #          JSON 格式 (练习题/自测评估), Mermaid 语法 (思维导图)
+    #          JSON 格式 (练习题/自测评估), Markdown 标题 (思维导图)
     content: Mapped[str] = mapped_column(
         Text, nullable=False, default=""
     )
