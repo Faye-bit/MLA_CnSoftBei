@@ -664,6 +664,186 @@ async def get_session_status(
 
 
 # ============================================================================
+# 资源下载
+# ============================================================================
+
+@router.get("/sessions/{session_id}/download")
+async def download_session(
+    session_id: str,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    下载整个会话的学习资源 (zip 压缩包)
+
+    按阶段分目录, 每个资源一个独立文件。
+    包含:
+      session_{id}/
+        README.md         — 会话概览
+        阶段1_{标题}/
+          讲义.md
+          思维导图.md
+          练习题.json
+          拓展阅读.md
+          交互动画.html
+          编程实操.md
+        阶段2_{标题}/
+          ...
+    """
+    import io
+    import zipfile
+    from app.models.zhixue import ZhiXueSession, ZhiXueStage, ZhiXueResource
+    from app.models.course import Course
+
+    # 获取会话并验证所有权
+    from sqlalchemy import select as _sel
+    session = await db.get(ZhiXueSession, uuid.UUID(session_id))
+    if not session:
+        raise HTTPException(status_code=404, detail="会话不存在")
+    if session.user_id != user.id:
+        raise HTTPException(status_code=403, detail="无权下载此会话")
+
+    # 获取课程名
+    course_name = "未知课程"
+    course = await db.get(Course, session.course_id)
+    if course:
+        course_name = course.name
+
+    # 获取所有阶段和资源
+    stages_result = await db.execute(
+        _sel(ZhiXueStage)
+        .where(ZhiXueStage.session_id == session.id)
+        .order_by(ZhiXueStage.order_index)
+    )
+    stages = stages_result.scalars().all()
+
+    # 文件扩展名映射
+    FILE_EXT: dict[str, str] = {
+        "handout": "md",
+        "mindmap": "md",
+        "exercise": "json",
+        "reading": "md",
+        "coding_practice": "md",
+        "animation": "html",
+        "video_script": "html",
+        "code": "md",
+    }
+    # 资源类型中文标签
+    TYPE_LABELS: dict[str, str] = {
+        "handout": "讲义", "mindmap": "思维导图", "exercise": "练习题",
+        "reading": "拓展阅读", "coding_practice": "编程实操",
+        "animation": "交互动画", "video_script": "交互动画",
+        "code": "编程实操",
+    }
+
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        base_dir = f"智学会话_{session_id[:8]}"
+
+        # README.md — 会话概览
+        plan = session.learning_path or {}
+        total_stages = len(plan.get("stages", []))
+        readme_lines = [
+            f"# {course_name} — AI智学 学习资源包",
+            "",
+            f"- 会话 ID: {session_id}",
+            f"- 状态: {session.status}",
+            f"- 学习节奏: {session.study_pace or 'moderate'}",
+            f"- 阶段总数: {total_stages}",
+            f"- 导出时间: {session.updated_at.isoformat() if session.updated_at else 'N/A'}",
+            "",
+            "---",
+            "",
+            "## 目录",
+        ]
+        for s in stages:
+            readme_lines.append(f"- {s.order_index + 1}. {s.title}")
+        zf.writestr(f"{base_dir}/README.md", "\n".join(readme_lines))
+
+        # 各阶段资源
+        for stage in stages:
+            stage_dir = f"{base_dir}/{stage.order_index + 1}_{_sanitize_filename(stage.title)}"
+            stage_name = stage.title or f"阶段{stage.order_index + 1}"
+
+            # 获取该阶段的资源
+            res_result = await db.execute(
+                _sel(ZhiXueResource)
+                .where(ZhiXueResource.stage_id == stage.id)
+                .order_by(ZhiXueResource.order_index)
+            )
+            resources = res_result.scalars().all()
+
+            if not resources:
+                # 空阶段: 至少写一个说明文件
+                zf.writestr(
+                    f"{stage_dir}/README.txt",
+                    f"阶段 {stage.order_index + 1}: {stage_name}\n\n暂无生成资源",
+                )
+                continue
+
+            used_filenames: set[str] = set()
+            for res in resources:
+                rt = res.resource_type or "unknown"
+                ext = FILE_EXT.get(rt, "txt")
+                label = TYPE_LABELS.get(rt, rt)
+                base_name = _sanitize_filename(res.title or label)
+
+                # 防止同名文件覆盖
+                filename = f"{base_name}.{ext}"
+                counter = 1
+                while filename in used_filenames:
+                    filename = f"{base_name}_{counter}.{ext}"
+                    counter += 1
+                used_filenames.add(filename)
+
+                content = res.content or ""
+                # exercise 类型: JSON 美化
+                if rt in ("exercise",) and content.strip():
+                    try:
+                        import json as _json
+                        parsed = _json.loads(content)
+                        content = _json.dumps(parsed, ensure_ascii=False, indent=2)
+                    except Exception:
+                        pass
+
+                zf.writestr(f"{stage_dir}/{filename}", content)
+
+        # 如果没有任何资源, 添加说明
+        if not stages:
+            zf.writestr(f"{base_dir}/README.txt", "此会话暂无生成的学习资源。")
+
+    buf.seek(0)
+    # RFC 5987 编码中文文件名
+    safe_name = _sanitize_filename(f"{course_name}_智学资源包.zip")
+    from urllib.parse import quote
+    encoded_name = quote(safe_name.encode("utf-8"))
+
+    logger.info(
+        f"下载会话: {session_id} 课程={course_name} "
+        f"阶段数={len(stages)}"
+    )
+
+    return StreamingResponse(
+        buf,
+        media_type="application/zip",
+        headers={
+            "Content-Disposition": f"attachment; filename*=UTF-8''{encoded_name}",
+        },
+    )
+
+
+def _sanitize_filename(name: str) -> str:
+    """清理文件名, 移除不安全的字符"""
+    unsafe = '<>:"/\\|?*'
+    for ch in unsafe:
+        name = name.replace(ch, "_")
+    # 截断过长文件名
+    if len(name) > 80:
+        name = name[:77] + "..."
+    return name.strip()
+
+
+# ============================================================================
 # SSE 流式端点 (Phase 2 实现)
 # ============================================================================
 
