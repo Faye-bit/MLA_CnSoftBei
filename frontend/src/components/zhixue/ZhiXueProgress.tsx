@@ -299,9 +299,9 @@ export default function ZhiXueProgress({
                   />
                 )}
 
-                {/* Agent 圆形专属头像 */}
+                {/* Agent 圆形专属头像 (SVG 格式) */}
                 <img
-                  src={`/Agents/${card.icon}.png`}
+                  src={`/Agents/${card.icon}.svg`}
                   alt={card.name}
                   style={{
                     width: 36,
@@ -314,7 +314,7 @@ export default function ZhiXueProgress({
                     border: '2px solid #E5E7EB',
                   }}
                   onError={(e) => {
-                    // 头像加载失败时隐藏, 避免显示破碎图标
+                    // 头像加载失败时隐藏
                     (e.target as HTMLImageElement).style.display = 'none'
                   }}
                 />
