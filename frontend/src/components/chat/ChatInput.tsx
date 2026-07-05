@@ -154,6 +154,21 @@ export default function ChatInput({
 
   return (
     <div style={{ borderTop: `1px solid ${gray[200]}`, padding: '12px 16px', background: '#FFFFFF' }}>
+      {/* 已上传图片预览 — 在按钮组上方 */}
+      {imageUrls.length > 0 && (
+        <div style={{ display: 'flex', gap: 8, marginBottom: 8, flexWrap: 'wrap' }}>
+          {imageUrls.map(url => (
+            <div key={url} style={{ position: 'relative', width: 56, height: 56, borderRadius: 8, overflow: 'hidden', border: `1px solid ${gray[200]}` }}>
+              <img src={url} alt="preview" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+              <CloseCircleFilled
+                onClick={() => removeImage(url)}
+                style={{ position: 'absolute', top: -2, right: -2, fontSize: 16, color: gray[500], background: '#fff', borderRadius: '50%', cursor: 'pointer' }}
+              />
+            </div>
+          ))}
+        </div>
+      )}
+
       {conversationType === 'chat' && (
         <div style={{ marginBottom: 8, display: 'flex', alignItems: 'center', gap: 10 }}>
           <Select
@@ -229,21 +244,6 @@ export default function ChatInput({
               <span>联网搜索</span>
             </button>
           )}
-        </div>
-      )}
-
-      {/* 已上传图片预览 */}
-      {imageUrls.length > 0 && (
-        <div style={{ display: 'flex', gap: 8, marginBottom: 8, flexWrap: 'wrap' }}>
-          {imageUrls.map(url => (
-            <div key={url} style={{ position: 'relative', width: 56, height: 56, borderRadius: 8, overflow: 'hidden', border: `1px solid ${gray[200]}` }}>
-              <img src={url} alt="preview" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-              <CloseCircleFilled
-                onClick={() => removeImage(url)}
-                style={{ position: 'absolute', top: -2, right: -2, fontSize: 16, color: gray[500], background: '#fff', borderRadius: '50%', cursor: 'pointer' }}
-              />
-            </div>
-          ))}
         </div>
       )}
 
