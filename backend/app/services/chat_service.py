@@ -210,6 +210,7 @@ async def chat_stream(
     system_prompt: Optional[str] = None,
     quick_ask_context: Optional[dict] = None,
     web_search_enabled: bool = False,
+    image_urls: Optional[list[str]] = None,
 ) -> AsyncGenerator[str, None]:
     """
     SSE 流式对话生成器
@@ -224,6 +225,7 @@ async def chat_stream(
 
     :param quick_ask_context: 快问AI上下文 (source_type, kp_id, context_text 等)
     :param web_search_enabled: 是否开启联网搜索
+    :param image_urls: 图片 URL 列表 (多模态模型)
     """
     # 1. 获取对话信息
     conversation = await db.get(Conversation, conversation_id)
@@ -242,6 +244,8 @@ async def chat_stream(
             "document_id": quick_ask_context.get("document_id"),
             "context_text": quick_ask_context.get("context_text", "")[:500],
         }
+    if image_urls:
+        user_msg_metadata["image_urls"] = image_urls
     user_msg = Message(
         conversation_id=conversation_id,
         role="user",
@@ -385,7 +389,27 @@ async def chat_stream(
             continue
         llm_messages.append({"role": msg.role, "content": msg.content})
 
-    llm_messages.append({"role": "user", "content": user_message})
+    # 构建当前用户消息 (支持多模态图片)
+    if image_urls:
+        # 将 API 内部相对路径转为绝对 URL (LLM 需要可公网访问的 URL)
+        content_parts: list[dict] = [{"type": "text", "text": user_message}]
+        for url in image_urls:
+            # 相对路径 → 绝对 HTTP URL
+            if url.startswith("/api/"):
+                from app.core.config import settings
+                # 使用配置中的 frontend_url 或默认 localhost
+                base = getattr(settings, "frontend_url", None) or "http://localhost:8000"
+                full_url = f"{base}{url}"
+            else:
+                full_url = url
+            content_parts.append({
+                "type": "image_url",
+                "image_url": {"url": full_url, "detail": "auto"},
+            })
+        llm_messages.append({"role": "user", "content": content_parts})
+        logger.info(f"发送多模态消息: text_len={len(user_message)}, images={len(image_urls)}")
+    else:
+        llm_messages.append({"role": "user", "content": user_message})
 
     # 6. 调用 LLM 流式生成
     try:

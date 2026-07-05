@@ -164,10 +164,10 @@ export default function Chat() {
     setTimeout(() => messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }), 100)
   }, [])
 
-  const handleSendMessage = useCallback(async (content: string, courseId: string | null) => {
+  const handleSendMessage = useCallback(async (content: string, courseId: string | null, imageUrls?: string[]) => {
     if (!activeConversation) return
     scrollAfterSend()
-    sendMessage(activeConversation.id, content, courseId, undefined, undefined, webSearchEnabled)
+    sendMessage(activeConversation.id, content, courseId, undefined, undefined, webSearchEnabled, imageUrls)
   }, [activeConversation, scrollAfterSend, sendMessage, webSearchEnabled])
 
   const handleStopStreaming = useCallback(() => {
@@ -226,7 +226,7 @@ export default function Chat() {
             <img
               src="/brand/字母标Logo.svg"
               alt="MLA 智小学"
-              style={{ width: 144, height: 144 }}
+              style={{ width: 288, height: 288 }}
             />
 
             <div style={{ textAlign: 'center' }}>
@@ -291,7 +291,7 @@ export default function Chat() {
                   <img
                     src="/brand/字母标Logo.svg"
                     alt="MLA 智小学"
-                    style={{ width: 128, height: 128 }}
+                    style={{ width: 256, height: 256 }}
                   />
 
                   <div style={{ textAlign: 'center' }}>
@@ -348,7 +348,7 @@ export default function Chat() {
                 <>
                   {messages.map((msg) => (
                     <ChatMessage key={msg.id} role={msg.role} content={msg.content}
-                      sources={msg.sources} createdAt={msg.created_at} webLinks={msg.web_links} />
+                      sources={msg.sources} createdAt={msg.created_at} webLinks={msg.web_links} imageUrls={msg.image_urls} />
                   ))}
 
                   {streaming && streamingContent && (

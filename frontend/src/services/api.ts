@@ -573,6 +573,7 @@ export function streamChat(
   systemPrompt?: string,
   quickAskMetadata?: Record<string, unknown>,
   webSearchEnabled?: boolean,
+  imageUrls?: string[],
 ): AbortController {
   const url = `${API_BASE}/api/v1/chat/conversations/${conversationId}/messages`
   const body: Record<string, unknown> = { content }
@@ -580,6 +581,7 @@ export function streamChat(
   if (systemPrompt) body.system_prompt = systemPrompt
   if (quickAskMetadata) body.quick_ask_context = quickAskMetadata
   if (webSearchEnabled) body.web_search_enabled = true
+  if (imageUrls) body.image_urls = imageUrls
 
   return fetchSSEStream(
     url,
@@ -602,6 +604,16 @@ export function streamChat(
 }
 
 // ==================== 学生画像 API ====================
+
+/** 上传图片到对话 (返回相对路径 URL) */
+export async function uploadChatImage(file: File): Promise<string> {
+  const form = new FormData()
+  form.append('file', file)
+  const res = await api.post<ApiResponse<{ url: string; size: number }>>('/chat/upload-image', form, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  })
+  return res.data.data!.url
+}
 
 /** 获取当前用户画像 */
 export async function getStudentProfile() {

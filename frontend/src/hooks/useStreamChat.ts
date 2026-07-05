@@ -75,6 +75,7 @@ export function useStreamChat(options?: UseStreamChatOptions) {
     systemPrompt?: string,
     quickAskMetadata?: Record<string, unknown>,
     webSearchEnabled?: boolean,
+    imageUrls?: string[],
   ) => {
     hasSentMessageRef.current = true
     conversationIdRef.current = conversationId
@@ -88,6 +89,7 @@ export function useStreamChat(options?: UseStreamChatOptions) {
       sources: null,
       message_metadata: null,
       created_at: new Date().toISOString(),
+      image_urls: imageUrls,
     }
     setMessages((prev) => [...prev, userMsg])
 
@@ -167,7 +169,7 @@ export function useStreamChat(options?: UseStreamChatOptions) {
         streamingSourcesRef.current = []
         streamingWebLinksRef.current = []
       },
-    }, systemPrompt, quickAskMetadata, webSearchEnabled)
+    }, systemPrompt, quickAskMetadata, webSearchEnabled, imageUrls)
   }, [options?.onStreamDone])
 
   /**

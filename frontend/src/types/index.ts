@@ -374,6 +374,8 @@ export interface Message {
   created_at: string | null
   /** 联网搜索结果链接列表 (仅 web_search_enabled 时返回) */
   web_links?: WebLink[]
+  /** 用户上传的图片 URL 列表 */
+  image_urls?: string[]
 }
 
 /** 联网搜索结果链接 */

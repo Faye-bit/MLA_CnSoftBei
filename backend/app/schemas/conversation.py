@@ -81,10 +81,12 @@ class MessageResponse(BaseModel):
             except (json.JSONDecodeError, TypeError):
                 metadata = None
 
-        # 从 metadata 中提取 web_links（若存在则提升至顶层）
+        # 从 metadata 中提取 web_links 和 image_urls（若存在则提升至顶层）
         web_links = None
+        image_urls = None
         if isinstance(metadata, dict):
             web_links = metadata.get("web_links")
+            image_urls = metadata.get("image_urls")
 
         return cls(
             id=msg.id,
@@ -95,6 +97,7 @@ class MessageResponse(BaseModel):
             message_metadata=metadata,
             created_at=msg.created_at,
             web_links=web_links,
+            image_urls=image_urls,
         )
 
 
@@ -105,3 +108,4 @@ class SendMessageRequest(BaseModel):
     system_prompt: Optional[str] = Field(default=None, description="自定义 System Prompt (如 Live2D 伙伴聊天), 传入则覆盖默认")
     quick_ask_context: Optional[dict] = Field(default=None, description="快问AI上下文: {source_type, kp_id, course_id, chapter_id, document_id, context_text}")
     web_search_enabled: bool = Field(default=False, description="是否开启联网搜索, 搜索知乎/B站/小红书等中文知识平台")
+    image_urls: Optional[list[str]] = Field(default=None, description="图片 URL 列表 (多模态模型), 如 ['/api/v1/chat/images/.../abc.png']")

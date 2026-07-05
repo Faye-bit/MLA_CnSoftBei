@@ -4,12 +4,16 @@ AI 对话 API 路由
 """
 
 import uuid
+import os
+import imghdr
 from typing import Optional
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
-from fastapi.responses import StreamingResponse
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, UploadFile, File
+from fastapi.responses import StreamingResponse, FileResponse
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
+from loguru import logger
 from app.core.database import get_db
+from app.core.config import settings
 from app.models.user import User
 from app.models.course import Course
 from app.models.conversation import Conversation, Message
@@ -228,6 +232,62 @@ async def delete_conversation(
     return ApiResponse(data=None, message="对话已删除")
 
 
+# ============================================================================
+# 图片上传 (对话中使用)
+# ============================================================================
+
+ALLOWED_IMAGE_TYPES = {"jpeg", "png", "gif", "webp", "bmp"}
+
+@router.post("/upload-image", summary="上传对话图片")
+async def upload_chat_image(
+    file: UploadFile = File(...),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    上传图片用于对话中发送给 LLM (多模态模型)
+
+    保存到 uploads/chat_images/{user_id}/ 目录，返回可访问的图片 URL。
+    限制: 最大 10MB，仅允许常见图片格式。
+    """
+    # 校验文件大小 (10MB)
+    MAX_SIZE = 10 * 1024 * 1024
+    content = await file.read()
+    if len(content) > MAX_SIZE:
+        raise HTTPException(status_code=413, detail="图片不能超过 10MB")
+
+    # 校验文件类型 (魔数 + 扩展名双检)
+    ext = os.path.splitext(file.filename or "image.png")[1].lower().lstrip(".")
+    magic_type = imghdr.what(None, h=content)
+    detected_type = magic_type or ext
+    if detected_type not in ALLOWED_IMAGE_TYPES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"不支持的图片格式: {detected_type}，支持 {', '.join(ALLOWED_IMAGE_TYPES)}",
+        )
+
+    # 保存文件
+    user_dir = os.path.join(settings.upload_dir, "chat_images", str(current_user.id))
+    os.makedirs(user_dir, exist_ok=True)
+    stored_name = f"{uuid.uuid4().hex}.{detected_type}"
+    file_path = os.path.join(user_dir, stored_name)
+    with open(file_path, "wb") as f:
+        f.write(content)
+
+    # 返回静态文件访问 URL
+    image_url = f"/api/v1/chat/images/{current_user.id}/{stored_name}"
+    logger.info(f"对话图片已上传: user={current_user.id}, size={len(content)}, url={image_url}")
+    return ApiResponse(data={"url": image_url, "size": len(content)}, message="上传成功")
+
+
+@router.get("/images/{user_id}/{filename}", summary="获取对话图片")
+async def get_chat_image(user_id: str, filename: str):
+    """提供上传的对话图片静态访问"""
+    file_path = os.path.join(settings.upload_dir, "chat_images", user_id, filename)
+    if not os.path.isfile(file_path):
+        raise HTTPException(status_code=404, detail="图片不存在")
+    return FileResponse(file_path)
+
+
 @router.post("/conversations/{conversation_id}/messages", summary="发送消息 (SSE 流式)")
 async def send_message_stream(
     conversation_id: uuid.UUID,
@@ -262,6 +322,7 @@ async def send_message_stream(
             system_prompt=body.system_prompt,
             quick_ask_context=body.quick_ask_context,
             web_search_enabled=body.web_search_enabled,
+            image_urls=body.image_urls,
         ),
         media_type="text/event-stream",
         headers={

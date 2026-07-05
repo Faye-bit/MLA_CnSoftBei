@@ -1,6 +1,6 @@
 /**
  * 聊天输入栏组件
- * 包含课程选择器 (知识库对话模式)、文本输入框和发送/停止按钮
+ * 包含课程选择器 (知识库对话模式)、文本输入框、图片上传和发送/停止按钮
  *
  * 快捷键 (与 ChatGPT/Claude 一致):
  *   - Enter        → 发送消息
@@ -11,14 +11,27 @@
  */
 
 import { useState, useEffect, useRef } from 'react'
-import { Select, Button } from 'antd'
-import { SendOutlined, StopOutlined, GlobalOutlined } from '@ant-design/icons'
+import { Select, Button, message } from 'antd'
+import { SendOutlined, StopOutlined, GlobalOutlined, PictureOutlined, CloseCircleFilled } from '@ant-design/icons'
 import type { Course } from '../../types'
-import { getCourses } from '../../services/api'
+import { getCourses, uploadChatImage } from '../../services/api'
 import { blue, gray } from '../../styles/tokens'
 
+/** 已知支持多模态的模型关键词 (前端拦截用) */
+const VISION_MODEL_KEYWORDS = [
+  'gpt-4o', 'gpt-4-turbo', 'gpt-4-vision',
+  'claude-3', 'claude-4', 'claude-3.5', 'claude-3-5',
+  'gemini', 'vision', 'vl', 'multimodal', 'qvq',
+  'qwen-vl', 'doubao-vision', 'yi-vision', 'glm-4v',
+]
+
+function isVisionModel(modelName: string): boolean {
+  const lower = modelName.toLowerCase()
+  return VISION_MODEL_KEYWORDS.some(k => lower.includes(k))
+}
+
 interface ChatInputProps {
-  onSend: (content: string, courseId: string | null) => void
+  onSend: (content: string, courseId: string | null, imageUrls?: string[]) => void
   onStop?: () => void
   streaming?: boolean
   conversationType?: 'chat' | 'profile_collection'
@@ -39,6 +52,11 @@ export default function ChatInput({
   const [selectedCourseId, setSelectedCourseId] = useState<string | null>(initialCourseId || null)
   const [coursesLoaded, setCoursesLoaded] = useState(false)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+  /** 已上传的图片 URL 列表 */
+  const [imageUrls, setImageUrls] = useState<string[]>([])
+  /** 上传中 */
+  const [uploading, setUploading] = useState(false)
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   /**
    * IME 组合状态 — compositionstart 时为 true, compositionend 时为 false
@@ -62,11 +80,60 @@ export default function ChatInput({
     loadCourses()
   }, [conversationType, coursesLoaded])
 
-  const handleSend = () => {
+  /** 上传图片 */
+  const handleUploadImage = async () => {
+    fileInputRef.current?.click()
+  }
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files
+    if (!files || files.length === 0) return
+    setUploading(true)
+    try {
+      const url = await uploadChatImage(files[0])
+      setImageUrls(prev => [...prev, url])
+    } catch (err) {
+      message.error('图片上传失败: ' + (err as Error).message)
+    } finally {
+      setUploading(false)
+      if (fileInputRef.current) fileInputRef.current.value = ''
+    }
+  }
+
+  /** 移除已上传图片 */
+  const removeImage = (url: string) => {
+    setImageUrls(prev => prev.filter(u => u !== url))
+  }
+
+  /** 模型兼容性检查 */
+  const checkModelCompatibility = async (): Promise<boolean> => {
+    if (imageUrls.length === 0) return true
+    try {
+      const { getApiConfig } = await import('../../pages/Settings')
+      const configs = await getApiConfig()
+      const modelName = (configs as Record<string, string>).llm_model || ''
+      if (!isVisionModel(modelName)) {
+        message.warning(`当前模型 "${modelName}" 可能不支持识别图片，请切换到支持视觉的多模态模型（如 gpt-4o-mini、qwen-vl-plus）`)
+        return false
+      }
+      return true
+    } catch {
+      // 无法获取模型名称时放行，后端会处理
+      return true
+    }
+  }
+
+  const handleSend = async () => {
     const trimmed = inputValue.trim()
     if (!trimmed || streaming) return
-    onSend(trimmed, selectedCourseId)
+
+    // 图片兼容性检查
+    const compatible = await checkModelCompatibility()
+    if (!compatible) return
+
+    onSend(trimmed, selectedCourseId, imageUrls.length > 0 ? imageUrls : undefined)
     setInputValue('')
+    setImageUrls([])
     const el = textareaRef.current
     if (el) { el.style.height = 'auto' }
     setTimeout(() => textareaRef.current?.focus(), 0)
@@ -78,8 +145,6 @@ export default function ChatInput({
       e.preventDefault()
       handleSend()
     }
-    // Shift+Enter → 换行 (textarea 原生行为, 不做任何事)
-    // IME 组合中 Enter → 选词 (不做任何事, 由 IME 接管)
   }
 
   const autoResize = () => {
@@ -100,6 +165,24 @@ export default function ChatInput({
             optionFilterProp="label"
             options={courses.map((c) => ({ label: c.name, value: c.id }))}
             size="small"
+          />
+          {/* 图片上传按钮 */}
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/png,image/jpeg,image/gif,image/webp,image/bmp"
+            style={{ display: 'none' }}
+            onChange={handleFileChange}
+          />
+          <Button
+            type="text"
+            size="small"
+            icon={<PictureOutlined />}
+            onClick={handleUploadImage}
+            disabled={streaming}
+            loading={uploading}
+            style={{ color: gray[500], fontSize: 16 }}
+            title="上传图片"
           />
           {/* 联网搜索开关 */}
           {onWebSearchToggle && (
@@ -130,6 +213,21 @@ export default function ChatInput({
               <span>联网搜索</span>
             </button>
           )}
+        </div>
+      )}
+
+      {/* 已上传图片预览 */}
+      {imageUrls.length > 0 && (
+        <div style={{ display: 'flex', gap: 8, marginBottom: 8, flexWrap: 'wrap' }}>
+          {imageUrls.map(url => (
+            <div key={url} style={{ position: 'relative', width: 56, height: 56, borderRadius: 8, overflow: 'hidden', border: `1px solid ${gray[200]}` }}>
+              <img src={url} alt="preview" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+              <CloseCircleFilled
+                onClick={() => removeImage(url)}
+                style={{ position: 'absolute', top: -2, right: -2, fontSize: 16, color: gray[500], background: '#fff', borderRadius: '50%', cursor: 'pointer' }}
+              />
+            </div>
+          ))}
         </div>
       )}
 

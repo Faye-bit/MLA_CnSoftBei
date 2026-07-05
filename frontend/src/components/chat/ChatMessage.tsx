@@ -27,6 +27,8 @@ interface ChatMessageProps {
   streaming?: boolean
   /** 联网搜索结果链接列表 */
   webLinks?: WebLink[]
+  /** 用户上传的图片 URL 列表 */
+  imageUrls?: string[]
 }
 
 /** 去除 AI 回复中的内联参考来源和联网搜索标记 */
@@ -48,7 +50,7 @@ function UserAvatar() {
   return <Avatar style={{ backgroundColor: blue[500], flexShrink: 0 }} size={36}>{user?.nickname?.[0] || user?.username?.[0] || 'U'}</Avatar>
 }
 
-export default function ChatMessage({ role, content, sources, createdAt, streaming = false, webLinks }: ChatMessageProps) {
+export default function ChatMessage({ role, content, sources, createdAt, streaming = false, webLinks, imageUrls }: ChatMessageProps) {
   if (role === 'system') return null
 
   const isUser = role === 'user'
@@ -87,7 +89,22 @@ export default function ChatMessage({ role, content, sources, createdAt, streami
           position: 'relative',
         }}>
           {isUser ? (
-            <div style={{ whiteSpace: 'pre-wrap' }}>{content}</div>
+            <div>
+              {/* 用户上传的图片 */}
+              {imageUrls && imageUrls.length > 0 && (
+                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: content ? 8 : 0 }}>
+                  {imageUrls.map((url, i) => (
+                    <a key={i} href={url} target="_blank" rel="noopener noreferrer">
+                      <img src={url} alt={`图片 ${i + 1}`} style={{
+                        maxWidth: 200, maxHeight: 200, borderRadius: 8, objectFit: 'contain',
+                        cursor: 'pointer',
+                      }} />
+                    </a>
+                  ))}
+                </div>
+              )}
+              <div style={{ whiteSpace: 'pre-wrap' }}>{content}</div>
+            </div>
           ) : (
             <span>
               <MarkdownRenderer content={displayContent} compact />
