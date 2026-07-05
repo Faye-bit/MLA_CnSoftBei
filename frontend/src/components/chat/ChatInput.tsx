@@ -157,10 +157,10 @@ export default function ChatInput({
       {conversationType === 'chat' && (
         <div style={{ marginBottom: 8, display: 'flex', alignItems: 'center', gap: 10 }}>
           <Select
-            placeholder="选择关联课程 (可选, 启用知识库检索)"
+            placeholder="关联课程"
             value={selectedCourseId}
             onChange={setSelectedCourseId}
-            style={{ flex: 1 }}
+            style={{ width: 180, flexShrink: 0 }}
             allowClear showSearch
             optionFilterProp="label"
             options={courses.map((c) => ({ label: c.name, value: c.id }))}
@@ -174,16 +174,32 @@ export default function ChatInput({
             style={{ display: 'none' }}
             onChange={handleFileChange}
           />
-          <Button
-            type="text"
-            size="small"
-            icon={<PictureOutlined />}
+          <button
             onClick={handleUploadImage}
-            disabled={streaming}
-            loading={uploading}
-            style={{ color: gray[500], fontSize: 16 }}
-            title="上传图片"
-          />
+            disabled={streaming || uploading}
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 6,
+              padding: '3px 12px',
+              fontSize: 13,
+              fontWeight: 600,
+              border: imageUrls.length > 0
+                ? `1.5px solid ${blue[400]}`
+                : `1.5px solid ${gray[300]}`,
+              borderRadius: 20,
+              background: imageUrls.length > 0 ? blue[50] : '#FFFFFF',
+              color: imageUrls.length > 0 ? blue[500] : gray[500],
+              cursor: (streaming || uploading) ? 'not-allowed' : 'pointer',
+              transition: 'all 0.2s',
+              whiteSpace: 'nowrap',
+              lineHeight: '22px',
+              opacity: (streaming || uploading) ? 0.5 : 1,
+            }}
+          >
+            <PictureOutlined style={{ fontSize: 14 }} />
+            <span>{uploading ? '上传中...' : '图片'}</span>
+          </button>
           {/* 联网搜索开关 */}
           {onWebSearchToggle && (
             <button
