@@ -52,6 +52,8 @@ export default function Chat() {
   const [shouldFocusInput, setShouldFocusInput] = useState(false)
   /** 联网搜索开关 */
   const [webSearchEnabled, setWebSearchEnabled] = useState(false)
+  /** 对话列表折叠 (默认折叠, 给聊天区域更大空间) */
+  const [convsCollapsed, setConvsCollapsed] = useState(true)
 
   // 使用 useStreamChat hook 管理 SSE 流式逻辑
   const {
@@ -208,6 +210,8 @@ export default function Chat() {
         onNew={handleNewConversation}
         onDelete={handleDeleteConversation}
         onRename={handleRenameConversation}
+        collapsed={convsCollapsed}
+        onToggleCollapse={() => setConvsCollapsed(p => !p)}
       />
 
       {/* ================================================================ */}
@@ -224,7 +228,7 @@ export default function Chat() {
           }}>
             {/* MLA Logo */}
             <img
-              src="/brand/字母标Logo.svg"
+              src="/brand/字母标Logo(2-1比例).svg"
               alt="MLA 智小学"
               style={{ width: 288, height: 288 }}
             />
@@ -289,7 +293,7 @@ export default function Chat() {
                 }}>
                   {/* Logo */}
                   <img
-                    src="/brand/字母标Logo.svg"
+                    src="/brand/字母标Logo(2-1比例).svg"
                     alt="MLA 智小学"
                     style={{ width: 256, height: 256 }}
                   />
