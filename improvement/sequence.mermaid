@@ -1,0 +1,252 @@
+sequenceDiagram
+    %% ============================================================================
+    %% AI 个性化学习指导平台 — 完整时序图
+    %% 司南接收请求 → 读 Registry → 启动 StateGraph → 各 Agent 协作 → 交付
+    %% ============================================================================
+
+    actor User as 👤 学习者
+    participant API as 🌐 FastAPI
+    participant SiNan as 🧭 司南<br/>orchestrator
+    participant Registry as 📋 Agent Registry
+    participant Graph as 🔄 LangGraph<br/>StateGraph
+    participant Check as 💾 Checkpointer<br/>SqliteSaver
+    participant ZhiYu as 🎣 知渔<br/>profile_analyst
+    participant ZhuJing as 🗺️ 筑径<br/>path_planner
+    participant CaiFeng as 🔎 采风<br/>resource_scout
+    participant Jiang as 👥 匠·X<br/>6 crafters
+    participant JianZhen as 🛡️ 鉴真<br/>quality_reviewer
+    participant KB as 📚 知识库 API
+    participant ProfileAPI as 👤 用户画像 API
+    participant SearchAPI as 🌍 搜索 API
+    participant LLM as 🤖 LLM Service
+
+    %% ═══════════════════════════════════════════════════════
+    %% Phase 1: 会话启动
+    %% ═══════════════════════════════════════════════════════
+
+    User ->> API: POST /courses/{id}/sessions<br/>{selected_materials}
+    API ->> SiNan: start_session(course_id, user_id, materials)
+
+    SiNan ->> Registry: ensure_available([profile_analyst,<br/>path_planner, resource_scout,<br/>quality_reviewer, ...crafters])
+    Registry -->> SiNan: ✅ All agents active
+
+    SiNan ->> Graph: ainvoke(initial_state, config)
+    Note over Graph,Check: thread_id = session_id
+
+    Graph ->> Check: save checkpoint (step 0)
+    Check -->> Graph: ✅
+
+    %% ═══════════════════════════════════════════════════════
+    %% Phase 2: 初始化 & 问卷生成
+    %% ═══════════════════════════════════════════════════════
+
+    Graph ->> Graph: [init_session] 加载课程元信息
+    Graph ->> KB: fetch_course_context(course_id)
+    KB -->> Graph: course + KB chunks
+
+    Graph ->> ZhiYu: [generate_initial_questionnaire]
+    Note over ZhiYu: 根据课程内容+KB<br/>动态生成定制化问卷
+
+    ZhiYu ->> LLM: generate_questionnaire(course, kb_context)
+    LLM -->> ZhiYu: 结构化问卷 JSON
+    ZhiYu -->> Graph: {initial_questionnaire}
+
+    Graph ->> Check: save checkpoint
+    Graph --x Graph: ⏸️ INTERRUPT (interrupt_before)
+
+    Graph -->> SiNan: {status: "questionnaire", questionnaire: {...}}
+    SiNan -->> API: SessionHandle
+    API -->> User: {session_id, questionnaire, next_action: "fill"}
+
+    %% ═══════════════════════════════════════════════════════
+    %% Phase 3: 用户填写问卷 → 画像融合
+    %% ═══════════════════════════════════════════════════════
+
+    User ->> API: POST /sessions/{id}/submit-questionnaire<br/>{answers}
+    API ->> SiNan: resume_session(id, questionnaire_response)
+    SiNan ->> Graph: ainvoke(Command(resume=...), config)
+
+    Graph ->> Check: load checkpoint (thread_id)
+    Check -->> Graph: restored state
+
+    Graph ->> ZhiYu: [process_questionnaire]
+    ZhiYu ->> ProfileAPI: get_user_profile(user_id)
+    ProfileAPI -->> ZhiYu: UserProfile{knowledge_levels, style_prefs}
+
+    ZhiYu ->> LLM: merge_profile(questionnaire, user_profile, kb_context)
+    LLM -->> ZhiYu: LearningProfile
+    ZhiYu -->> Graph: {learning_profile}
+
+    Graph ->> Check: save checkpoint
+
+    %% ═══════════════════════════════════════════════════════
+    %% Phase 4: 生成学习计划
+    %% ═══════════════════════════════════════════════════════
+
+    Graph ->> ZhuJing: [generate_learning_plan]
+    ZhuJing ->> LLM: plan_course(learning_profile, course, kb_context)
+    LLM -->> ZhuJing: LearningPlan (3~6 stages)
+    ZhuJing -->> Graph: {learning_plan, total_stages}
+
+    Graph ->> Check: save checkpoint
+
+    %% ═══════════════════════════════════════════════════════
+    %% Phase 5: 阶段循环 — Stage 1
+    %% ═══════════════════════════════════════════════════════
+
+    Graph ->> Graph: [stage_entry] → current_stage=1, has_more=true
+
+    Graph ->> CaiFeng: [scout_resources]
+    Note over CaiFeng: 阶段1: 网络调研
+
+    CaiFeng ->> SearchAPI: search(stage.topic + objectives)
+    SearchAPI -->> CaiFeng: search results
+
+    CaiFeng ->> LLM: synthesize_report(search_results, kb_context)
+    LLM -->> CaiFeng: ResearchReport + ExternalLinks
+
+    CaiFeng -->> Graph: {research_report, external_links_material}
+
+    Graph ->> Check: save checkpoint
+
+    %% ═══════════════════════════════════════════════════════
+    %% Phase 6: 并行材料生成
+    %% ═══════════════════════════════════════════════════════
+
+    par 并行生成 (6个匠同时)
+        Graph ->> Jiang: [craft_lecture] → 讲义
+        Jiang ->> KB: fetch_kb_refs(stage.kb_refs)
+        KB -->> Jiang: KB chunks
+        Jiang ->> LLM: generate_lecture(research_report, kb, profile)
+        LLM -->> Jiang: LectureMaterial
+        Jiang -->> Graph: {materials["lecture"]}
+    and
+        Graph ->> Jiang: [craft_mindmap] → 思维导图
+        Jiang ->> LLM: generate_mindmap(research_report, kb, profile)
+        LLM -->> Jiang: MindmapMaterial
+        Jiang -->> Graph: {materials["mindmap"]}
+    and
+        Graph ->> Jiang: [craft_exercise] → 练习题
+        Jiang ->> LLM: generate_exercises(research_report, kb, profile)
+        LLM -->> Jiang: ExerciseMaterial
+        Jiang -->> Graph: {materials["exercise"]}
+    and
+        Graph ->> Jiang: [craft_reading] → 拓展阅读
+        Jiang ->> LLM: generate_reading(research_report, kb, profile)
+        LLM -->> Jiang: ReadingMaterial
+        Jiang -->> Graph: {materials["reading"]}
+    and
+        Graph ->> Jiang: [craft_animation] → 动画演示
+        Jiang ->> LLM: generate_animation(research_report, kb, profile)
+        LLM -->> Jiang: AnimationMaterial
+        Jiang -->> Graph: {materials["animation"]}
+    and
+        Graph ->> Jiang: [craft_code] → 代码实操
+        Jiang ->> LLM: generate_code_tasks(research_report, kb, profile)
+        LLM -->> Jiang: CodeMaterial
+        Jiang -->> Graph: {materials["code"]}
+    end
+
+    Note over Graph: 🧲 SYNC BARRIER — 等待所有匠完成
+    Graph ->> Check: save checkpoint
+
+    %% ═══════════════════════════════════════════════════════
+    %% Phase 7: 四层审查
+    %% ═══════════════════════════════════════════════════════
+
+    Graph ->> JianZhen: [review_materials]
+
+    loop 对每种材料执行四层审查
+        JianZhen ->> JianZhen: L1: Schema格式校验
+        JianZhen ->> KB: L2: RAG语义相似度 (≥0.75)
+        KB -->> JianZhen: similarity scores
+        JianZhen ->> LLM: L3: 逻辑正确性审查
+        LLM -->> JianZhen: logic_check_result
+        JianZhen ->> JianZhen: L4: 跨材料交叉比对
+    end
+
+    JianZhen -->> Graph: {review_report}
+
+    alt 审查 ALL_PASS
+        Graph ->> Graph: review_router → "pass"
+
+    else 审查 RETRY (count < 2)
+        Graph ->> Graph: review_router → "retry"
+        Note over Graph: 打回失败的材料到对应匠节点重生成
+        Graph ->> Jiang: 重新生成失败材料
+        Jiang -->> Graph: updated materials
+        Graph ->> JianZhen: 重新审查
+
+    else 审查 MAX_RETRY (count = 2)
+        Graph ->> Graph: review_router → "fallback"
+        Graph ->> JianZhen: [kb_fallback]
+        JianZhen ->> KB: fetch_kb_original(refs)
+        KB -->> JianZhen: KB原文
+        JianZhen -->> Graph: materials + [KB-SOURCE]标记
+    end
+
+    Graph ->> Check: save checkpoint
+
+    %% ═══════════════════════════════════════════════════════
+    %% Phase 8: 阶段交付
+    %% ═══════════════════════════════════════════════════════
+
+    Graph ->> ZhuJing: [deliver_stage]
+    ZhuJing ->> ZhuJing: 汇总 → DeliveryPackage
+    ZhuJing -->> Graph: {delivery_package, stage_history}
+
+    Graph ->> Check: save checkpoint
+    Graph -->> SiNan: {status: "delivering", delivery: {...}}
+    SiNan -->> API: SessionHandle
+    API -->> User: {delivery_package, next_action: "study"}
+
+    %% ═══════════════════════════════════════════════════════
+    %% Phase 9: 阶段反馈
+    %% ═══════════════════════════════════════════════════════
+
+    Note over User: 📖 用户学习阶段内容...
+
+    User ->> API: POST /sessions/{id}/submit-feedback<br/>{mastery: "mastered"}
+    API ->> SiNan: resume_session(id, stage_feedback)
+    SiNan ->> Graph: ainvoke(Command(resume=...), config)
+
+    Graph ->> Check: load checkpoint
+    Check -->> Graph: restored state
+
+    Graph ->> ZhiYu: [generate_stage_feedback]
+    Note over ZhiYu: 解析反馈 → 更新 LearningProfile
+
+    ZhiYu ->> LLM: update_profile(feedback, current_profile)
+    LLM -->> ZhiYu: updated LearningProfile
+    ZhiYu -->> Graph: {updated_learning_profile}
+
+    Graph ->> Graph: feedback_router → "next_stage"
+    Graph ->> Graph: current_stage++ → stage_entry
+
+    Graph ->> Check: save checkpoint
+
+    Note over Graph: 🔄 进入阶段2... 重复 Phase 5-9
+
+    %% ═══════════════════════════════════════════════════════
+    %% Phase 10: 最终完成
+    %% ═══════════════════════════════════════════════════════
+
+    Graph ->> Graph: [stage_entry] → no_more_stages
+    Graph ->> Graph: [finalize]
+    Graph ->> Check: save checkpoint (final)
+    Graph -->> SiNan: {status: "completed"}
+
+    SiNan -->> API: SessionHandle
+    API -->> User: {status: "completed", summary: "🎉 全部阶段完成！"}
+
+    %% ═══════════════════════════════════════════════════════
+    %% Phase 11 (可选): 异常处理
+    %% ═══════════════════════════════════════════════════════
+
+    opt 异常发生 (任意节点)
+        Graph --x SiNan: Exception
+        SiNan ->> SiNan: 异常决策 (重试/降级/报错)
+        SiNan ->> Check: 保存错误状态
+        SiNan -->> API: ErrorResponse
+        API -->> User: {status: "failed", error: {...}}
+    end

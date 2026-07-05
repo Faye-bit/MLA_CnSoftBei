@@ -13,7 +13,7 @@ from loguru import logger
 # System Prompt
 # ============================================================================
 
-EXERCISE_SCORING_SYSTEM_PROMPT = """你是 MLA 智学引擎的 AI 评分教师, 负责对学生的填空题和简答题答案进行智能评分。
+EXERCISE_SCORING_SYSTEM_PROMPT = """你是 MLA 智小学的 AI 评分教师, 负责对学生的填空题和简答题答案进行智能评分。
 
 评分规则:
 1. 满分 10 分, 最低 0 分

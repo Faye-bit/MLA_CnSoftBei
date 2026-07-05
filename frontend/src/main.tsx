@@ -1,5 +1,5 @@
 /**
- * MLA 智学引擎 - 前端应用入口
+ * MLA 智小学 - 前端应用入口
  * 挂载 React 应用到 DOM, 配置路由与 Ant Design 主题
  *
  * @see branding/MLA_BRAND_GUIDELINES.md — 品牌视觉唯一权威来源

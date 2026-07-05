@@ -1,5 +1,5 @@
 /**
- * MLA（智学引擎）设计 Token 系统
+ * MLA（智小学）设计 Token 系统
  *
  * 本文档为品牌视觉指南 (branding/MLA_BRAND_GUIDELINES.md) 的代码实现。
  * 所有 UI 组件应优先引用此处的 token，而非硬编码色值。

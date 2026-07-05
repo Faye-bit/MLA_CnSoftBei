@@ -324,7 +324,7 @@ async def send_review_email_reminder(
             days_ago = (datetime.now(timezone.utc) - rv.review_at).days
             review_items += f"  {i}. {rv.content_title} (应于 {days_ago} 天前复习)\n"
 
-        subject = f"MLA 智学引擎 - 学习复习提醒"
+        subject = f"MLA 智小学 - 学习复习提醒"
         body = f"""你好 {user.nickname or user.username},
 
 根据艾宾浩斯遗忘曲线, 以下内容建议你尽快复习巩固:
@@ -334,7 +334,7 @@ async def send_review_email_reminder(
 定期复习是提升长期记忆的关键。登录平台即可查看详情并完成复习任务。
 
 祝学习愉快!
-MLA 智学引擎
+MLA 智小学
 """
 
         await send_email(

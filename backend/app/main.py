@@ -1,5 +1,5 @@
 """
-MLA (Multiple Learning Agent) 智学引擎 - FastAPI 应用入口
+MLA (Multiple Learning Agent) 智小学 - FastAPI 应用入口
 启动: uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 """
 
@@ -11,7 +11,9 @@ from fastapi.staticfiles import StaticFiles
 from app.core.config import settings
 from app.core.database import init_db, close_db
 from app.api.v1.router import api_v1_router
+from app.api.v2.router import api_v2_router
 from app.models import LearningSession, LearningStage, GeneratedResource, AgentTask  # noqa: F401  确保建表
+from app.models import ZhiXueSession, ZhiXueStage, ZhiXueResource, ZhiXueAgentTask, ZhiXueReview, ZhiXueQuestionnaire, ZhiXueSearchResult  # noqa: F401  AI智学建表
 from loguru import logger
 
 
@@ -37,7 +39,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title=f"{settings.app_name} - 智学引擎",
+    title=f"{settings.app_name} - 智小学",
     description="面向高校专业课程的个性化学习资源生成与智能辅导平台",
     version=settings.app_version,
     lifespan=lifespan,
@@ -61,8 +63,11 @@ avatars_dir = Path(settings.upload_dir) / "avatars"
 avatars_dir.mkdir(parents=True, exist_ok=True)
 app.mount("/uploads/avatars", StaticFiles(directory=str(avatars_dir)), name="avatars")
 
-# 注册 v1 API 路由
+# 注册 v1 API 路由 (AI助学)
 app.include_router(api_v1_router)
+
+# 注册 v2 API 路由 (AI智学)
+app.include_router(api_v2_router)
 
 
 @app.get("/", tags=["系统"])

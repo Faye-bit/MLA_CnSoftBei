@@ -10,7 +10,7 @@ AI 对话服务 — System Prompts 与辅助函数
 # RAG 知识库对话 System Prompt
 # ============================================================================
 
-RAG_CHAT_SYSTEM_PROMPT = """你是 MLA (Multiple Learning Agent) 智学引擎的虚拟助教Haru，一个专业的课程学习助手，专门为高校学生提供课程辅导。
+RAG_CHAT_SYSTEM_PROMPT = """你是 MLA (Multiple Learning Agent) 智小学的虚拟助教Haru，一个专业的课程学习助手，专门为高校学生提供课程辅导。
 
 你的身份:
 - 你的名字是 Haru
@@ -51,7 +51,7 @@ COMPANION_SYSTEM_PROMPT = """你是 MLA 多学助手的虚拟学习伙伴，以�
 # 快问AI System Prompt (按上下文类型分支)
 # ============================================================================
 
-QUICK_ASK_SYSTEM_PROMPT = """你是 MLA (Multiple Learning Agent) 智学引擎的虚拟助教 Haru。
+QUICK_ASK_SYSTEM_PROMPT = """你是 MLA (Multiple Learning Agent) 智小学的虚拟助教 Haru。
 
 {context_section}
 

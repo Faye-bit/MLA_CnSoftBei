@@ -1,4 +1,4 @@
-# MLA (Multiple Learning Agent) — 智学引擎
+# MLA (Multiple Learning Agent) — 智小学
 
 面向高校专业课程的个性化学习资源生成与智能辅导平台。系统通过对话式交互构建多维度学生画像，依托课程知识库与多智能体协同机制，自动生成个性化、多模态学习资源，规划科学的学习路径，并提供即时智能答疑与学习效果评估。
 
@@ -23,7 +23,7 @@
 
 ## 项目简介
 
-MLA 智学引擎旨在解决高等教育中学生学习资源繁杂无序、难以精准匹配个性化需求的痛点。系统以具体高校专业课程（如操作系统、数据结构、人工智能导论等）为切入点，借助大模型技术、RAG（检索增强生成）、LangGraph 多智能体编排等前沿 AI 技术，为每位学生打造专属的个性化学习智能体。
+MLA 智小学旨在解决高等教育中学生学习资源繁杂无序、难以精准匹配个性化需求的痛点。系统以具体高校专业课程（如操作系统、数据结构、人工智能导论等）为切入点，借助大模型技术、RAG（检索增强生成）、LangGraph 多智能体编排等前沿 AI 技术，为每位学生打造专属的个性化学习智能体。
 
 ### 项目价值
 
@@ -58,49 +58,54 @@ MLA 智学引擎旨在解决高等教育中学生学习资源繁杂无序、难�
 
 ### 4. 多智能体协同资源生成（核心）
 
-系统设计了至少 9 种智能体角色协同工作：
+系统设计了 12 种具名 AI Agent 角色协同工作：
 
-| Agent | 职责 |
-|-------|------|
-| **Coordinator Agent** | 任务总控，拆解需求并分配子任务 |
-| **Profile Agent** | 读取与维护学生画像 |
-| **Retrieval Agent** | 从知识库检索相关章节、知识点和切片 |
-| **Teaching Design Agent** | 设计阶段教学方案与资源生成策略 |
-| **Document Agent** | 生成课程讲义文档 |
-| **Mind Map Agent** | 生成知识点思维导图（Mermaid 语法） |
-| **Exercise Agent** | 生成选择题、填空题、简答题、编程题及解析 |
-| **Reading Agent** | 生成拓展阅读材料与文献推荐 |
-| **Coding Practice Agent** | 生成实操案例、项目任务和代码模板 |
-| **Video Script Agent** | 生成教学视频/动画脚本与分镜 |
-| **Safety & Fact Check Agent** | 事实核查、安全过滤、引用校验 |
+**流水线架构（4 阶段）：**
 
-**编排流程（基于 LangGraph）**：
-1. Coordinator Agent 接收学习目标
-2. Profile Agent 读取学生画像
-3. Retrieval Agent 检索相关资料
-4. Teaching Design Agent 设计教学方案
-5. 6 种资源并行生成（asyncio.gather）
-6. Safety & Fact Check Agent 综合审查
-7. Coordinator Agent 汇总结果
+| 阶段 | Agent | 代号 | 职责 |
+|------|-------|------|------|
+| **诊断规划** | 学习导引师向南 | orchestrator | 会话总控，任务拆解与阶段推进 |
+| | 学情诊断师俞知 | profile_analyst | 学情分析，动态问卷生成 |
+| | 教纲设计专家李纲 | path_planner | 个性化学习路径规划 |
+| **资源采集** | 资源采集师蔡丰 | resource_scout | 网络调研（博查API），优先主流知识平台 |
+| **并行生成** | 讲义编写师张义 | crafter_handout | 课程讲义文档生成 |
+| | 导图设计师屠思 | crafter_mindmap | 思维导图生成（Mermaid） |
+| | 习题设计师习真 | crafter_exercise | 练习题生成（6种题型，AI评分主观题） |
+| | 阅读推荐师岳读 | crafter_reading | 拓展阅读推荐（分级：入门/进阶/研究） |
+| | 动画制作师董华 | crafter_animation | 交互动画生成（HTML5自包含） |
+| | 代码实操师戴码 | crafter_code | 编程实操案例与代码模板 |
+| **审核解惑** | 质量审核师简真 | quality_reviewer | L1格式/L2知识/L3逻辑三级质量审查 |
+| | 解惑师霍然 | remedial_guide | 困惑诊断与个性化补救资源生成 |
 
-### 5. 个性化学习路径规划
-- 基于画像和知识点依赖关系动态规划学习路径
-- 分阶段（Stage）递进式学习，每阶段包含完整的资源包
-- 学习路径可视化展示（抽屉式阶段路线图）
-- 支持中断恢复：学习状态自动保存，下次进入无缝衔接
-- 阶段完成自动触发下一阶段资源生成
+**编排流程（基于 LangGraph StateGraph）：**
+1. 俞知生成动态问卷 → 学生作答 → 构建学情画像
+2. 李纲规划学习路径（3-8 个阶段，按知识点递进）
+3. 进入阶段循环：
+   - 蔡丰网络调研（可选）→ 六匠并行生成资源 → 简真质量审查 → 交付学生
+4. 学生完成练习 + 霍然解惑辅助 → 向南推进至下一阶段
+5. 全部阶段完成 → LLM 生成学习评价 + 百分制分数
 
-### 6. AI 对话与智能辅导
-- 基于课程知识库的 RAG 智能问答
-- 流式 SSE 输出，Markdown / HTML 混合渲染
-- 回答强制附带知识库引用来源
-- 支持代码高亮、数学公式（KaTeX）、表格、Mermaid 图表
+### 5. AI 对话（RAG + 联网搜索 + 多模态）
+- 基于课程知识库的 RAG 智能问答，流式 SSE 输出
+- **联网搜索**：用户可开启，自动搜索知乎/B站/CSDN等主流平台，LLM 改写查询+总结结果
+- **图片上传**：支持上传图片发送给多模态模型（自动检测模型兼容性）
+- Markdown / HTML 混合渲染，支持代码高亮、数学公式（KaTeX）、表格、Mermaid 图表
+- 回答附带知识库引用来源 + 联网搜索链接卡片
 - 全局浮动 AI 虚拟形象（Live2D）+ 语音朗读（TTS）
+- 悬浮窗快速问答（选中文本即问 AI）
+
+### 6. 学习路径与评估
+- 基于画像和知识点依赖关系动态规划学习路径
+- 分阶段递进式学习，每阶段包含完整资源包
+- 练习正确率追踪：客观题前端即时评分 + 主观题 AI 评分（LLM）
+- 独立补救资源生成（解惑师霍然诊断 + 个性化辅导）
+- **会话完成后 LLM 自动生成学习评价与百分制分数** + 礼炮庆祝动画
+- 支持中断恢复：学习状态自动保存，下次进入无缝衔接
 
 ### 7. 艾宾浩斯复习系统
-- 基于遗忘曲线的智能复习调度
-- 自动生成复习任务并推送提醒
-- 去重机制避免重复复习
+- 基于遗忘曲线的智能复习调度（第 1/3/7/15/30 天）
+- 做题、查看资源、快问AI 等行为自动触发学习记录
+- 弹窗 + 邮件双通道提醒
 
 ### 8. 仪表盘与分析
 - 今日待办看板
@@ -413,7 +418,8 @@ CnSoftBei/
 │       │   ├── document_page.py            # PDF/PPTX 页面级索引 (DocumentPage/PageKnowledgePoint)
 │       │   ├── conversation.py             # 对话 / 消息 (Conversation/Message)
 │       │   ├── profile.py                  # 学生画像 (StudentProfile)
-│       │   ├── learning.py                 # 学习会话 / 阶段 / 资源 / Agent 任务 (4 张表)
+│       │   ├── learning.py                 # 学习会话 / 阶段 / 资源 / Agent 任务 (4 张表, v1)
+│       │   ├── zhixue.py                   # 智学会话 / 阶段 / 资源 / Agent / 审查 / 问卷 / 搜索 (7 张表, v2)
 │       │   ├── review.py                   # 学习记录 / 艾宾浩斯复习计划 (LearningRecord/ReviewSchedule)
 │       │   ├── todo.py                     # 待办事项 (Todo)
 │       │   ├── config.py                   # 系统配置 (API Key 等运行时配置)
@@ -439,9 +445,9 @@ CnSoftBei/
 │       │   ├── courses.py                  # CRUD /courses (课程/章节/知识点管理)
 │       │   ├── documents.py                # POST /documents/upload (文档上传/解析/知识点提取)
 │       │   ├── retrieval.py                # POST /retrieval (RAG 语义检索)
-│       │   ├── chat.py                     # POST /chat/send (流式 SSE 对话)
+│       │   ├── chat.py                     # AI 对话 (流式 SSE + 图片上传)
 │       │   ├── profile.py                  # POST/GET /profile (学生画像构建与管理)
-│       │   ├── learning.py                 # POST/GET /learning (学习会话/阶段/资源生成)
+│       │   ├── learning.py                 # POST/GET /learning (v1 学习会话/阶段/资源, 已退役)
 │       │   ├── todos.py                    # CRUD /todos (待办事项)
 │       │   ├── tts.py                      # POST /tts/synthesize (语音合成)
 │       │   ├── review.py                   # GET/POST /review (艾宾浩斯复习)
@@ -460,14 +466,38 @@ CnSoftBei/
 │           ├── config_service.py           # 动态配置服务 (DB 缓存 + .env 回退)
 │           ├── kp_extractor.py             # AI 知识点自动提取 (LLM 分批 + 去重)
 │           ├── page_kp_service.py          # 页面级知识点关联服务
-│           ├── chat_service.py             # AI 对话服务 (RAG 上下文 + 流式输出)
+│           ├── chat_service.py             # AI 对话服务 (RAG + 联网搜索 + 多模态图片)
+│           ├── chat_prompts.py             # AI 对话 System Prompt 模板集
+│           ├── web_search.py              # 共享网络搜索 (博查 API)
 │           ├── profile_service.py          # 学生画像服务 (抽取/补全/更新)
+│           ├── review_service.py           # 学习记录与艾宾浩斯复习服务
+│           ├── radar_service.py            # 学习画像雷达图计算
 │           ├── audit_service.py            # 审计日志记录服务
 │           ├── email_service.py            # 邮件验证码发送服务
 │           ├── tts_service.py              # 语音合成服务 (火山引擎 seed-tts-2.0)
-│           └── learning/                   # Phase 3 多智能体学习模块
-│               ├── agent_orchestrator.py   # LangGraph 多智能体编排器 (7 步流水线)
-│               └── resource_generators.py  # 6 种资源并行生成器
+│           ├── llm_utils.py               # LLM 客户端工厂 + JSON 解析等共用工具
+│           ├── learning/                   # v1 AI助学 多智能体学习模块 (已退役)
+│           └── zhixue/                     # v2 AI智学 多智能体学习模块
+│               ├── orchestrator.py         # 向南 Orchestrator (SSE流 + 17步流水线)
+│               ├── graph.py               # LangGraph StateGraph 定义
+│               ├── state.py               # ZhiXueState 数据结构
+│               ├── session_service.py      # 会话 CRUD 服务
+│               ├── prompts.py             # 12 个 Agent System Prompt + 评价 Prompt
+│               ├── scoring.py             # 主观题 AI 评分
+│               ├── edges.py               # Graph 条件边逻辑
+│               ├── resource_generators.py  # 6 种资源并行生成器
+│               ├── utils.py               # 共用工具函数
+│               ├── registry/              # Agent 注册表 (单例 + 依赖注入)
+│               │   ├── registry.py
+│               │   └── models.py
+│               └── agents/                # 各 Agent 实现
+│                   ├── base.py            # Agent 基类
+│                   ├── caifeng.py         # 蔡丰 (网络调研)
+│                   ├── huoran.py          # 霍然 (解惑分析)
+│                   ├── jianzhen.py         # 简真 (质量审核)
+│                   ├── ligang.py          # 李纲 (路径规划)
+│                   ├── yuzhi.py           # 俞知 (学情诊断)
+│                   └── crafter_base.py    # 六匠生成器基类
 │
 ├── frontend/                               # 前端项目目录
 │   ├── package.json                        # 依赖与脚本
@@ -509,8 +539,8 @@ CnSoftBei/
 │       │   ├── Profile.tsx                 # 画像构建对话页
 │       │   ├── ProfileCollection.tsx       # 画像维度可视化
 │       │   ├── StudentProfile.tsx          # 学生画像展示与编辑
-│       │   ├── LearningHub.tsx             # 学习中心 (新建/继续课程学习)
-│       │   ├── LearningSession.tsx         # 学习会话页 (资源浏览器 + 路线图抽屉)
+│       │   ├── ZhiXueHub.tsx              # AI智学入口页 (Agent 陈列 + 会话卡片)
+│       │   ├── ZhiXueSession.tsx          # AI智学会话页 (进度+资源+练习+评价)
 │       │   ├── Settings.tsx                # 系统设置页 (API Key 等运行时配置)
 │       │   └── admin/
 │       │       ├── UserManagement.tsx      # 用户管理 (管理员)
@@ -549,9 +579,10 @@ CnSoftBei/
 | 课程 | `/api/v1/courses` | 课程/章节/知识点 CRUD |
 | 文档 | `/api/v1/documents` | 文档上传、解析、知识点提取 |
 | 检索 | `/api/v1/retrieval` | RAG 语义检索 |
-| 对话 | `/api/v1/chat` | AI 对话（流式 SSE） |
+| 对话 | `/api/v1/chat` | AI 对话（流式 SSE + 图片上传 + 联网搜索） |
 | 画像 | `/api/v1/profile` | 学生画像构建与管理 |
-| 学习 | `/api/v1/learning` | 学习会话/阶段/资源生成 |
+| 学习 (v1) | `/api/v1/learning` | AI助学学习会话/阶段/资源生成 (已退役) |
+| 智学 (v2) | `/api/v2/zhixue` | AI智学 12 Agent 协同学习会话 |
 | 待办 | `/api/v1/todos` | 待办事项管理 |
 | 语音 | `/api/v1/tts` | TTS 语音合成 |
 | 复习 | `/api/v1/review` | 艾宾浩斯复习计划 |

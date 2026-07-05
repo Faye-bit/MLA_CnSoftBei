@@ -36,6 +36,17 @@ export function setLive2DEnabled(enabled: boolean) {
   window.dispatchEvent(new CustomEvent('mla-live2d-toggle', { detail: enabled }))
 }
 
+/** 采风 Agent 开关 localStorage key (前端缓存, 与后端 config 同步) */
+const SCOUTING_ENABLED_KEY = 'mla-scouting-enabled'
+
+/** 获取/设置采风 Agent 开关状态 (全局工具函数, 供 ZhiXueHub 等页面读取) */
+export function getScoutingEnabled(): boolean {
+  return localStorage.getItem(SCOUTING_ENABLED_KEY) !== 'false'
+}
+export function setScoutingEnabled(enabled: boolean) {
+  localStorage.setItem(SCOUTING_ENABLED_KEY, String(enabled))
+}
+
 /** 配置项定义 */
 interface ConfigItem {
   key: string
@@ -52,6 +63,9 @@ export default function Settings() {
   /** TTS API 版本切换: 'new' = 新版 API Key / 'old' = 旧版 App ID + Access Token */
   const [ttsApiVersion, setTtsApiVersion] = useState<'new' | 'old'>('new')
 
+  /** 采风 Agent 开关 (独立于 form 的 boolean 状态) */
+  const [scoutingEnabled, setScoutingEnabledState] = useState(true)
+
   /** 加载当前配置 */
   async function loadConfig() {
     setLoading(true)
@@ -59,6 +73,12 @@ export default function Settings() {
       const data = await getApiConfig()
       const formValues: Record<string, string> = {}
       data.items.forEach((item: ConfigItem) => {
+        // scouting_enabled 单独处理为 boolean
+        if (item.key === 'scouting_enabled') {
+          setScoutingEnabledState(item.value !== 'false' && item.value !== 'False')
+          setScoutingEnabled(item.value !== 'false' && item.value !== 'False')
+          return
+        }
         formValues[item.key] = item.value
       })
       form.setFieldsValue(formValues)
@@ -83,7 +103,11 @@ export default function Settings() {
       for (const [key, value] of Object.entries(values)) {
         if (value) payload[key] = value as string
       }
+      // scouting_enabled 作为字符串提交
+      payload['scouting_enabled'] = scoutingEnabled ? 'true' : 'false'
       await updateApiConfig(payload)
+      // 同步 localStorage 缓存
+      setScoutingEnabled(scoutingEnabled)
       message.success('配置已保存，即时生效')
     } catch (err) {
       if ((err as { errorFields?: unknown[] }).errorFields) return
@@ -251,6 +275,72 @@ export default function Settings() {
             tooltip="推荐 gpt-4o-mini (便宜)、gpt-4o (最强)、qwen-vl-plus (中文优化)。注意: DeepSeek 当前不支持图片输入"
           >
             <Input placeholder="gpt-4o-mini" />
+          </Form.Item>
+        </Card>
+
+        {/* 搜索 API 配置 (采风 Agent) */}
+        <Card
+          title={
+            <Space>
+              <Tag color="geekblue">搜索 API</Tag>
+              <span>采风 Agent 搜索配置</span>
+              <Text type="secondary" style={{ fontSize: 12 }}>
+                (资源采集师蔡丰 — 网络调研外部学习资源)
+              </Text>
+            </Space>
+          }
+          style={{ marginBottom: 24 }}
+        >
+          <Alert
+            message={
+              <span>
+                🔍 采风 Agent (资源采集师蔡丰) 在生成学习资源前进行网络搜索,
+                查找考研真题、官方文档、教学视频等外部补充资料。
+                使用{' '}
+                <a href="https://open.bochaai.com/" target="_blank" rel="noopener noreferrer">
+                  博查 Web Search API
+                </a>
+                {' '}(POST + Bearer Token 鉴权), 请前往博查开放平台注册并获取 API Key。
+                留空则自动跳过网络搜索。
+              </span>
+            }
+            type="success"
+            showIcon={false}
+            style={{ marginBottom: 16 }}
+          />
+
+          {/* 采风 Agent 开关 */}
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16, paddingBottom: 16, borderBottom: '1px solid #f0f0f0' }}>
+            <div>
+              <Text strong>启用采风 Agent</Text>
+              <br />
+              <Text type="secondary" style={{ fontSize: 12 }}>
+                开启后, AI智学会在每个阶段调用蔡丰搜索外部学习资源。
+                关闭后所有会话均跳过网络搜索 (已配置的 API Key 不会丢失)。
+              </Text>
+            </div>
+            <Switch
+              checked={scoutingEnabled}
+              onChange={(checked) => {
+                setScoutingEnabledState(checked)
+                setScoutingEnabled(checked)
+              }}
+            />
+          </div>
+
+          <Form.Item
+            name="search_api_base"
+            label="API 地址"
+            tooltip="搜索 API 的服务地址, 需兼容博查 Search API 的 GET 接口格式"
+          >
+            <Input placeholder="https://api.bochaai.com/v1/web-search" />
+          </Form.Item>
+          <Form.Item
+            name="search_api_key"
+            label="API Key"
+            tooltip="搜索 API 的访问密钥"
+          >
+            <Input.Password placeholder="sk-your-search-api-key" />
           </Form.Item>
         </Card>
 

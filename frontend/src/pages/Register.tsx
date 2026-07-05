@@ -59,7 +59,7 @@ export default function Register() {
       await registerApi(values)
       const loginResult = await loginApi({ email: values.email, password: values.password })
       setAuth(loginResult.access_token, loginResult.user)
-      message.success('注册成功! 欢迎使用 MLA 智学引擎')
+      message.success('注册成功! 欢迎使用 MLA 智小学')
       navigate('/', { replace: true })
     } catch (error: unknown) {
       message.error(error instanceof Error ? error.message : '注册失败')
@@ -69,7 +69,7 @@ export default function Register() {
   return (
     <AuthLayout
       title="创建账号"
-      subtitle="加入 MLA 智学引擎，开启个性化学习之旅"
+      subtitle="加入 MLA 智小学，开启个性化学习之旅"
     >
       <Form form={form} onFinish={handleSubmit} size="large" layout="vertical">
 

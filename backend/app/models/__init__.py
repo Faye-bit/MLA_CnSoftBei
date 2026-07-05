@@ -14,6 +14,10 @@ from app.models.audit_log import AuditLog
 from app.models.conversation import Conversation, Message
 from app.models.profile import StudentProfile
 from app.models.learning import LearningSession, LearningStage, GeneratedResource, AgentTask
+from app.models.zhixue import (
+    ZhiXueSession, ZhiXueStage, ZhiXueResource, ZhiXueAgentTask,
+    ZhiXueReview, ZhiXueQuestionnaire, ZhiXueSearchResult,
+)
 from app.models.review import LearningRecord, ReviewSchedule
 from app.models.todo import Todo
 
@@ -38,6 +42,13 @@ __all__ = [
     "LearningStage",
     "GeneratedResource",
     "AgentTask",
+    "ZhiXueSession",
+    "ZhiXueStage",
+    "ZhiXueResource",
+    "ZhiXueAgentTask",
+    "ZhiXueReview",
+    "ZhiXueQuestionnaire",
+    "ZhiXueSearchResult",
     "LearningRecord",
     "ReviewSchedule",
     "Todo",

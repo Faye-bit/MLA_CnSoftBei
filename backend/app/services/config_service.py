@@ -72,6 +72,9 @@ _LABEL_OVERRIDES: dict[str, str] = {
     "tts_access_token": "TTS Access Token (旧版)",
     "tts_voice": "TTS 音色",
     "tts_speed": "TTS 语速",
+    "search_api_base": "搜索 API 地址",
+    "search_api_key": "搜索 API Key",
+    "scouting_enabled": "启用采风 Agent",
 }
 CONFIG_LABELS.update(_LABEL_OVERRIDES)
 

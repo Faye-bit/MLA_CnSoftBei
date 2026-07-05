@@ -134,7 +134,7 @@ export default function AuthLayout({ title, subtitle, children }: AuthLayoutProp
             >
               <img
                 src="/brand/字母标Logo(2-1比例).svg"
-                alt="MLA 智学引擎"
+                alt="MLA 智小学"
                 style={{ width: '100%', height: '100%', objectFit: 'contain' }}
               />
             </div>

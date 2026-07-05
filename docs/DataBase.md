@@ -1,4 +1,4 @@
-# MLA 智学引擎 — 数据库结构文档
+# MLA 智小学 — 数据库结构文档
 
 > 数据库: PostgreSQL | ORM: SQLAlchemy 2.0 异步 | 主键: UUID v4
 
@@ -8,7 +8,7 @@
 
 ```sql
 -- ==========================================
--- MLA 智学引擎 — 完整建表 DDL (PostgreSQL)
+-- MLA 智小学 — 完整建表 DDL (PostgreSQL)
 -- ==========================================
 
 -- 启用 uuid-ossp 扩展 (UUID v4 生成)
@@ -318,6 +318,158 @@ CREATE TABLE agent_tasks (
     completed_at   TIMESTAMPTZ
 );
 CREATE INDEX idx_agent_tasks_session_id ON agent_tasks (session_id);
+
+
+-- ------------------------------------------
+-- 19. learning_records — 学习记录表
+-- ------------------------------------------
+CREATE TABLE learning_records (
+    id               UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id          UUID         NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    course_id        UUID REFERENCES courses(id) ON DELETE SET NULL,
+    knowledge_point_id UUID REFERENCES knowledge_points(id) ON DELETE SET NULL,
+    content_type     VARCHAR(20)  NOT NULL,
+    content_title    VARCHAR(300) NOT NULL,
+    duration_seconds INTEGER,
+    created_at       TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+);
+CREATE INDEX idx_learning_records_user_id ON learning_records (user_id);
+
+
+-- ------------------------------------------
+-- 20. review_schedules — 艾宾浩斯复习计划表
+-- ------------------------------------------
+CREATE TABLE review_schedules (
+    id             UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    record_id      UUID         NOT NULL REFERENCES learning_records(id) ON DELETE CASCADE,
+    user_id        UUID         NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    interval_index INTEGER      NOT NULL DEFAULT 0,
+    review_at      TIMESTAMPTZ  NOT NULL,
+    status         VARCHAR(20)  NOT NULL DEFAULT 'pending',
+    remind_method  VARCHAR(20)  NOT NULL DEFAULT 'popup',
+    reminded       BOOLEAN      NOT NULL DEFAULT FALSE,
+    content_title  VARCHAR(300),
+    content_type   VARCHAR(20),
+    reviewed_at    TIMESTAMPTZ,
+    created_at     TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+);
+CREATE INDEX idx_review_schedules_user_id ON review_schedules (user_id);
+
+
+-- ------------------------------------------
+-- 21-27. AI智学 (v2) 七张表
+-- ------------------------------------------
+
+-- 21. zhixue_sessions — 智学会话表
+CREATE TABLE zhixue_sessions (
+    id                    UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id               UUID        NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    course_id             UUID        NOT NULL REFERENCES courses(id) ON DELETE CASCADE,
+    status                VARCHAR(32) NOT NULL DEFAULT 'idle',
+    learning_path         JSONB,
+    current_stage_index   INTEGER     NOT NULL DEFAULT 0,
+    study_pace            VARCHAR(16),
+    difficulty_adjustment FLOAT       NOT NULL DEFAULT 0.5,
+    scouting_enabled      BOOLEAN     NOT NULL DEFAULT TRUE,
+    selected_materials    JSONB,
+    profile_snapshot      JSONB,
+    checkpoint_thread_id  VARCHAR(64),
+    session_metadata      JSONB,
+    is_favorited          BOOLEAN     NOT NULL DEFAULT FALSE,
+    created_at            TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at            TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX idx_zhixue_sessions_user_id ON zhixue_sessions (user_id);
+CREATE INDEX idx_zhixue_sessions_course_id ON zhixue_sessions (course_id);
+
+-- 22. zhixue_stages — 智学阶段表
+CREATE TABLE zhixue_stages (
+    id                 UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    session_id         UUID         NOT NULL REFERENCES zhixue_sessions(id) ON DELETE CASCADE,
+    title              VARCHAR(128) NOT NULL,
+    description        TEXT,
+    order_index        INTEGER      NOT NULL DEFAULT 0,
+    status             VARCHAR(32)  NOT NULL DEFAULT 'pending',
+    knowledge_point_ids JSONB,
+    remedial_triggered BOOLEAN      NOT NULL DEFAULT FALSE,
+    stage_metadata     JSONB,
+    created_at         TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+    updated_at         TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+);
+CREATE INDEX idx_zhixue_stages_session_id ON zhixue_stages (session_id);
+
+-- 23. zhixue_resources — 智学资源表
+CREATE TABLE zhixue_resources (
+    id                UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    stage_id          UUID         NOT NULL REFERENCES zhixue_stages(id) ON DELETE CASCADE,
+    resource_type     VARCHAR(32)  NOT NULL,
+    title             VARCHAR(256) NOT NULL,
+    description       TEXT,
+    content           TEXT,
+    is_remedial       BOOLEAN      NOT NULL DEFAULT FALSE,
+    order_index       INTEGER      NOT NULL DEFAULT 0,
+    resource_metadata JSONB,
+    created_at        TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+);
+CREATE INDEX idx_zhixue_resources_stage_id ON zhixue_resources (stage_id);
+
+-- 24. zhixue_agent_tasks — 智学智能体任务表
+CREATE TABLE zhixue_agent_tasks (
+    id             UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    session_id     UUID        NOT NULL REFERENCES zhixue_sessions(id) ON DELETE CASCADE,
+    stage_id       UUID REFERENCES zhixue_stages(id) ON DELETE SET NULL,
+    resource_id    UUID REFERENCES zhixue_resources(id) ON DELETE SET NULL,
+    agent_code     VARCHAR(64) NOT NULL,
+    agent_name     VARCHAR(64) NOT NULL,
+    status         VARCHAR(32) NOT NULL DEFAULT 'pending',
+    input_summary  TEXT,
+    output_summary TEXT,
+    latency_ms     INTEGER,
+    token_count    INTEGER,
+    error_message  TEXT,
+    created_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    completed_at   TIMESTAMPTZ
+);
+CREATE INDEX idx_zhixue_agent_tasks_session_id ON zhixue_agent_tasks (session_id);
+
+-- 25. zhixue_reviews — 智学质量审查表
+CREATE TABLE zhixue_reviews (
+    id              UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    session_id      UUID        NOT NULL REFERENCES zhixue_sessions(id) ON DELETE CASCADE,
+    stage_id        UUID        NOT NULL REFERENCES zhixue_stages(id) ON DELETE CASCADE,
+    overall_verdict VARCHAR(32) NOT NULL,
+    retry_count     INTEGER     NOT NULL DEFAULT 0,
+    per_material    JSONB,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX idx_zhixue_reviews_session_id ON zhixue_reviews (session_id);
+
+-- 26. zhixue_questionnaires — 智学问卷表
+CREATE TABLE zhixue_questionnaires (
+    id                 UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    session_id         UUID        NOT NULL REFERENCES zhixue_sessions(id) ON DELETE CASCADE,
+    questionnaire_type VARCHAR(32) NOT NULL DEFAULT 'initial',
+    questions          JSONB,
+    answers            JSONB,
+    skipped            BOOLEAN     NOT NULL DEFAULT FALSE,
+    skip_reason        VARCHAR(32),
+    created_at         TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    submitted_at       TIMESTAMPTZ
+);
+CREATE INDEX idx_zhixue_questionnaires_session_id ON zhixue_questionnaires (session_id);
+
+-- 27. zhixue_search_results — 智学搜索结果缓存表
+CREATE TABLE zhixue_search_results (
+    id            UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    course_id     UUID         NOT NULL REFERENCES courses(id) ON DELETE CASCADE,
+    query         VARCHAR(512) NOT NULL,
+    results       JSONB,
+    search_source VARCHAR(64)  NOT NULL DEFAULT 'bocha',
+    summary       TEXT,
+    expires_at    TIMESTAMPTZ,
+    created_at    TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+);
+CREATE INDEX idx_zhixue_search_results_course_id ON zhixue_search_results (course_id);
 ```
 
 ---
@@ -926,7 +1078,192 @@ Coordinator Agent 规划的每个学习阶段, 包含阶段主题、涵盖的知
 | `fact_check` | 综合审查 | 语法/正确性/安全性全面审查 | 核查通过/未通过 |
 | `summary` | 汇总保存 | 持久化阶段、资源、任务 + 链接注入 | 数据库记录 |
 
+**Agent 流水线 (7 阶段):**
+
+| Agent | 名称 | 职责 | 产出 |
+|-------|------|------|------|
+| `coordinator` | 协调者 | 规划学习路径阶段 (3-6 个) | learning_path JSON |
+| `profile` | 画像分析 | 读取学生画像生成摘要 | 画像自然语言摘要 |
+| `retrieval` | 知识检索 | RAG 检索知识库相关资料 | knowledge_context (top_k=8) |
+| `teaching_design` | 教学设计 | 设计阶段教学方案和资源类型 | 5 种资源规格 |
+| `resource_generation` | 资源生成 | 并行调用 6 个 LLM 生成器 | 6 种学习资源 |
+| `fact_check` | 综合审查 | 语法/正确性/安全性全面审查 | 核查通过/未通过 |
+| `summary` | 汇总保存 | 持久化阶段、资源、任务 + 链接注入 | 数据库记录 |
+
 **懒加载策略:** 首先生成第 1 阶段, 用户完成当前阶段后通过 SSE 触发生成下一阶段。
+
+---
+
+### 2.8 学习记录与复习
+
+#### `learning_records` — 学习记录表
+
+记录用户每次学习行为，触发艾宾浩斯复习计划生成。
+
+| 字段 | 类型 | 约束 | 说明 |
+|------|------|------|------|
+| `id` | UUID | PK | 主键 |
+| `user_id` | UUID | FK→users, CASCADE | 所属用户 |
+| `course_id` | UUID | FK→courses, SET NULL | 关联课程 |
+| `knowledge_point_id` | UUID | FK→knowledge_points, SET NULL | 关联知识点 |
+| `content_type` | String(20) | NOT NULL | 内容类型 (course_view/chapter_view/kp_view/chat/exercise/resource) |
+| `content_title` | String(300) | NOT NULL | 内容标题 |
+| `duration_seconds` | Integer | nullable | 学习时长 (秒) |
+| `created_at` | DateTime | NOT NULL | 记录时间 |
+
+**去重规则:** 同一用户同一天内同一 `(content_type, content_title)` 只保留一条记录。
+
+#### `review_schedules` — 艾宾浩斯复习计划表
+
+| 字段 | 类型 | 约束 | 说明 |
+|------|------|------|------|
+| `id` | UUID | PK | 主键 |
+| `record_id` | UUID | FK→learning_records, CASCADE | 关联学习记录 |
+| `user_id` | UUID | FK→users, CASCADE, INDEX | 所属用户 |
+| `interval_index` | Integer | NOT NULL | 复习间隔序号 (0=第1天, 1=第3天, 2=第7天, 3=第15天, 4=第30天) |
+| `review_at` | DateTime | NOT NULL | 计划复习时间 |
+| `status` | String(20) | NOT NULL | 状态 (pending/completed/skipped) |
+| `remind_method` | String(20) | NOT NULL | 提醒方式 (popup/email/both) |
+| `reminded` | Boolean | NOT NULL | 是否已推送提醒 |
+| `content_title` | String(300) | nullable | 内容标题 |
+| `content_type` | String(20) | nullable | 内容类型 |
+| `reviewed_at` | DateTime | nullable | 实际复习时间 |
+| `created_at` | DateTime | NOT NULL | 创建时间 |
+
+**复习间隔:** 每次学习记录自动生成 5 条复习计划 (第 1/3/7/15/30 天)。
+
+---
+
+### 2.9 AI智学 (v2) — 多智能体协同学习
+
+AI智学 (ZhiXue) 是 AI 助学 (Learning) 的全面升级版，采用 12 个具名 AI Agent 的协同流水线（向南导引、俞知诊断、李纲规划、蔡丰调研、6 匠并行生成、简真审核、霍然解惑）。
+
+#### `zhixue_sessions` — 智学会话表
+
+| 字段 | 类型 | 约束 | 说明 |
+|------|------|------|------|
+| `id` | UUID | PK | 主键 |
+| `user_id` | UUID | FK→users, CASCADE, INDEX | 所属用户 |
+| `course_id` | UUID | FK→courses, CASCADE, INDEX | 关联课程 |
+| `status` | String(32) | NOT NULL | 状态 (idle/questionnaire/planning/generating/reviewing/delivering/completed/interrupted/failed) |
+| `learning_path` | JSONB | nullable | 学习路径阶段列表 `{stages: [{title, description, knowledge_points}]}` |
+| `current_stage_index` | Integer | NOT NULL | 当前阶段序号 (0-based) |
+| `study_pace` | String(16) | nullable | 学习节奏 (steady/moderate/cram) |
+| `difficulty_adjustment` | Float | NOT NULL | 动态难度系数 (0.0~1.0)，基于反馈自动调整 |
+| `scouting_enabled` | Boolean | NOT NULL | 是否启用蔡丰网络调研 |
+| `selected_materials` | JSONB | nullable | 用户选择的资源类型列表 |
+| `profile_snapshot` | JSONB | nullable | 创建会话时的画像快照 |
+| `checkpoint_thread_id` | String(64) | nullable | LangGraph Checkpointer 线程 ID |
+| `session_metadata` | JSONB | nullable | 元数据 (token消耗、evaluation 等) |
+| `is_favorited` | Boolean | NOT NULL | 收藏标记 |
+| `created_at` | DateTime | NOT NULL | 创建时间 |
+| `updated_at` | DateTime | NOT NULL | 更新时间 |
+
+#### `zhixue_stages` — 智学阶段表
+
+| 字段 | 类型 | 约束 | 说明 |
+|------|------|------|------|
+| `id` | UUID | PK | 主键 |
+| `session_id` | UUID | FK→zhixue_sessions, CASCADE, INDEX | 所属会话 |
+| `title` | String(128) | NOT NULL | 阶段标题 |
+| `description` | Text | nullable | 阶段描述 |
+| `order_index` | Integer | NOT NULL | 排序序号 (0-based) |
+| `status` | String(32) | NOT NULL | 状态 (pending/generating/completed/failed) |
+| `knowledge_point_ids` | JSONB | nullable | 涵盖的知识点 ID 数组 |
+| `remedial_triggered` | Boolean | NOT NULL | 是否已触发补救 |
+| `stage_metadata` | JSONB | nullable | 阶段元数据 |
+| `created_at` | DateTime | NOT NULL | 创建时间 |
+| `updated_at` | DateTime | NOT NULL | 更新时间 |
+
+#### `zhixue_resources` — 智学资源表
+
+| 字段 | 类型 | 约束 | 说明 |
+|------|------|------|------|
+| `id` | UUID | PK | 主键 |
+| `stage_id` | UUID | FK→zhixue_stages, CASCADE, INDEX | 所属阶段 |
+| `resource_type` | String(32) | NOT NULL | 资源类型 (handout/mindmap/exercise/reading/animation/coding_practice) |
+| `title` | String(256) | NOT NULL | 资源标题 |
+| `description` | Text | nullable | 资源描述 |
+| `content` | Text | nullable | 资源内容 (Markdown/HTML/JSON) |
+| `is_remedial` | Boolean | NOT NULL | 是否为补救资源 |
+| `order_index` | Integer | NOT NULL | 排序序号 |
+| `resource_metadata` | JSONB | nullable | 元数据 (exercise_progress、蔡丰外部链接等) |
+| `created_at` | DateTime | NOT NULL | 创建时间 |
+
+#### `zhixue_agent_tasks` — 智学智能体任务表
+
+| 字段 | 类型 | 约束 | 说明 |
+|------|------|------|------|
+| `id` | UUID | PK | 主键 |
+| `session_id` | UUID | FK→zhixue_sessions, CASCADE, INDEX | 所属会话 |
+| `stage_id` | UUID | FK→zhixue_stages, SET NULL | 关联阶段 |
+| `resource_id` | UUID | FK→zhixue_resources, SET NULL | 关联资源 |
+| `agent_code` | String(64) | NOT NULL | Agent 代号 (orchestrator/profile_analyst/...) |
+| `agent_name` | String(64) | NOT NULL | Agent 中文名 (学习导引师向南/...) |
+| `status` | String(32) | NOT NULL | 状态 |
+| `input_summary` | Text | nullable | 输入摘要 |
+| `output_summary` | Text | nullable | 输出摘要 |
+| `latency_ms` | Integer | nullable | 耗时 (毫秒) |
+| `token_count` | Integer | nullable | Token 消耗 |
+| `error_message` | Text | nullable | 错误信息 |
+| `created_at` | DateTime | NOT NULL | 创建时间 |
+| `completed_at` | DateTime | nullable | 完成时间 |
+
+**AI智学 12 Agent 定义:**
+
+| 代号 | 中文名 | 职责 |
+|------|--------|------|
+| `orchestrator` | 学习导引师向南 | 会话总控，阶段推进 |
+| `profile_analyst` | 学情诊断师俞知 | 学情分析，问卷生成 |
+| `path_planner` | 教纲设计专家李纲 | 学习路径规划 |
+| `resource_scout` | 资源采集师蔡丰 | 网络调研（博查API） |
+| `crafter_handout` | 讲义编写师张义 | 讲义生成 |
+| `crafter_mindmap` | 导图设计师屠思 | 思维导图生成 |
+| `crafter_exercise` | 习题设计师习真 | 练习题生成 |
+| `crafter_reading` | 阅读推荐师岳读 | 拓展阅读推荐 |
+| `crafter_animation` | 动画制作师董华 | 交互动画生成 |
+| `crafter_code` | 代码实操师戴码 | 编程实操生成 |
+| `quality_reviewer` | 质量审核师简真 | L1/L2/L3 质量审查 |
+| `remedial_guide` | 解惑师霍然 | 困惑分析与补救指导 |
+
+#### `zhixue_reviews` — 智学审查表
+
+| 字段 | 类型 | 约束 | 说明 |
+|------|------|------|------|
+| `id` | UUID | PK | 主键 |
+| `session_id` | UUID | FK→zhixue_sessions, CASCADE, INDEX | 所属会话 |
+| `stage_id` | UUID | FK→zhixue_stages, CASCADE | 关联阶段 |
+| `overall_verdict` | String(32) | NOT NULL | 整体审查结论 (ALL_PASS/RETRY_L1/MAX_RETRY) |
+| `retry_count` | Integer | NOT NULL | 重试次数 |
+| `per_material` | JSONB | nullable | 逐材料审查详情 |
+| `created_at` | DateTime | NOT NULL | 审查时间 |
+
+#### `zhixue_questionnaires` — 智学问卷表
+
+| 字段 | 类型 | 约束 | 说明 |
+|------|------|------|------|
+| `id` | UUID | PK | 主键 |
+| `session_id` | UUID | FK→zhixue_sessions, CASCADE, INDEX | 所属会话 |
+| `questionnaire_type` | String(32) | NOT NULL | 问卷类型 (initial/stage_feedback) |
+| `questions` | JSONB | nullable | 题目列表 |
+| `answers` | JSONB | nullable | 用户作答 |
+| `skipped` | Boolean | NOT NULL | 是否跳过 |
+| `skip_reason` | String(32) | nullable | 跳过原因 |
+| `created_at` | DateTime | NOT NULL | 创建时间 |
+| `submitted_at` | DateTime | nullable | 提交时间 |
+
+#### `zhixue_search_results` — 智学搜索结果缓存表
+
+| 字段 | 类型 | 约束 | 说明 |
+|------|------|------|------|
+| `id` | UUID | PK | 主键 |
+| `course_id` | UUID | FK→courses, CASCADE, INDEX | 关联课程 |
+| `query` | String(512) | NOT NULL | 搜索查询关键词 |
+| `results` | JSONB | nullable | 搜索结果列表 |
+| `search_source` | String(64) | NOT NULL | 搜索源 (bocha) |
+| `summary` | Text | nullable | 结果摘要 |
+| `expires_at` | DateTime | nullable | 缓存过期时间 (7天) |
+| `created_at` | DateTime | NOT NULL | 创建时间 |
 
 ---
 

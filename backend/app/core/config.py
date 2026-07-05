@@ -71,7 +71,7 @@ class Settings(BaseSettings):
     smtp_user: str = "744585348@qq.com"
     smtp_password: str = ""
     smtp_from: str = "744585348@qq.com"
-    smtp_from_name: str = "MLA 智学引擎"
+    smtp_from_name: str = "MLA 智小学"
 
     # ============ CORS 跨域配置 ============
     # 允许的前端来源 (开发环境)
@@ -88,6 +88,16 @@ class Settings(BaseSettings):
     # 公共配置
     tts_voice: str = "zh-female-warm"  # 支持别名 (zh-female-warm) 或原生 ID (zh_female_vv_uranus_bigtts)
     tts_speed: float = 1.0
+
+    # ============ 搜索 API 配置 (采风 Agent 网络调研) ============
+    # 博查 Search API 或其他兼容搜索引擎, 用于采风 Agent 搜索外部学习资源
+    # 留空则采风跳过网络搜索 (优雅降级)
+    search_api_base: str = ""
+    search_api_key: str = ""
+
+    # 是否启用采风 Agent (资源采集师蔡丰)
+    # 用户可在前端设置页关闭, 关闭后所有会话的采风均跳过网络搜索
+    scouting_enabled: bool = True
 
     # ============ 验证码配置 ============
     verification_code_expire_minutes: int = 5

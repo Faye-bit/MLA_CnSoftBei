@@ -5,7 +5,7 @@
  * 图形 Logo 即为完整品牌标识, 不再附加 MLA 文字。
  *
  * 变体:
- * - "vertical"   — Logo (高50px) + "智学引擎" 横向排布 (侧边栏展开)
+ * - "vertical"   — Logo (高50px) + "智小学" 横向排布 (侧边栏展开)
  * - "compact"    — 仅 Logo, 高50px (侧边栏折叠)
  * - "horizontal" — 仅 Logo, 高24px (小空间)
  *
@@ -24,7 +24,7 @@ interface MLALogoProps {
   onClick?: () => void
 }
 
-/** 副标题 "智学引擎" 文字样式 */
+/** 副标题 "智小学" 文字样式 */
 const SUBTITLE_STYLE: React.CSSProperties = {
   fontWeight: 500,
   letterSpacing: '0.08em',
@@ -37,7 +37,7 @@ const SUBTITLE_STYLE: React.CSSProperties = {
 export default function MLALogo({ variant = 'vertical', style, onClick }: MLALogoProps) {
   switch (variant) {
     // ========================================================================
-    // vertical — 侧边栏展开: Logo 50px + "智学引擎" 横向排布
+    // vertical — 侧边栏展开: Logo 50px + "智小学" 横向排布
     // ========================================================================
     case 'vertical':
       return (
@@ -52,9 +52,9 @@ export default function MLALogo({ variant = 'vertical', style, onClick }: MLALog
           }}
           onClick={onClick}
         >
-          <img src={LOGO_SRC} alt="MLA 智学引擎" style={{ height: 50 }} />
+          <img src={LOGO_SRC} alt="MLA 智小学" style={{ height: 50 }} />
           <span style={{ ...SUBTITLE_STYLE, fontSize: 15 }}>
-            智学引擎
+            智小学
           </span>
         </div>
       )
@@ -66,7 +66,7 @@ export default function MLALogo({ variant = 'vertical', style, onClick }: MLALog
       return (
         <img
           src={LOGO_SRC}
-          alt="MLA 智学引擎"
+          alt="MLA 智小学"
           style={{
             height: 50,
             display: 'block',
@@ -85,7 +85,7 @@ export default function MLALogo({ variant = 'vertical', style, onClick }: MLALog
       return (
         <img
           src={LOGO_SRC}
-          alt="MLA 智学引擎"
+          alt="MLA 智小学"
           style={{
             height: 24,
             display: 'block',

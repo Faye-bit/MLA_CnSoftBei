@@ -1,0 +1,116 @@
+graph TD
+    %% ============================================================================
+    %% AI 个性化学习指导平台 — LangGraph StateGraph 完整工作流
+    %% ============================================================================
+
+    %% ── 入口 ──
+    START((🚀 用户发起学习请求))
+    START --> init_session
+
+    %% ── 初始化 ──
+    init_session["📋 init_session<br/>初始化会话<br/>加载课程+KB索引"]
+    init_session --> gen_questionnaire
+
+    %% ── 问卷阶段 ──
+    gen_questionnaire["🎣 generate_initial_questionnaire<br/>「知渔」动态生成定制化问卷<br/>基于课程内容+KB"]
+    gen_questionnaire --> wait_questionnaire
+    wait_questionnaire{{"⏸️ INTERRUPT<br/>等待用户填写问卷"}}
+    wait_questionnaire --> process_questionnaire
+
+    process_questionnaire["🔍 process_questionnaire<br/>「知渔」解析问卷+调用用户画像<br/>融合→LearningProfile"]
+    process_questionnaire --> gen_plan
+
+    %% ── 计划阶段 ──
+    gen_plan["🗺️ generate_learning_plan<br/>「筑径」基于LearningProfile<br/>生成3~6阶段LearningPlan"]
+    gen_plan --> stage_entry
+
+    %% ── 阶段入口 ──
+    stage_entry{"🔀 stage_entry<br/>阶段入口检查"}
+    stage_entry -->|"has_more_stages?"| check_interrupt
+    stage_entry -->|"no_more_stages"| finalize
+
+    check_interrupt{{"⏸️ INTERRUPT CHECK<br/>检查是否中断恢复"}}
+    check_interrupt --> scout
+
+    %% ── 采风调研 ──
+    scout["🔎 scout_resources<br/>「采风」网络调研<br/>→ResearchReport+外部链接"]
+    scout --> craft_fanout
+
+    %% ── 并行匠节点 ──
+    craft_fanout{"🔀 craft_router<br/>按用户选择分发"}
+    craft_fanout -->|"lecture"| craft_lecture
+    craft_fanout -->|"mindmap"| craft_mindmap
+    craft_fanout -->|"exercise"| craft_exercise
+    craft_fanout -->|"reading"| craft_reading
+    craft_fanout -->|"animation"| craft_animation
+    craft_fanout -->|"code"| craft_code
+
+    subgraph parallel["⚡ 并行生成区域（最多6个匠同时工作）"]
+        craft_lecture["📝 craft_lecture<br/>「匠·讲义」<br/>生成讲义"]
+        craft_mindmap["🧠 craft_mindmap<br/>「匠·导图」<br/>生成思维导图"]
+        craft_exercise["✏️ craft_exercise<br/>「匠·习题」<br/>生成练习题"]
+        craft_reading["📚 craft_reading<br/>「匠·阅读」<br/>生成拓展阅读"]
+        craft_animation["🎬 craft_animation<br/>「匠·动画」<br/>生成动画演示"]
+        craft_code["💻 craft_code<br/>「匠·代码」<br/>生成代码实操"]
+    end
+
+    %% ── 同步屏障 ──
+    craft_lecture --> sync_barrier
+    craft_mindmap --> sync_barrier
+    craft_exercise --> sync_barrier
+    craft_reading --> sync_barrier
+    craft_animation --> sync_barrier
+    craft_code --> sync_barrier
+
+    sync_barrier["🧲 SYNC BARRIER<br/>所有材料生成完毕"]
+    sync_barrier --> review
+
+    %% ── 审查阶段 ──
+    review["🛡️ review_materials<br/>「鉴真」四层审查<br/>L1格式/L2知识一致性/L3逻辑/L4跨材料"]
+    review --> review_router
+
+    review_router{"🔀 review_router<br/>审查结果判定"}
+    review_router -->|"ALL_PASS"| deliver
+    review_router -->|"RETRY<br/>retry_count < 2"| craft_fanout
+    review_router -->|"MAX_RETRY<br/>retry_count = 2"| kb_fallback
+
+    kb_fallback["📦 kb_fallback<br/>「鉴真」KB原文替换<br/>+[KB-SOURCE]标记"]
+    kb_fallback --> deliver
+
+    %% ── 交付阶段 ──
+    deliver["📬 deliver_stage<br/>「筑径」汇总交付<br/>→DeliveryPackage"]
+    deliver --> wait_study
+
+    %% ── 用户学习 ──
+    wait_study{{"⏸️ 用户学习阶段内容"}}
+    wait_study --> stage_feedback
+
+    stage_feedback["📊 generate_stage_feedback<br/>「知渔」动态生成阶段反馈问卷<br/>+更新LearningProfile"]
+    stage_feedback --> wait_feedback
+
+    wait_feedback{{"⏸️ INTERRUPT<br/>等待用户填写反馈"}}
+    wait_feedback --> feedback_router
+
+    feedback_router{"🔀 feedback_router<br/>用户反馈判定"}
+    feedback_router -->|"已掌握 → stage+1"| stage_entry
+    feedback_router -->|"基本没掌握<br/>stage_retry < 2"| scout
+    feedback_router -->|"基本没掌握<br/>stage_retry = 2<br/>原样交付+警告"| deliver
+
+    %% ── 完成 ──
+    finalize["🏁 finalize<br/>标记完成<br/>持久化记录"]
+    finalize --> END((✅ 学习完成))
+
+    %% ── 样式 ──
+    classDef startEnd fill:#4CAF50,stroke:#2E7D32,color:#fff
+    classDef interrupt fill:#FF9800,stroke:#E65100,color:#fff
+    classDef agentNode fill:#2196F3,stroke:#0D47A1,color:#fff
+    classDef router fill:#9C27B0,stroke:#4A148C,color:#fff
+    classDef barrier fill:#607D8B,stroke:#263238,color:#fff
+    classDef fallback fill:#F44336,stroke:#B71C1C,color:#fff
+
+    class START,END,finalize startEnd
+    class wait_questionnaire,check_interrupt,wait_study,wait_feedback interrupt
+    class gen_questionnaire,process_questionnaire,gen_plan,scout,deliver,stage_feedback agentNode
+    class stage_entry,craft_fanout,review_router,feedback_router router
+    class sync_barrier barrier
+    class kb_fallback fallback
