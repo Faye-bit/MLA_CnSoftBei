@@ -17,6 +17,7 @@ import MindMapViewer from './MindMapViewer'
 import AnimationViewer from './AnimationViewer'
 import ExerciseViewer from './ExerciseViewer'
 import CodePracticeViewer from './CodePracticeViewer'
+import ReadingViewer from './ReadingViewer'
 import SpeakButton from '../common/SpeakButton'
 import type { GeneratedResourceDetail, ResourceType } from '../../types'
 
@@ -113,11 +114,20 @@ export default function ResourceViewer({
 
     switch (resource_type) {
       case 'handout':
-      case 'reading':
         return (
           <MarkdownRenderer
             content={content}
             onNavigateToResource={onNavigateToResource}
+          />
+        )
+
+      case 'reading':
+        return (
+          <ReadingViewer
+            content={content}
+            researchLinks={
+              (resource.resource_metadata as any)?.research_links || []
+            }
           />
         )
 

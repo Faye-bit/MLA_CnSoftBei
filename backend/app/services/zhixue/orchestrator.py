@@ -1277,6 +1277,21 @@ class XiangNan:
 
         state["materials"] = materials
 
+        # ── 将蔡丰调研链接注入 reading 资源的 metadata ──
+        # 前端 ReadingViewer 通过 resource_metadata.research_links 获取
+        # 蔡丰的网络搜索结果, 渲染为可点击的外部资源跳转链接。
+        if "reading" in materials:
+            research = state.get("research_report", {}) or {}
+            external_links = research.get("external_links", [])
+            if external_links:
+                reading_meta = dict(materials["reading"].get("resource_metadata", {}) or {})
+                reading_meta["research_links"] = external_links
+                materials["reading"]["resource_metadata"] = reading_meta
+                logger.info(
+                    f"蔡丰: 已将 {len(external_links)} 条外部链接"
+                    f"注入 reading 资源 metadata"
+                )
+
         # ── 4e. 简真: 质量审查 (含 L1 重试/降级) ──
         # 审查不通过时会自动重新生成失败材料 (最多 2 轮),
         # 全部耗尽后应用模板化降级内容, 确保学生不会看到损坏的资源
@@ -1411,6 +1426,17 @@ class XiangNan:
         })
 
         # ── 4g. 持久化 ──
+        # 持久化前再次确保蔡丰调研链接已注入 reading 资源
+        # (审查阶段的 L1 重试/降级可能已替换 reading 材料)
+        if "reading" in materials:
+            research = state.get("research_report", {}) or {}
+            external_links = research.get("external_links", [])
+            if external_links:
+                reading_meta = dict(materials["reading"].get("resource_metadata", {}) or {})
+                if not reading_meta.get("research_links"):
+                    reading_meta["research_links"] = external_links
+                    materials["reading"]["resource_metadata"] = reading_meta
+
         try:
             await _persist_stage_resources(
                 db, session, stage, current_stage, materials,
