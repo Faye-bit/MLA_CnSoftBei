@@ -5,11 +5,12 @@
 功能:
 - search_web(): 调用博查 API 执行网络搜索，支持优雅降级
 - detect_source_platform(): 根据 URL 域名识别内容来源平台
-- build_chat_search_query(): 将用户对话问题优化为搜索引擎友好的查询字符串
+- build_chat_search_query(): （异步）使用 LLM 将用户对话问题优化为搜索引擎友好的查询字符串
 """
 
 import httpx
 from app.services.config_service import get_config_value
+from app.services.llm_utils import create_llm_client
 from loguru import logger
 
 
@@ -66,30 +67,69 @@ def detect_source_platform(url: str) -> str:
 
 
 # ============================================================================
-# 搜索查询构建 (Chat 专用)
+# 搜索查询构建 (Chat 专用 — 方案B: LLM 改写查询)
 # ============================================================================
 
-def build_chat_search_query(user_message: str) -> str:
+async def build_chat_search_query(user_message: str) -> str:
     """
-    将用户的对话问题转换为搜索引擎友好的查询字符串
+    使用 LLM 将用户的自然语言问题改写为搜索引擎友好的关键词查询
 
-    策略:
-    - 直接使用用户的原始问题作为搜索查询
-    - 如果问题过长（>100 字符），取前 100 字符
-    - 不附加平台限定词，让搜索引擎自然返回最相关的结果
-      （平台偏好由 LLM 在总结时处理 + 前端展示时用 detect_source_platform 标注）
+    为什么不用原话直接搜:
+    - 用户: "推荐Python入门视频" → 搜索引擎: 返回讨论帖（知乎问答）
+    - LLM改写: "Python入门教程 B站 site:bilibili.com" → 搜索引擎: 返回具体教程
+
+    如果 LLM 改写失败（如 LLM 不可用），降级为截断后的原始问题。
 
     :param user_message: 用户在对话中发送的问题
     :return: 适合搜索引擎的查询字符串
     """
+    try:
+        # 延迟导入避免循环依赖
+        from app.services.chat_prompts import QUERY_REPHRASE_PROMPT
+
+        client = create_llm_client()
+        model = get_config_value("llm_model")
+
+        response = await client.chat.completions.create(
+            model=model,
+            messages=[
+                {"role": "user", "content": QUERY_REPHRASE_PROMPT.format(
+                    user_message=user_message
+                )},
+            ],
+            temperature=0.3,
+            max_tokens=100,
+        )
+        rewritten = (response.choices[0].message.content or "").strip()
+        # 去除 LLM 可能添加的引号
+        rewritten = rewritten.strip('"\'').strip()
+
+        if rewritten and 3 <= len(rewritten) <= 80:
+            logger.info(f"搜索查询改写: '{user_message[:50]}...' → '{rewritten}'")
+            return rewritten
+        else:
+            logger.warning(f"搜索查询改写返回异常结果, 降级为原问题: '{rewritten}'")
+            return _fallback_query(user_message)
+
+    except Exception as e:
+        logger.warning(f"搜索查询改写失败 (已忽略, 降级为原问题): {e}")
+        return _fallback_query(user_message)
+
+
+def _fallback_query(user_message: str) -> str:
+    """
+    降级方案: 直接截断用户原话作为搜索查询
+    当 LLM 查询改写不可用时使用
+
+    :param user_message: 用户原始问题
+    :return: 截断后的查询字符串
+    """
     query = user_message.strip()
     if len(query) > 100:
-        # 截断过长问题，保留完整的句子边界
         truncated = query[:100]
-        # 尝试在最后一个标点处截断
         for sep in ["？", "?", "。", ".", "！", "!", "，", ",", " ", "\n"]:
             last_idx = truncated.rfind(sep)
-            if last_idx > 30:  # 至少保留 30 个字符
+            if last_idx > 30:
                 query = truncated[:last_idx]
                 break
         else:

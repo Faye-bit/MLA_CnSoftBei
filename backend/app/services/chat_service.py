@@ -38,6 +38,7 @@ from app.services.chat_prompts import (
     _format_memories,
     TITLE_GENERATION_PROMPT,
     CONDENSE_EXPLANATION_PROMPT,
+    SUMMARIZE_SEARCH_PROMPT,
 )
 from app.services.web_search import search_web, build_chat_search_query
 
@@ -267,27 +268,16 @@ async def chat_stream(
         logger.info(f"知识库对话 {conversation_id} 未关联课程, 使用通用知识回答")
 
     # 3.5. 联网搜索 (仅在知识库对话模式下, 用户主动开启时执行)
+    # 方案B: LLM改写查询 → 搜索 → LLM总结 → 注入主对话
     web_links: list[dict] = []
     web_search_section: str = ""
     if web_search_enabled and conversation.conversation_type == "chat":
         try:
-            search_query = build_chat_search_query(user_message)
+            # 3.5a. LLM 改写查询词 (自然语言 → 搜索引擎关键词)
+            search_query = await build_chat_search_query(user_message)
             search_results = await search_web(search_query, count=8)
             if search_results:
-                # 构建搜索结果文本注入 System Prompt
-                search_parts = []
-                for i, r in enumerate(search_results):
-                    platform_tag = f"[{r.get('source_platform', '网页')}]"
-                    search_parts.append(
-                        f"[网{i + 1}] {platform_tag} {r.get('title', '')}\n"
-                        f"    URL: {r.get('url', '')}\n"
-                        f"    摘要: {r.get('content', '')[:200]}"
-                    )
-                formatted_results = "\n\n".join(search_parts)
-                web_search_section = WEB_SEARCH_CONTEXT_TEMPLATE.format(
-                    search_results=formatted_results
-                )
-                # 构建前端展示用的链接列表 (保留原始搜索结果的所有字段)
+                # 构建前端展示用的链接列表 (保留原始搜索结果)
                 web_links = [
                     {
                         "url": r.get("url", ""),
@@ -300,7 +290,44 @@ async def chat_stream(
                     for r in search_results
                     if r.get("url") and r.get("title")
                 ]
-                logger.info(f"联网搜索: 获取 {len(web_links)} 条结果, 已注入 System Prompt")
+
+                # 3.5b. LLM 总结搜索结果 (消化原始摘要，提取与用户问题直接相关的信息)
+                raw_results_text = "\n".join(
+                    f"[网{i + 1}] [{r.get('source_platform', '网页')}] {r.get('title', '')}\n"
+                    f"    摘要: {r.get('content', '')[:250]}"
+                    for i, r in enumerate(search_results)
+                )
+                try:
+                    summarize_client = create_llm_client()
+                    summarize_model = get_config_value("llm_model")
+                    summarize_response = await summarize_client.chat.completions.create(
+                        model=summarize_model,
+                        messages=[
+                            {"role": "user", "content": SUMMARIZE_SEARCH_PROMPT.format(
+                                user_message=user_message,
+                                search_results=raw_results_text,
+                            )},
+                        ],
+                        temperature=0.3,
+                        max_tokens=800,
+                    )
+                    search_summary = (summarize_response.choices[0].message.content or "").strip()
+
+                    if search_summary:
+                        web_search_section = WEB_SEARCH_CONTEXT_TEMPLATE.format(
+                            search_results=search_summary
+                        )
+                        logger.info(f"联网搜索: LLM 总结完成, 已注入 System Prompt")
+                    else:
+                        # LLM 总结返回空, 降级为原始结果
+                        web_search_section = _build_raw_search_context(search_results)
+                        logger.warning("联网搜索: LLM 总结返回空, 降级为原始结果")
+                except Exception as e:
+                    # 总结失败, 降级为原始结果
+                    logger.warning(f"联网搜索: LLM 总结失败 (已忽略, 降级为原始结果): {e}")
+                    web_search_section = _build_raw_search_context(search_results)
+
+                logger.info(f"联网搜索: 获取 {len(web_links)} 条结果")
             else:
                 logger.info("联网搜索: 无结果, 使用常规回答")
         except Exception as e:
@@ -468,6 +495,31 @@ async def _postprocess_background(
             )
         except Exception as e:
             logger.warning(f"后台记忆提取失败 (已忽略): {e}")
+
+
+# ============================================================================
+# 联网搜索 — 降级辅助: 原始搜索结果格式化
+# ============================================================================
+
+def _build_raw_search_context(search_results: list[dict]) -> str:
+    """
+    将原始搜索结果直接格式化为 System Prompt 注入文本（降级方案）
+
+    当 LLM 总结步骤失败时使用。直接拼接原始标题+摘要，不做智能筛选。
+
+    :param search_results: search_web() 返回的结果列表
+    :return: 格式化后的搜索结果文本（已套用 WEB_SEARCH_CONTEXT_TEMPLATE）
+    """
+    search_parts = []
+    for i, r in enumerate(search_results):
+        platform_tag = f"[{r.get('source_platform', '网页')}]"
+        search_parts.append(
+            f"[网{i + 1}] {platform_tag} {r.get('title', '')}\n"
+            f"    URL: {r.get('url', '')}\n"
+            f"    摘要: {r.get('content', '')[:200]}"
+        )
+    formatted = "\n\n".join(search_parts)
+    return WEB_SEARCH_CONTEXT_TEMPLATE.format(search_results=formatted)
 
 
 # ============================================================================
