@@ -220,6 +220,7 @@ class XiangNan:
         session_id: str,
         mastery: str,
         remedial_selected: Optional[list[str]] = None,
+        exercise_stats: Optional[dict] = None,
         db: AsyncSession | None = None,
     ) -> dict:
         """
@@ -228,6 +229,10 @@ class XiangNan:
         - mastered / partially_mastered: 推进 current_stage_index
         - not_mastered: 不推进阶段, 设置 remedial 标记
           (后续 stream_session 将在当前阶段生成补救资源)
+        - 会话全部完成时: 调用 LLM 生成学习评价和百分制分数
+
+        :param exercise_stats: 做题统计 {total_questions, correct_count,
+            accuracy_rate, stage_details: [{title, total, correct, rate}]}
         """
         session = await get_zhixue_session(session_id, db)
         if not session:
@@ -276,13 +281,22 @@ class XiangNan:
         stages = (session.learning_path or {}).get("stages", [])
         if session.current_stage_index >= len(stages):
             session.status = "completed"
+            # 调用 LLM 生成学习评价
+            evaluation = await _generate_session_evaluation(
+                session=session, exercise_stats=exercise_stats
+            )
+            session.session_metadata = {
+                **(session.session_metadata or {}),
+                "evaluation": evaluation,
+            }
             await db.commit()
-            logger.info(f"向南: 会话 {session_id} 全部阶段完成")
+            logger.info(f"向南: 会话 {session_id} 全部阶段完成, 已生成学习评价")
             return {
                 "session_id": session_id,
                 "status": "completed",
                 "next_action": "all_done",
                 "current_stage_index": session.current_stage_index,
+                "evaluation": evaluation,
             }
 
         session.status = "generating"
@@ -1905,6 +1919,188 @@ async def _persist_stage_resources(
             resource_metadata=material.get("resource_metadata", {}),
         )
         db.add(resource)
+
+
+# ============================================================================
+# 会话完成 — LLM 学习评价
+# ============================================================================
+
+async def _generate_session_evaluation(
+    session,
+    exercise_stats: Optional[dict] = None,
+) -> Optional[dict]:
+    """
+    会话全部阶段完成后，调用 LLM 生成学习评价和百分制分数
+
+    优先使用前端传来的 exercise_stats，若没有则从 DB 中的资源数据自行计算。
+
+    :param session: ZhiXueSession ORM 实例
+    :param exercise_stats: 前端提交的做题统计 (可选)
+    :return: 评价 dict {score, title, summary, strengths, suggestions} 或 None
+    """
+    try:
+        from app.services.config_service import get_config_value
+        from app.services.llm_utils import create_llm_client, parse_json_output
+        from app.services.zhixue.prompts import SESSION_EVALUATION_PROMPT
+        from app.models.course import Course
+        from app.models.zhixue import ZhiXueStage, ZhiXueResource
+        from sqlalchemy import select
+
+        client = create_llm_client()
+        model = get_config_value("llm_model")
+
+        # 课程名称
+        course_name = "未命名课程"
+        if hasattr(session, "course") and session.course:
+            course_name = session.course.name
+        elif session.course_id:
+            course_name = str(session.course_id)[:8] + "..."
+
+        # 学习路径阶段数
+        stages = (session.learning_path or {}).get("stages", [])
+        total_stages = len(stages)
+
+        # 做题统计 — 从前端数据或自行计算
+        stats = exercise_stats or {}
+        total_questions = stats.get("total_questions", 0)
+        correct_count = stats.get("correct_count", 0)
+        stage_details_list = stats.get("stage_details", [])
+
+        # 如果前端未传评测数据，尝试从 DB 中聚合
+        if not total_questions and not stage_details_list:
+            db = None
+            # 尝试从 session 的 AsyncSession 获取 (如果存在)
+            from sqlalchemy.orm import object_session
+            db = object_session(session)
+            if db:
+                # 查询所有阶段
+                stage_query = await db.execute(
+                    select(ZhiXueStage).where(
+                        ZhiXueStage.session_id == session.id
+                    ).order_by(ZhiXueStage.order_index)
+                )
+                db_stages = stage_query.scalars().all()
+
+                total_q = 0
+                correct_q = 0
+                computed_stage_details = []
+
+                for st in db_stages:
+                    res_query = await db.execute(
+                        select(ZhiXueResource).where(
+                            ZhiXueResource.stage_id == st.id,
+                            ZhiXueResource.resource_type == "exercise",
+                        )
+                    )
+                    exercise_resources = res_query.scalars().all()
+
+                    stage_total = 0
+                    stage_correct = 0
+
+                    for res in exercise_resources:
+                        meta = res.resource_metadata or {}
+                        progress = meta.get("exercise_progress", {})
+                        if isinstance(progress, str):
+                            import json
+                            try:
+                                progress = json.loads(progress)
+                            except (json.JSONDecodeError, TypeError):
+                                continue
+
+                        if not isinstance(progress, dict):
+                            continue
+
+                        submitted = progress.get("submitted", {}) or {}
+                        scores = progress.get("scores", {}) or {}
+
+                        # 统计客观题正确数 (submitted 中为 true 的)
+                        for qid, is_submitted in (submitted.items() if isinstance(submitted, dict) else []):
+                            if isinstance(is_submitted, bool):
+                                stage_total += 1
+                                if is_submitted:
+                                    stage_correct += 1
+
+                        # 统计主观题分数 (score >= 6 视为正确)
+                        for qid, s_data in (scores.items() if isinstance(scores, dict) else []):
+                            if isinstance(s_data, dict) and s_data.get("score", 0) >= 6:
+                                stage_correct += 1
+                                stage_total += 1
+                            elif isinstance(s_data, dict):
+                                stage_total += 1
+
+                    if stage_total > 0:
+                        stage_rate = round(stage_correct / stage_total * 100)
+                        computed_stage_details.append({
+                            "title": st.title or f"阶段{st.order_index + 1}",
+                            "total": stage_total,
+                            "correct": stage_correct,
+                            "rate": stage_rate,
+                        })
+                        total_q += stage_total
+                        correct_q += stage_correct
+
+                total_questions = total_q
+                correct_count = correct_q
+                stage_details_list = computed_stage_details
+
+        # 计算正确率
+        accuracy_rate = (
+            round(correct_count / total_questions * 100)
+            if total_questions > 0 else 0
+        )
+
+        # 各阶段详情文本
+        if stage_details_list:
+            stage_lines = []
+            for i, sd in enumerate(stage_details_list):
+                stage_lines.append(
+                    f"  阶段{i + 1}「{sd.get('title', '未知')}」: "
+                    f"{sd.get('correct', 0)}/{sd.get('total', 0)} 正确 "
+                    f"(正确率 {sd.get('rate', 0)}%)"
+                )
+            stage_details_text = "\n".join(stage_lines)
+        else:
+            stage_details_text = "  (无详细阶段做题数据)"
+
+        # 资源类型
+        selected_materials = ", ".join(session.selected_materials or []) or "未指定"
+
+        prompt = SESSION_EVALUATION_PROMPT.format(
+            course_name=course_name,
+            total_stages=total_stages,
+            selected_materials=selected_materials,
+            total_questions=total_questions,
+            correct_count=correct_count,
+            accuracy_rate=accuracy_rate,
+            stage_details=stage_details_text,
+        )
+
+        response = await client.chat.completions.create(
+            model=model,
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.5,
+            max_tokens=600,
+        )
+        raw = response.choices[0].message.content or ""
+        evaluation = parse_json_output(raw)
+
+        logger.info(
+            f"会话评价: session={session.id}, "
+            f"score={evaluation.get('score', 'N/A')}, "
+            f"title='{evaluation.get('title', '')}'"
+        )
+        return evaluation
+
+    except Exception as e:
+        logger.warning(f"会话评价生成失败 (已忽略): {e}")
+        # 降级: 返回一个默认评价
+        return {
+            "score": None,
+            "title": "恭喜完成学习！",
+            "summary": "你已经完成了本课程的全部学习阶段，这是一个了不起的成就。继续加油，保持学习的热情！",
+            "strengths": ["完成了全部学习阶段"],
+            "suggestions": ["可以针对薄弱环节进行复习"],
+        }
 
 
 # ============================================================================

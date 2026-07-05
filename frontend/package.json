@@ -14,6 +14,8 @@
     "@tailwindcss/vite": "^4.3.0",
     "antd": "^6.4.3",
     "axios": "^1.16.1",
+    "canvas-confetti": "^1.9.4",
+    "framer-motion": "^12.42.2",
     "l2d-widget": "^0.1.0",
     "markmap-lib": "^0.18.11",
     "markmap-view": "^0.18.11",

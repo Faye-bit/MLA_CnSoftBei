@@ -247,6 +247,7 @@ async def submit_feedback(
     session_id: str,
     mastery: str = Body(..., description="mastered / partially_mastered / not_mastered"),
     remedial_selected: Optional[list[str]] = Body(default=None, description="补救资源勾选"),
+    exercise_stats: Optional[dict] = Body(default=None, description="做题统计 {total_questions, correct_count, accuracy_rate, stage_details}"),
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
     xiangnan: XiangNan = Depends(_get_xiangnan),
@@ -257,14 +258,16 @@ async def submit_feedback(
     流程:
       1. 更新 difficulty_adjustment
       2. current_stage_index += 1
-      3. 返回新状态
+      3. 全部阶段完成时: LLM 生成学习评价 + 百分制分数
+      4. 返回新状态 (含 evaluation)
 
-    返回: {session_id, status, next_action, current_stage, total_stages}
+    返回: {session_id, status, next_action, current_stage, total_stages, evaluation?}
     """
     result = await xiangnan.handle_feedback(
         session_id=session_id,
         mastery=mastery,
         remedial_selected=remedial_selected,
+        exercise_stats=exercise_stats,
         db=db,
     )
 
