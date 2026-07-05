@@ -22,7 +22,7 @@ const VISION_MODEL_KEYWORDS = [
   'gpt-4o', 'gpt-4-turbo', 'gpt-4-vision',
   'claude-3', 'claude-4', 'claude-3.5', 'claude-3-5',
   'gemini', 'vision', 'vl', 'multimodal', 'qvq',
-  'qwen-vl', 'doubao-vision', 'yi-vision', 'glm-4v',
+  'qwen-vl', 'doubao', 'seed', 'yi-vision', 'glm-4v',
 ]
 
 function isVisionModel(modelName: string): boolean {

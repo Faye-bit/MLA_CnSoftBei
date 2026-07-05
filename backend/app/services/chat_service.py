@@ -245,6 +245,8 @@ async def chat_stream(
             "context_text": quick_ask_context.get("context_text", "")[:500],
         }
     if image_urls:
+        if user_msg_metadata is None:
+            user_msg_metadata = {}
         user_msg_metadata["image_urls"] = image_urls
     user_msg = Message(
         conversation_id=conversation_id,
@@ -389,23 +391,16 @@ async def chat_stream(
             continue
         llm_messages.append({"role": msg.role, "content": msg.content})
 
-    # 构建当前用户消息 (支持多模态图片)
+    # 构建当前用户消息 (支持多模态图片 — base64 data URI)
     if image_urls:
-        # 将 API 内部相对路径转为绝对 URL (LLM 需要可公网访问的 URL)
         content_parts: list[dict] = [{"type": "text", "text": user_message}]
         for url in image_urls:
-            # 相对路径 → 绝对 HTTP URL
-            if url.startswith("/api/"):
-                from app.core.config import settings
-                # 使用配置中的 frontend_url 或默认 localhost
-                base = getattr(settings, "frontend_url", None) or "http://localhost:8000"
-                full_url = f"{base}{url}"
-            else:
-                full_url = url
-            content_parts.append({
-                "type": "image_url",
-                "image_url": {"url": full_url, "detail": "auto"},
-            })
+            image_data_uri = _url_to_data_uri(url)
+            if image_data_uri:
+                content_parts.append({
+                    "type": "image_url",
+                    "image_url": {"url": image_data_uri, "detail": "auto"},
+                })
         llm_messages.append({"role": "user", "content": content_parts})
         logger.info(f"发送多模态消息: text_len={len(user_message)}, images={len(image_urls)}")
     else:
@@ -524,6 +519,46 @@ async def _postprocess_background(
 # ============================================================================
 # 联网搜索 — 降级辅助: 原始搜索结果格式化
 # ============================================================================
+
+def _url_to_data_uri(url: str) -> str | None:
+    """
+    将上传图片的 API 内部路径转为 base64 data URI
+
+    LLM API 无法访问 localhost 路径, 必须转换为内联 base64。
+    """
+    import os
+    import base64
+    import mimetypes
+
+    try:
+        from app.core.config import settings
+
+        # 解析路径: /api/v1/chat/images/{user_id}/{filename}.ext
+        if url.startswith("/api/v1/chat/images/"):
+            rel = url[len("/api/v1/chat/images/"):]
+            img_path = os.path.join(settings.upload_dir, "chat_images", rel)
+        elif os.path.isfile(url):
+            img_path = url
+        else:
+            logger.warning(f"图片路径无效: {url}")
+            return None
+
+        if not os.path.isfile(img_path):
+            logger.warning(f"图片文件不存在: {img_path}")
+            return None
+
+        with open(img_path, "rb") as f:
+            img_data = base64.b64encode(f.read()).decode("utf-8")
+
+        mime, _ = mimetypes.guess_type(img_path)
+        if not mime or not mime.startswith("image/"):
+            mime = "image/png"
+
+        return f"data:{mime};base64,{img_data}"
+    except Exception as e:
+        logger.warning(f"图片转 data URI 失败: {e}")
+        return None
+
 
 def _build_raw_search_context(search_results: list[dict]) -> str:
     """
