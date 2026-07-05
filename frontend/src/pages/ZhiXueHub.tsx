@@ -158,9 +158,12 @@ export default function ZhiXueHub() {
           </Title>
         </div>
         <Text type="secondary" style={{ marginTop: 4, display: 'block' }}>
-          11 个智能体协同工作, 为你量身定制学习方案
+          12 个智能体协同工作, 为你量身定制学习方案
         </Text>
       </div>
+
+      {/* ── Agent 工作流展示 ── */}
+      <AgentWorkflow />
 
       {/* 卡片网格 */}
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 20 }}>
@@ -349,6 +352,206 @@ export default function ZhiXueHub() {
           </div>
         </div>
       </Modal>
+    </div>
+  )
+}
+
+// ============================================================================
+// Agent 工作流展示 — 12 位 Agent 协同流水线
+// ============================================================================
+
+/** 流水线各阶段的 Agent 定义 */
+interface PipelineAgent {
+  key: string      // 头像文件名 (不含扩展名)
+  name: string     // 中文全名
+  role: string     // 角色简述
+}
+
+const PIPELINE_PHASES: { label: string; agents: PipelineAgent[]; parallel?: boolean }[] = [
+  {
+    label: '诊断规划',
+    agents: [
+      { key: 'XiangNan', name: '向南', role: '学习导引' },
+      { key: 'YuZhi', name: '俞知', role: '学情诊断' },
+      { key: 'LiGang', name: '李纲', role: '教纲设计' },
+    ],
+  },
+  {
+    label: '资源采集',
+    agents: [
+      { key: 'CaiFeng', name: '蔡丰', role: '网络调研' },
+    ],
+  },
+  {
+    label: '并行生成',
+    agents: [
+      { key: 'ZhangYi', name: '张义', role: '讲义编写' },
+      { key: 'TuSi', name: '屠思', role: '导图设计' },
+      { key: 'XiZheng', name: '习真', role: '习题设计' },
+      { key: 'YueDu', name: '岳读', role: '阅读推荐' },
+      { key: 'DongHua', name: '董华', role: '动画制作' },
+      { key: 'DaiMa', name: '戴码', role: '代码实操' },
+    ],
+    parallel: true,
+  },
+  {
+    label: '审核解惑',
+    agents: [
+      { key: 'JianZheng', name: '简真', role: '质量审核' },
+      { key: 'HuoRan', name: '霍然', role: '解惑辅导' },
+    ],
+  },
+]
+
+function AgentWorkflow() {
+  // 扁平化所有 agent 用于连线
+  const allAgents = PIPELINE_PHASES.flatMap(p => p.agents)
+  const isParallelPhase = (idx: number) => {
+    // 找到 idx 对应的 phase
+    let count = 0
+    for (const phase of PIPELINE_PHASES) {
+      if (idx >= count && idx < count + phase.agents.length) {
+        return phase.parallel === true
+      }
+      count += phase.agents.length
+    }
+    return false
+  }
+
+  return (
+    <div style={{
+      marginBottom: 28,
+      padding: '20px 24px',
+      background: '#FAFBFC',
+      borderRadius: 14,
+      border: `1px solid ${gray[200]}`,
+      overflow: 'auto',
+    }}>
+      {/* 阶段标签 + 流水线 */}
+      <div style={{
+        display: 'flex',
+        alignItems: 'flex-start',
+        gap: 0,
+        minWidth: 'fit-content',
+      }}>
+        {/* 各阶段 */}
+        {PIPELINE_PHASES.map((phase, phaseIdx) => (
+          <div key={phase.label} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+            {/* 阶段标签 */}
+            <div style={{
+              fontSize: 11,
+              color: phase.parallel ? '#8B5CF6' : blue[500],
+              fontWeight: 600,
+              marginBottom: 8,
+              background: phase.parallel ? '#F5F3FF' : '#EFF6FF',
+              padding: '2px 10px',
+              borderRadius: 10,
+              whiteSpace: 'nowrap',
+            }}>
+              {phase.label}
+            </div>
+
+            {/* Agent 列表 */}
+            <div style={{
+              display: 'flex',
+              flexDirection: phase.parallel ? 'column' : 'row',
+              alignItems: 'center',
+              gap: phase.parallel ? 6 : 0,
+              background: phase.parallel ? '#F5F3FF' : 'transparent',
+              borderRadius: phase.parallel ? 12 : 0,
+              padding: phase.parallel ? '10px 8px' : 0,
+              border: phase.parallel ? '1px dashed #C4B5FD' : 'none',
+            }}>
+              {phase.agents.map((agent, agentIdx) => (
+                <div key={agent.key} style={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  gap: 4,
+                  width: 68,
+                }}>
+                  {/* 头像 + 连接线 */}
+                  <div style={{ display: 'flex', alignItems: 'center' }}>
+                    {/* 前面连接线 (非平行阶段首项) */}
+                    {!phase.parallel && agentIdx > 0 && (
+                      <div style={{ width: 24, height: 2, background: blue[300], flexShrink: 0 }} />
+                    )}
+                    {/* 阶段间连接线 (每个阶段第一个 agent 前, 非第一个阶段) */}
+                    {agentIdx === 0 && phaseIdx > 0 && !phase.parallel && (
+                      <div style={{ width: 24, height: 2, background: blue[300], flexShrink: 0 }} />
+                    )}
+                    {agentIdx === 0 && phase.parallel && (
+                      <div style={{ width: 24, height: 2, background: '#C4B5FD', flexShrink: 0 }} />
+                    )}
+
+                    {/* 圆形头像 */}
+                    <div style={{
+                      width: 44,
+                      height: 44,
+                      borderRadius: '50%',
+                      border: `2px solid ${phase.parallel ? '#C4B5FD' : blue[300]}`,
+                      background: '#fff',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      overflow: 'hidden',
+                      flexShrink: 0,
+                      boxShadow: '0 1px 4px rgba(0,0,0,0.06)',
+                    }}>
+                      <img
+                        src={`/Agents/${agent.key}.svg`}
+                        alt={agent.name}
+                        style={{ width: 38, height: 38, borderRadius: '50%', objectFit: 'cover' }}
+                        onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }}
+                      />
+                    </div>
+
+                    {/* 后面连接线 (非平行阶段末项) */}
+                    {!phase.parallel && agentIdx < phase.agents.length - 1 && (
+                      <div style={{ width: 24, height: 2, background: blue[300], flexShrink: 0 }} />
+                    )}
+                    {/* 阶段间连接线 (每个阶段最后 agent 后, 非最后阶段) */}
+                    {agentIdx === phase.agents.length - 1 && phaseIdx < PIPELINE_PHASES.length - 1 && !phase.parallel && (
+                      <div style={{ width: 24, height: 2, background: blue[300], flexShrink: 0 }} />
+                    )}
+                    {agentIdx === phase.agents.length - 1 && phase.parallel && phaseIdx < PIPELINE_PHASES.length - 1 && (
+                      <div style={{ width: 24, height: 2, background: '#C4B5FD', flexShrink: 0 }} />
+                    )}
+                  </div>
+
+                  {/* 名字 */}
+                  <Text style={{ fontSize: 12, fontWeight: 600, color: gray[700], lineHeight: 1.2 }}>
+                    {agent.name}
+                  </Text>
+                  {/* 角色 */}
+                  <Text style={{ fontSize: 10, color: gray[500], lineHeight: 1 }}>
+                    {agent.role}
+                  </Text>
+                </div>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* 图例 */}
+      <div style={{
+        display: 'flex', justifyContent: 'center', gap: 20,
+        marginTop: 14, paddingTop: 12,
+        borderTop: `1px solid ${gray[200]}`,
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <div style={{ width: 20, height: 2, background: blue[300] }} />
+          <Text style={{ fontSize: 11, color: gray[500] }}>串行流水线</Text>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <div style={{
+            width: 16, height: 16, borderRadius: 4,
+            border: '1px dashed #C4B5FD', background: '#F5F3FF',
+          }} />
+          <Text style={{ fontSize: 11, color: gray[500] }}>并行生成 (6 匠)</Text>
+        </div>
+      </div>
     </div>
   )
 }
