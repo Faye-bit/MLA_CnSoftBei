@@ -101,9 +101,13 @@ async def scout_resources(
 {results_text}
 
 请筛选出与当前学习阶段最相关的优质资源, 重点关注:
-- 官方文档链接
-- 优质教学视频
-- 相关考试/练习题目"""
+- 知乎、CSDN、博客园、掘金等国内主流知识分享平台的内容 (优先选取)
+- B站、小红书上的优质教程和实操演示
+- 官方文档和权威技术站点
+- 相关考试/练习题目
+
+注意: 优先选取 source_platform 为知乎、CSDN、博客园、掘金、B站、小红书的结果。
+对于质量较低或内容重复的平台 (如泛采集站、SEO页面), 降低优先级或忽略。"""
 
     try:
         response = await client.chat.completions.create(
@@ -155,7 +159,7 @@ async def _search_web(topic: str, kps: list[str]) -> list[dict]:
     """
     调用共享 web_search 模块执行网络搜索
 
-    构建 topic + kps 的联合查询字符串，委托 search_web() 执行实际 API 调用。
+    使用 LLM 改写查询词以获得更好的平台覆盖，然后委托 search_web() 执行。
     如果未配置 API Key, search_web() 会优雅降级返回空列表。
 
     :param topic: 阶段主题
@@ -163,24 +167,39 @@ async def _search_web(topic: str, kps: list[str]) -> list[dict]:
     :return: 搜索结果列表 [{title, url, content, source_platform, ...}]
     """
     # 构建搜索查询: 主题 + 前 3 个知识点
-    query_parts = [topic]
-    for kp in kps[:3]:
-        query_parts.append(kp)
-    query = " ".join(query_parts)
+    raw_query = f"{topic} {' '.join(kps[:3])}"
+
+    # LLM 改写查询词 (融入平台偏好关键词, 如 site:zhihu.com)
+    try:
+        from app.services.chat_prompts import QUERY_REPHRASE_PROMPT
+
+        client = create_llm_client()
+        model = get_config_value("llm_model")
+        response = await client.chat.completions.create(
+            model=model,
+            messages=[
+                {"role": "user", "content": QUERY_REPHRASE_PROMPT.format(
+                    user_message=f"学习资料: {raw_query}"
+                )},
+            ],
+            temperature=0.3,
+            max_tokens=100,
+        )
+        rewritten = (response.choices[0].message.content or "").strip().strip('"\'').strip()
+        if rewritten and 3 <= len(rewritten) <= 80:
+            query = rewritten
+            logger.info(f"蔡丰: 查询改写 '{raw_query[:50]}...' → '{query}'")
+        else:
+            query = raw_query
+    except Exception as e:
+        logger.warning(f"蔡丰: 查询改写失败 (已忽略): {e}")
+        query = raw_query
 
     logger.info(f"蔡丰: 开始搜索 query='{query[:80]}...'")
 
-    # 委托给共享搜索模块，去除 source_platform/favicon/image 等 Chat 专用字段
+    # 委托给共享搜索模块，保留 source_platform 供 LLM 平台优先级筛选
     results = await search_web(query, count=10)
-    # 只保留 LLM 总结需要的字段 (title, url, content)
-    return [
-        {
-            "title": r.get("title", ""),
-            "url": r.get("url", ""),
-            "content": r.get("content", ""),
-        }
-        for r in results
-    ]
+    return results  # 返回完整字段: title, url, content, source_platform, favicon, image
 
 
 # ============================================================================
