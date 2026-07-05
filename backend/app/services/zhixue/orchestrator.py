@@ -899,7 +899,6 @@ class XiangNan:
             )
 
             # 生成补救资源 (并行)
-            import asyncio as _asyncio
             craft_order = [mt for mt in remedial_types if mt in ("handout", "exercise")]
 
             for mt in craft_order:
@@ -1684,6 +1683,7 @@ async def _generate_single(
         非空时, topic 会替换为包含该指令的富文本, 确保生成器针对用户具体困惑进行专项讲解。
     :return: material dict 或 None
     """
+    import asyncio
     import json as _json
     import time as _time
 
