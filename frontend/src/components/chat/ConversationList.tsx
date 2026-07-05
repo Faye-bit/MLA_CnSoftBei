@@ -10,7 +10,7 @@ import { useState } from 'react'
 import { List, Button, Dropdown, Typography } from 'antd'
 import {
   PlusOutlined, MessageOutlined, DeleteOutlined,
-  EditOutlined, FormOutlined, MenuFoldOutlined, MenuUnfoldOutlined,
+  EditOutlined, FormOutlined,
 } from '@ant-design/icons'
 import type { Conversation } from '../../types'
 import { blue, gray, semantic } from '../../styles/tokens'
@@ -25,15 +25,10 @@ interface ConversationListProps {
   onNew: () => void
   onDelete: (id: string) => void
   onRename: (id: string, title: string) => void
-  /** 是否折叠 (进入页面时默认折叠) */
-  collapsed?: boolean
-  /** 折叠切换回调 */
-  onToggleCollapse?: () => void
 }
 
 export default function ConversationList({
   conversations, activeId, loading, onSelect, onNew, onDelete, onRename,
-  collapsed = false, onToggleCollapse,
 }: ConversationListProps) {
   const [renaming, setRenaming] = useState<string | null>(null)
   const [renameValue, setRenameValue] = useState('')
@@ -51,29 +46,6 @@ export default function ConversationList({
     setRenameValue('')
   }
 
-  // ── 折叠态：窄条 + 展开按钮 ──
-  if (collapsed) {
-    return (
-      <div style={{
-        width: 40, minWidth: 40, height: '100%',
-        borderRight: `1px solid ${gray[200]}`,
-        display: 'flex', flexDirection: 'column',
-        alignItems: 'center', paddingTop: 12,
-        background: gray[50],
-      }}>
-        <Button
-          type="text"
-          size="small"
-          icon={<MenuUnfoldOutlined />}
-          onClick={onToggleCollapse}
-          style={{ color: gray[500] }}
-          title="展开对话列表"
-        />
-      </div>
-    )
-  }
-
-  // ── 展开态：完整侧边栏 ──
   return (
     <div style={{
       width: 260, minWidth: 260, height: '100%',
@@ -81,19 +53,11 @@ export default function ConversationList({
       display: 'flex', flexDirection: 'column',
       background: gray[50],
     }}>
-      {/* 新建按钮 + 折叠 */}
-      <div style={{ padding: '12px', display: 'flex', gap: 8 }}>
+      {/* 新建按钮 */}
+      <div style={{ padding: '12px' }}>
         <Button type="primary" icon={<PlusOutlined />} block onClick={onNew}>
           新建对话
         </Button>
-        <Button
-          type="text"
-          size="small"
-          icon={<MenuFoldOutlined />}
-          onClick={onToggleCollapse}
-          style={{ color: gray[500], flexShrink: 0 }}
-          title="折叠对话列表"
-        />
       </div>
 
       {/* 对话列表 */}
