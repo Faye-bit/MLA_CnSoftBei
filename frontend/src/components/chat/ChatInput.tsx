@@ -11,7 +11,7 @@
  */
 
 import { useState, useEffect, useRef } from 'react'
-import { Select, Button, Tooltip } from 'antd'
+import { Select, Button } from 'antd'
 import { SendOutlined, StopOutlined, GlobalOutlined } from '@ant-design/icons'
 import type { Course } from '../../types'
 import { getCourses } from '../../services/api'
@@ -90,42 +90,50 @@ export default function ChatInput({
   return (
     <div style={{ borderTop: `1px solid ${gray[200]}`, padding: '12px 16px', background: '#FFFFFF' }}>
       {conversationType === 'chat' && (
-        <div style={{ marginBottom: 8 }}>
+        <div style={{ marginBottom: 8, display: 'flex', alignItems: 'center', gap: 10 }}>
           <Select
             placeholder="选择关联课程 (可选, 启用知识库检索)"
             value={selectedCourseId}
             onChange={setSelectedCourseId}
-            style={{ width: '100%', maxWidth: 400 }}
+            style={{ flex: 1 }}
             allowClear showSearch
             optionFilterProp="label"
             options={courses.map((c) => ({ label: c.name, value: c.id }))}
             size="small"
           />
+          {/* 联网搜索开关 */}
+          {onWebSearchToggle && (
+            <button
+              onClick={onWebSearchToggle}
+              disabled={streaming}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 6,
+                padding: '3px 12px',
+                fontSize: 13,
+                fontWeight: 600,
+                border: webSearchEnabled
+                  ? `1.5px solid ${blue[400]}`
+                  : `1.5px solid ${gray[300]}`,
+                borderRadius: 20,
+                background: webSearchEnabled ? blue[50] : '#FFFFFF',
+                color: webSearchEnabled ? blue[500] : gray[500],
+                cursor: streaming ? 'not-allowed' : 'pointer',
+                transition: 'all 0.2s',
+                whiteSpace: 'nowrap',
+                lineHeight: '22px',
+                opacity: streaming ? 0.5 : 1,
+              }}
+            >
+              <GlobalOutlined style={{ fontSize: 14 }} />
+              <span>联网搜索</span>
+            </button>
+          )}
         </div>
       )}
 
       <div style={{ display: 'flex', alignItems: 'flex-end', gap: 8 }}>
-        {/* 联网搜索开关 — 仅知识库对话模式显示 */}
-        {conversationType === 'chat' && onWebSearchToggle && (
-          <Tooltip title={webSearchEnabled ? '联网搜索已开启 — 将搜索知乎/B站/小红书等平台' : '开启联网搜索'}>
-            <Button
-              type="text"
-              size="small"
-              icon={<GlobalOutlined />}
-              onClick={onWebSearchToggle}
-              disabled={streaming}
-              style={{
-                color: webSearchEnabled ? blue[500] : gray[400],
-                fontSize: 18,
-                width: 32, height: 32,
-                borderRadius: 8,
-                border: webSearchEnabled ? `1px solid ${blue[300]}` : `1px solid transparent`,
-                background: webSearchEnabled ? '#f0f7ff' : 'transparent',
-                transition: 'all 0.2s',
-              }}
-            />
-          </Tooltip>
-        )}
         <textarea
           ref={textareaRef}
           value={inputValue}

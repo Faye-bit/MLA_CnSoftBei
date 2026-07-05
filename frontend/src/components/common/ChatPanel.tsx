@@ -4,7 +4,7 @@
  * 通过 forwardRef 暴露根 div, 供父组件的 useDraggable 使用
  */
 import { useState, useRef, useEffect, forwardRef } from 'react'
-import { Button, Spin, Typography, Tooltip } from 'antd'
+import { Button, Spin, Typography } from 'antd'
 import {
   CloseOutlined, SendOutlined, StopOutlined,
   PlusOutlined, MinusOutlined, SaveOutlined, BulbOutlined,
@@ -136,7 +136,7 @@ export const ChatPanel = forwardRef<HTMLDivElement, ChatPanelProps>(
             <div style={{ textAlign: 'center', padding: 40 }}><Spin size="small" /></div>
           ) : messages.length === 0 && !streaming ? (
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', gap: 8, opacity: 0.6 }}>
-              <img src="/brand/字母标Logo.svg" alt="MLA 智学引擎" style={{ width: 80, height: 80, opacity: 0.85 }} />
+              <img src="/brand/字母标Logo.svg" alt="MLA 智小学" style={{ width: 80, height: 80, opacity: 0.85 }} />
               <Text type="secondary" style={{ fontSize: 13 }}>基于课程知识库的 AI 助手</Text>
               <Text type="secondary" style={{ fontSize: 12 }}>输入你的问题, 我会在资料中寻找答案</Text>
             </div>
@@ -184,29 +184,38 @@ export const ChatPanel = forwardRef<HTMLDivElement, ChatPanelProps>(
 
         {/* 输入区域 */}
         <div style={{ borderTop: `1px solid ${gray[200]}`, padding: '8px 10px', background: '#FFFFFF', flexShrink: 0 }}>
+          {/* 联网搜索开关 — 输入框上方 */}
+          {onWebSearchToggle && (
+            <div style={{ marginBottom: 6 }}>
+              <button
+                onClick={onWebSearchToggle}
+                disabled={streaming || messagesLoading}
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 5,
+                  padding: '2px 10px',
+                  fontSize: 12,
+                  fontWeight: 600,
+                  border: webSearchEnabled
+                    ? `1.5px solid ${blue[400]}`
+                    : `1.5px solid ${gray[300]}`,
+                  borderRadius: 16,
+                  background: webSearchEnabled ? blue[50] : '#FFFFFF',
+                  color: webSearchEnabled ? blue[500] : gray[500],
+                  cursor: (streaming || messagesLoading) ? 'not-allowed' : 'pointer',
+                  transition: 'all 0.2s',
+                  whiteSpace: 'nowrap',
+                  lineHeight: '20px',
+                  opacity: (streaming || messagesLoading) ? 0.5 : 1,
+                }}
+              >
+                <GlobalOutlined style={{ fontSize: 12 }} />
+                <span>联网搜索</span>
+              </button>
+            </div>
+          )}
           <div style={{ display: 'flex', gap: 6, alignItems: 'flex-end' }}>
-            {/* 联网搜索开关 */}
-            {onWebSearchToggle && (
-              <Tooltip title={webSearchEnabled ? '联网搜索已开启' : '开启联网搜索'}>
-                <Button
-                  type="text"
-                  size="small"
-                  icon={<GlobalOutlined />}
-                  onClick={onWebSearchToggle}
-                  disabled={streaming || messagesLoading}
-                  style={{
-                    color: webSearchEnabled ? blue[500] : gray[400],
-                    fontSize: 18,
-                    width: 32, height: 34,
-                    borderRadius: 8,
-                    border: webSearchEnabled ? `1px solid ${blue[300]}` : `1px solid transparent`,
-                    background: webSearchEnabled ? '#f0f7ff' : 'transparent',
-                    transition: 'all 0.2s',
-                    flexShrink: 0,
-                  }}
-                />
-              </Tooltip>
-            )}
             <textarea
               ref={textareaRef}
               value={inputValue}
