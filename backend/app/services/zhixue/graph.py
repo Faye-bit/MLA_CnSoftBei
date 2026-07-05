@@ -597,6 +597,46 @@ def summarize_output(node_name: str, output: dict) -> str:
     return fn(output)
 
 
+async def resume_graph(
+    graph: "CompiledStateGraph",
+    session_id: str,
+    resume_data: dict,
+    db: "AsyncSession",
+) -> dict:
+    """
+    恢复中断的 LangGraph 图执行
+
+    通过 Command(resume=resume_data) 向 LangGraph 图注入恢复数据,
+    使中断的图从上次中断点 (interrupt_before 标记的节点) 继续执行。
+
+    当前用于以下中断场景:
+      - process_profile: 用户提交问卷后恢复, 继续进入 plan_path
+      - collect_feedback: 用户提交阶段反馈后恢复, 进入下一阶段或补救
+
+    :param graph: 已编译的 LangGraph StateGraph (CompiledStateGraph)
+    :param session_id: 会话 ID (用作 LangGraph thread_id)
+    :param resume_data: 恢复数据 (问卷答案 / 阶段反馈等)
+    :param db: 异步数据库会话, 用于验证会话存在性
+    :return: {"status": str, "result": dict} 成功时; {"error": str} 失败时
+    """
+    from app.services.zhixue.session_service import get_zhixue_session
+
+    # 验证会话存在
+    session = await get_zhixue_session(session_id, db)
+    if not session:
+        return {"error": "会话不存在"}
+
+    try:
+        result = await graph.ainvoke(
+            Command(resume=resume_data),
+            {"configurable": {"thread_id": session_id, "db": db}},
+        )
+        return {"status": result.get("status", "unknown"), "result": result}
+    except Exception as e:
+        logger.error(f"向南: Graph 恢复失败: {e}")
+        return {"error": str(e)}
+
+
 # ============================================================================
 # 辅助函数
 # ============================================================================

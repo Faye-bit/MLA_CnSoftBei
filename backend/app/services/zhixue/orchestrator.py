@@ -15,7 +15,6 @@ import uuid
 from typing import AsyncGenerator, Optional
 
 from sqlalchemy.ext.asyncio import AsyncSession
-from langgraph.types import Command
 
 from app.services.zhixue.registry.registry import (
     AgentRegistry,
@@ -27,7 +26,7 @@ from app.services.zhixue.session_service import (
     get_zhixue_session,
 )
 from app.services.zhixue.state import ZhiXueState
-from app.services.zhixue.graph import build_zhixue_graph
+from app.services.zhixue.graph import build_zhixue_graph, resume_graph
 from app.services.zhixue.utils import build_profile_text
 from app.services.learning.resource_generators import (
     generate_handout,
@@ -1450,26 +1449,14 @@ class XiangNan:
         db: AsyncSession,
     ) -> dict:
         """
-        恢复中断的 Graph 执行
+        恢复中断的 LangGraph 图执行 (委托给 graph.resume_graph)
 
         :param session_id: 会话 ID
         :param resume_data: 恢复数据 (问卷答案 / 阶段反馈)
         :param db: 数据库会话
         :return: 执行结果
         """
-        session = await get_zhixue_session(session_id, db)
-        if not session:
-            return {"error": "会话不存在"}
-
-        try:
-            result = await self.graph.ainvoke(
-                Command(resume=resume_data),
-                {"configurable": {"thread_id": session_id, "db": db}},
-            )
-            return {"status": result.get("status", "unknown"), "result": result}
-        except Exception as e:
-            logger.error(f"向南: Graph 恢复失败: {e}")
-            return {"error": str(e)}
+        return await resume_graph(self.graph, session_id, resume_data, db)
 
 
 # ============================================================================
