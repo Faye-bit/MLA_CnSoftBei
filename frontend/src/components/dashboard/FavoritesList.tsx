@@ -52,9 +52,9 @@ export default function FavoritesList() {
     loadData()
   }, [loadData])
 
-  /** 跳转到学习会话详情 */
+  /** 跳转到学习会话详情 (AI智学) */
   const handleGoToSession = useCallback((sessionId: string) => {
-    navigate(`/learning/${sessionId}`)
+    navigate(`/zhixue/${sessionId}`)
   }, [navigate])
 
   // ---- 加载态 ----
@@ -159,7 +159,7 @@ export default function FavoritesList() {
           <Button
             type="link"
             size="small"
-            onClick={() => navigate('/learning')}
+            onClick={() => navigate('/zhixue')}
             iconPosition="end"
             icon={<RightOutlined />}
           >

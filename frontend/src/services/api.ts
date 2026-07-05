@@ -977,6 +977,14 @@ export async function cancelZhiXueSession(sessionId: string): Promise<void> {
   await apiV2.post(`/zhixue/sessions/${sessionId}/cancel`)
 }
 
+/** v2 切换智学会话收藏状态 */
+export async function toggleZhiXueFavorite(sessionId: string): Promise<{ is_favorited: boolean }> {
+  const res = await apiV2.put<{ session_id: string; is_favorited: boolean }>(
+    `/zhixue/sessions/${sessionId}/favorite`,
+  )
+  return res.data
+}
+
 /** v2 保存练习题作答进度 */
 export async function saveZhiXueExerciseProgress(
   resourceId: string,
