@@ -351,10 +351,12 @@ async def get_favorites(
     current_user: User = Depends(get_current_user),
 ):
     """
-    获取用户已收藏的学习会话列表
+    获取用户已收藏的会话列表 (AI助学 + AI智学)
     按最后更新时间降序排列
     """
-    # 查询已收藏的会话, JOIN courses 获取课程名
+    favorites: list[FavoriteItem] = []
+
+    # ── AI助学 (v1 LearningSession) 收藏 ──
     session_query = await db.execute(
         select(LearningSession, Course.name)
         .outerjoin(Course, LearningSession.course_id == Course.id)
@@ -366,9 +368,7 @@ async def get_favorites(
     )
     rows = session_query.all()
 
-    favorites: list[FavoriteItem] = []
     for session, course_name in rows:
-        # 统计已完成阶段数
         completed_result = await db.execute(
             select(func.count(LearningStage.id))
             .where(
@@ -377,11 +377,7 @@ async def get_favorites(
             )
         )
         completed_stages = completed_result.scalar() or 0
-
-        # 计算总阶段数 (从 learning_path 中读取)
         total_stages = len(session.learning_path.get("stages", []))
-
-        # 计算进度百分比
         progress_percent = int(completed_stages / total_stages * 100) if total_stages > 0 else 0
 
         favorites.append(FavoriteItem(
@@ -395,5 +391,54 @@ async def get_favorites(
             progress_percent=progress_percent,
             updated_at=session.updated_at.isoformat() if session.updated_at else None,
         ))
+
+    # ── AI智学 (v2 ZhiXueSession) 收藏 ──
+    from app.models.zhixue import ZhiXueSession as ZXS
+    zx_query = await db.execute(
+        select(ZXS, Course.name)
+        .outerjoin(Course, ZXS.course_id == Course.id)
+        .where(
+            ZXS.user_id == current_user.id,
+            ZXS.is_favorited == True,
+        )
+        .order_by(ZXS.updated_at.desc())
+    )
+    zx_rows = zx_query.all()
+
+    for zx_session, course_name in zx_rows:
+        plan = zx_session.learning_path or {}
+        total_stages = len(plan.get("stages", []))
+        current_stage = zx_session.current_stage_index or 0
+        # 进度计算: 已完成阶段 / 总阶段数
+        progress_percent = (
+            int(current_stage / total_stages * 100) if total_stages > 0
+            else (100 if zx_session.status == "completed" else 0)
+        )
+
+        # 状态映射: ZhiXue status -> FavoriteItem status
+        zx_status_map = {
+            "completed": "completed",
+            "failed": "paused",
+            "interrupted": "paused",
+        }
+        status = zx_status_map.get(zx_session.status or "", "active")
+
+        favorites.append(FavoriteItem(
+            session_id=str(zx_session.id),
+            course_id=str(zx_session.course_id),
+            course_name=course_name or "未命名课程",
+            status=status,
+            current_stage_index=zx_session.current_stage_index,
+            total_stages=total_stages,
+            completed_stages=current_stage if status == "completed" else 0,
+            progress_percent=progress_percent,
+            updated_at=zx_session.updated_at.isoformat() if zx_session.updated_at else None,
+        ))
+
+    # 按 updated_at 降序重排 (合并两种来源后)
+    favorites.sort(
+        key=lambda f: f.updated_at or "",
+        reverse=True,
+    )
 
     return ApiResponse(data=FavoritesResponse(favorites=favorites))

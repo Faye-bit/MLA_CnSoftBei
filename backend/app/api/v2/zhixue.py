@@ -144,6 +144,7 @@ async def list_sessions(
             "status": s.status,
             "current_stage_index": s.current_stage_index,
             "total_stages": len(plan.get("stages", [])),
+            "is_favorited": getattr(s, "is_favorited", False),
             "created_at": s.created_at.isoformat() if s.created_at else None,
             "updated_at": s.updated_at.isoformat() if s.updated_at else None,
         })
@@ -353,6 +354,42 @@ async def delete_session(
 
     logger.info(f"智学会话已删除: {session_id}")
     return {"message": "已删除", "session_id": session_id}
+
+
+@router.put("/sessions/{session_id}/favorite")
+async def toggle_favorite(
+    session_id: str,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    切换智学会话收藏状态
+
+    无 Body 请求, 自动翻转 is_favorited 布尔值。
+    返回: {session_id, is_favorited}
+    """
+    from app.models.zhixue import ZhiXueSession as ZXS
+
+    session = await db.get(ZXS, uuid.UUID(session_id))
+    if not session:
+        raise HTTPException(status_code=404, detail="会话不存在")
+
+    if session.user_id != user.id:
+        raise HTTPException(status_code=403, detail="无权操作此会话")
+
+    # 翻转收藏状态
+    current = getattr(session, "is_favorited", False)
+    session.is_favorited = not current
+    await db.commit()
+
+    logger.info(
+        f"智学会话收藏状态变更: {session_id} "
+        f"is_favorited={session.is_favorited}"
+    )
+    return {
+        "session_id": session_id,
+        "is_favorited": session.is_favorited,
+    }
 
 
 @router.post("/sessions/{session_id}/cancel")

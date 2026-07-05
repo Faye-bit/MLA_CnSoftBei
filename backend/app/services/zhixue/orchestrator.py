@@ -208,6 +208,7 @@ class XiangNan:
                 session.created_at.isoformat()
                 if session.created_at else None
             ),
+            "is_favorited": getattr(session, "is_favorited", False),
         }
 
     # =========================================================================
