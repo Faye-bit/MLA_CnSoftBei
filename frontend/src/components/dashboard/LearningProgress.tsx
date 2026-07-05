@@ -16,7 +16,7 @@ import {
   ThunderboltOutlined,
   CheckCircleOutlined,
 } from '@ant-design/icons'
-import { getLearningSessions } from '../../services/api'
+import { getZhiXueSessions } from '../../services/api'
 import { useNavigate } from 'react-router-dom'
 import { gray, blue, semantic, radius } from '../../styles/tokens'
 
@@ -68,14 +68,25 @@ export default function LearningProgress() {
   const navigate = useNavigate()
 
   useEffect(() => {
-    getLearningSessions({ page: 1, page_size: 100 })
+    getZhiXueSessions({ limit: 100 })
       .then((res) => {
         const sessions = res.items || []
-        const active = sessions.filter((s) => s.status === 'active').length
+        // ZhiXue status: idle/questionnaire/planning/generating/delivering = active,
+        // completed = done, failed = paused
+        const active = sessions.filter((s) =>
+          !['completed', 'failed'].includes(s.status)
+        ).length
         const completed = sessions.filter((s) => s.status === 'completed').length
         const total = sessions.length
         const avgProgress = total > 0
-          ? Math.round(sessions.reduce((sum, s) => sum + s.progress_percent, 0) / total)
+          ? Math.round(
+              sessions.reduce((sum, s) => {
+                const pct = s.total_stages && s.total_stages > 0
+                  ? Math.round((s.current_stage_index / s.total_stages) * 100)
+                  : s.status === 'completed' ? 100 : 0
+                return sum + pct
+              }, 0) / total
+            )
           : 0
 
         /** 找到最近更新的会话 */
@@ -195,7 +206,7 @@ export default function LearningProgress() {
             cursor: 'pointer',
             textAlign: 'right',
           }}
-          onClick={() => navigate('/learning')}
+          onClick={() => navigate('/zhixue')}
         >
           查看全部学习会话 →
         </div>

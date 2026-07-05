@@ -23,13 +23,6 @@ export function getAvatarUrl(avatarPath: string | null | undefined): string | nu
   return `${API_BASE}${avatarPath}`
 }
 
-/** 获取下载会话资源的 URL */
-export function getDownloadUrl(sessionId: string, stageIndex?: number): string {
-  const base = `${API_BASE}/api/v1/learning/sessions/${sessionId}/download`
-  const params = stageIndex !== undefined ? `?stage_index=${stageIndex}` : ''
-  return base + params
-}
-
 /** 获取 SSE 流式 URL (用于 fetch 非 axios 请求) */
 export function getSSEUrl(path: string): string {
   return `${API_BASE}${path}`

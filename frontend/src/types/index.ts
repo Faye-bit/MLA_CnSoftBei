@@ -427,84 +427,6 @@ export interface ProfileVersion {
   summary: string | null
 }
 
-// ==================== Phase 3: AI 助学 (学习会话) ====================
-
-/** 学习会话 */
-export interface LearningSession {
-  id: string
-  user_id: string
-  course_id: string
-  status: 'active' | 'completed' | 'paused'
-  learning_path: LearningPath
-  current_stage_index: number
-  profile_snapshot: Record<string, unknown>
-  session_metadata: Record<string, unknown>
-  is_favorited: boolean
-  created_at: string | null
-  updated_at: string | null
-}
-
-/** 学习会话列表项 */
-export interface LearningSessionListItem {
-  id: string
-  course_id: string
-  course_name: string | null
-  status: string
-  learning_path: LearningPath
-  current_stage_index: number
-  progress_percent: number
-  total_stages: number
-  completed_stages: number
-  is_favorited: boolean
-  created_at: string | null
-  updated_at: string | null
-}
-
-/** 收藏切换响应 */
-export interface FavoriteToggleResponse {
-  is_favorited: boolean
-}
-
-/** 学习会话详情 */
-export interface LearningSessionDetail extends LearningSession {
-  course_name: string | null
-  stages: LearningStageDetail[]
-}
-
-/** 学习路径 */
-export interface LearningPath {
-  stages: LearningPathStage[]
-}
-
-/** 学习路径中的阶段 */
-export interface LearningPathStage {
-  title: string
-  description: string
-  knowledge_points: string[]
-  order: number
-  status?: 'pending' | 'active' | 'completed'
-}
-
-/** 学习阶段 */
-export interface LearningStage {
-  id: string
-  session_id: string
-  title: string
-  description: string | null
-  order_index: number
-  status: 'pending' | 'generating' | 'completed' | 'failed'
-  knowledge_point_ids: string[]
-  stage_metadata: Record<string, unknown>
-  created_at: string | null
-  updated_at: string | null
-}
-
-/** 学习阶段详情 (含资源) */
-export interface LearningStageDetail extends LearningStage {
-  resources: GeneratedResource[]
-}
-
-/** 生成资源 */
 export interface GeneratedResource {
   id: string
   stage_id: string
@@ -525,83 +447,6 @@ export interface GeneratedResourceDetail extends GeneratedResource {
 export type ResourceType = 'handout' | 'mindmap' | 'exercise' | 'reading' | 'coding_practice' | 'video_script'
 
 
-// ==================== SSE 事件类型 ====================
-
-/** SSE 事件基类 */
-export interface SSEEvent {
-  type: string
-}
-
-/** 会话初始化 */
-export interface SessionInitEvent extends SSEEvent {
-  session_id: string
-  course_name: string
-}
-
-/** 阶段开始 */
-export interface StageStartEvent extends SSEEvent {
-  stage_index: number
-  stage_title: string
-  total_stages: number
-}
-
-/** Agent 开始 */
-export interface AgentStartEvent extends SSEEvent {
-  agent: string
-  message: string
-}
-
-/** Agent 进度 */
-export interface AgentProgressEvent extends SSEEvent {
-  agent: string
-  message: string
-}
-
-/** Agent 完成 */
-export interface AgentDoneEvent extends SSEEvent {
-  agent: string
-  result_summary: string | null
-}
-
-/** 资源就绪 */
-export interface ResourceReadyEvent extends SSEEvent {
-  resource_id?: string
-  resource_type: string
-  title: string
-  stage_index?: number
-}
-
-/** 阶段完成 */
-export interface StageCompleteEvent extends SSEEvent {
-  stage_index: number
-  resources: GeneratedResource[]
-}
-
-/** 路径更新 */
-export interface PathUpdateEvent extends SSEEvent {
-  learning_path: LearningPath
-}
-
-/** 会话完成 */
-export interface SessionCompleteEvent extends SSEEvent {
-  session_id: string
-  message: string
-}
-
-/** SSE 错误 */
-export interface SSEErrorEvent extends SSEEvent {
-  message: string
-  agent?: string
-}
-
-/** Agent 状态 */
-export interface AgentStatus {
-  name: string
-  displayName: string
-  status: 'pending' | 'running' | 'completed' | 'failed'
-  message: string
-  resultSummary: string | null
-}
 
 /** 练习题 JSON 结构 */
 export interface ExerciseSet {
@@ -722,4 +567,124 @@ export interface TodoCreate {
 export interface TodoUpdate {
   title?: string
   is_completed?: boolean
+}
+
+// ============================================================================
+// AI智学 (v2) 类型定义
+// ============================================================================
+
+/** 学习节奏 */
+export type StudyPace = 'steady' | 'moderate' | 'cram'
+
+/** 智学会话状态 */
+export type ZhiXueSessionStatus =
+  | 'idle' | 'questionnaire' | 'planning' | 'generating'
+  | 'reviewing' | 'delivering' | 'completed' | 'interrupted' | 'failed'
+
+/** 掌握程度 */
+export type MasteryLevel = 'mastered' | 'partially_mastered' | 'not_mastered'
+
+/** 审查判定 */
+export type ReviewVerdict = 'PASS' | 'FORMAT_FAIL' | 'KNOWLEDGE_MISMATCH' | 'LOGIC_FAIL'
+
+/** 整体审查结果 */
+export type OverallVerdict = 'ALL_PASS' | 'RETRY_L1' | 'MAX_RETRY'
+
+/** 智学问卷题目 */
+export interface ZhiXueQuestion {
+  question_id: string
+  question_type: 'single_choice' | 'multi_choice' | 'open_ended'
+  category: string
+  text: string
+  description?: string
+  options: string[]
+  required: boolean
+}
+
+/** 智学问卷 */
+export interface ZhiXueQuestionnaire {
+  questionnaire_id: string
+  session_id: string
+  title: string
+  description: string
+  questions: ZhiXueQuestion[]
+  timeout_seconds: number
+}
+
+/** 问卷答案 */
+export interface ZhiXueQuestionAnswer {
+  question_id: string
+  selected_options: string[]
+  open_text?: string
+}
+
+/** 问卷提交 */
+export interface ZhiXueQuestionnaireResponse {
+  questionnaire_id: string
+  answers: ZhiXueQuestionAnswer[]
+}
+
+/** 阶段反馈 */
+export interface ZhiXueStageFeedback {
+  mastery: MasteryLevel
+  self_assessment?: string
+}
+
+/** 补救资源请求 */
+export interface ZhiXueRemedialRequest {
+  selected: ('handout' | 'exercise')[]
+}
+
+/** 智学 SSE 事件类型 (扩展现有 v1 类型) */
+export type ZhiXueSSEEventType =
+  | 'session_init' | 'stage_start' | 'agent_start' | 'agent_progress'
+  | 'agent_done' | 'resource_ready' | 'path_update' | 'stage_complete'
+  | 'session_complete' | 'error' | 'questionnaire_ready' | 'questionnaire_skipped'
+  | 'review_progress' | 'review_result' | 'craft_retry' | 'craft_failed'
+  | 'remedial_ready' | 'feedback_ready' | 'interrupted' | 'resumed'
+  | 'diagnosis_ready'
+
+/** 智学 SSE 事件 */
+export interface ZhiXueSSEEvent {
+  type: ZhiXueSSEEventType
+  [key: string]: unknown
+}
+
+/** 独立补救资源请求 (与阶段反馈解耦) */
+export interface ZhiXueIndependentRemedialRequest {
+  /** 学生用自然语言描述的困惑 */
+  confusion_text: string
+  /** 需要的补救资源类型 */
+  resource_types: string[]
+}
+
+// ============================================================================
+// AI智学 — 生成进度面板 Agent 卡片
+// ============================================================================
+
+/** Agent 卡片在重设计后的进度面板中的工作流状态 */
+export type AgentCardState = 'active' | 'waiting' | 'delivered' | 'idle'
+
+/** 队列排序优先级: 活跃 > 等待 > 交付 (闲置不进入队列) */
+export const AGENT_PRIORITY: Record<AgentCardState, number> = {
+  active: 0,
+  waiting: 1,
+  delivered: 2,
+  idle: 3,
+}
+
+/** 队列中展示的单张 Agent 卡片 */
+export interface AgentCard {
+  /** framer-motion AnimatePresence 的唯一 key (Agent 全名) */
+  id: string
+  /** 显示名称, 如 "学习导引师向南" */
+  name: string
+  /** emoji 图标 */
+  icon: string
+  /** 当前工作流状态 */
+  state: AgentCardState
+  /** 动态状态消息, 如 "等待俞知交付诊断报告..." */
+  message: string
+  /** Agent 完成后的结果摘要 (仅在 delivered 状态有值) */
+  resultSummary: string | null
 }

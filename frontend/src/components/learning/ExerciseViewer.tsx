@@ -21,7 +21,6 @@ import {
   ArrowLeftOutlined, ArrowRightOutlined,
   BulbOutlined, LoadingOutlined, StarFilled,
 } from '@ant-design/icons'
-import { saveExerciseProgress, scoreExerciseAnswer } from '../../services/api'
 import { useQuickAskStore } from '../../store/quickAsk'
 import { useAppStore } from '../../store'
 import type { ExerciseSet, ExerciseQuestion } from '../../types'
@@ -41,9 +40,28 @@ interface ExerciseViewerProps {
   resourceMetadata: Record<string, unknown>  // 资源元数据, 包含历史进度
   /** 只读模式: 展示历史作答, 不可交互 (用于雷达图追踪卡片) */
   readOnly?: boolean
+  /** v2 覆盖: 保存练习进度 (不传则使用默认 v1 API) */
+  onSaveProgress?: (resourceId: string, progress: {
+    answers: Record<string, number | number[] | string>
+    submitted: Record<string, boolean>
+    current_index: number
+    scores?: Record<string, { score: number; feedback: string }>
+  }) => Promise<void>
+  /** v2 覆盖: AI 评分主观题 (不传则使用默认 v1 API) */
+  onScoreAnswer?: (resourceId: string, request: {
+    question_id: string
+    question_type: string
+    question_text: string
+    user_answer: string
+    reference_answer: string
+    explanation?: string
+  }) => Promise<{ question_id: string; score: number; feedback: string }>
 }
 
-export default function ExerciseViewer({ content, resourceId, resourceMetadata, readOnly = false }: ExerciseViewerProps) {
+export default function ExerciseViewer({
+  content, resourceId, resourceMetadata, readOnly = false,
+  onSaveProgress, onScoreAnswer,
+}: ExerciseViewerProps) {
   // ── 快问AI 触发器 ──
   const triggerQuickAsk = useQuickAskStore((s) => s.trigger)
   // ── 从 resource_metadata 中恢复历史作答进度 ──
@@ -114,7 +132,8 @@ export default function ExerciseViewer({ content, resourceId, resourceMetadata, 
       if (Object.keys(latestAnswers).length === 0 && Object.keys(latestSubmitted).length === 0) return
 
       // 使用 sendBeacon 风格的同步保存 — 不依赖组件生命周期
-      saveExerciseProgress(resourceId, {
+      const _save = onSaveProgress
+      _save(resourceId, {
         answers: latestAnswers,
         submitted: latestSubmitted,
         current_index: latestIndex,
@@ -154,7 +173,8 @@ export default function ExerciseViewer({ content, resourceId, resourceMetadata, 
     if (initialLoadRef.current) return
 
     savingRef.current = true
-    saveExerciseProgress(resourceId, {
+    const saveFn = onSaveProgress
+    saveFn(resourceId, {
       answers,
       submitted: subm,
       current_index: idx,
@@ -255,7 +275,8 @@ export default function ExerciseViewer({ content, resourceId, resourceMetadata, 
         : JSON.stringify(q.answer)
       const userAns = (userAnswers[q.id] as string) || ''
 
-      const result = await scoreExerciseAnswer(resourceId, {
+      const scoreFn = onScoreAnswer
+      const result = await scoreFn(resourceId, {
         question_id: q.id,
         question_type: q.type,
         question_text: q.question,
@@ -267,7 +288,8 @@ export default function ExerciseViewer({ content, resourceId, resourceMetadata, 
       setScores(prev => {
         const updated = { ...prev, [q.id]: { score: result.score, feedback: result.feedback } }
         // 保存 scores 到进度
-        saveExerciseProgress(resourceId, {
+        const _saveFn = onSaveProgress
+        _saveFn(resourceId, {
           answers: answersRef.current,
           submitted: submittedRef.current,
           current_index: currentIndexRef.current,

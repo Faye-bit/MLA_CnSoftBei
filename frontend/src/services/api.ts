@@ -5,7 +5,7 @@
 
 import axios, { AxiosError } from 'axios'
 import { useAuthStore } from '../store'
-import { API_BASE, getApiBaseUrl, getPageImageUrl, getAvatarUrl, getDownloadUrl } from '../utils/urls'
+import { API_BASE, getApiBaseUrl, getPageImageUrl, getAvatarUrl } from '../utils/urls'
 import type {
   ApiResponse,
   PaginatedResponse,
@@ -39,13 +39,8 @@ import type {
   StudentProfile,
   ProfileUpdateRequest,
   ProfileVersion,
-  // Phase 3: AI 助学
-  LearningSession, LearningSessionListItem, LearningSessionDetail,
-  LearningStageDetail, GeneratedResourceDetail,
-  SessionInitEvent, StageStartEvent, AgentStartEvent, AgentProgressEvent,
-  AgentDoneEvent, ResourceReadyEvent, PathUpdateEvent,
-  StageCompleteEvent, SessionCompleteEvent, SSEErrorEvent,
-  FavoriteToggleResponse,
+  // 资源 (AI智学共享)
+  GeneratedResource, GeneratedResourceDetail,
   // 雷达图
   RadarResponse,
   // 仪表盘增强统计
@@ -680,230 +675,6 @@ export async function markAllReviewsComplete() {
   return res.data.data!
 }
 
-// ==================== Phase 3: AI 助学 API ====================
-
-/** 创建或恢复学习会话 */
-export async function createOrResumeSession(courseId: string, resourceTypes?: string[]) {
-  const res = await api.post<ApiResponse<LearningSession>>('/learning/sessions', {
-    course_id: courseId,
-    resource_types: resourceTypes,
-  })
-  return res.data.data!
-}
-
-/** 获取学习会话列表 */
-export async function getLearningSessions(params?: {
-  course_id?: string, status?: string, page?: number, page_size?: number
-}) {
-  const res = await api.get<ApiResponse<PaginatedResponse<LearningSessionListItem>>>(
-    '/learning/sessions', { params }
-  )
-  return res.data.data!
-}
-
-/** 获取学习会话详情 */
-export async function getLearningSessionDetail(sessionId: string) {
-  const res = await api.get<ApiResponse<LearningSessionDetail>>(
-    `/learning/sessions/${sessionId}`
-  )
-  return res.data.data!
-}
-
-/** 删除学习会话 */
-export async function deleteLearningSession(sessionId: string) {
-  await api.delete(`/learning/sessions/${sessionId}`)
-}
-
-/** 切换学习会话收藏状态 */
-export async function toggleFavorite(sessionId: string) {
-  const res = await api.put<ApiResponse<FavoriteToggleResponse>>(
-    `/learning/sessions/${sessionId}/favorite`
-  )
-  return res.data.data!
-}
-
-/** 获取阶段详情 */
-export async function getStageDetail(sessionId: string, stageId: string) {
-  const res = await api.get<ApiResponse<LearningStageDetail>>(
-    `/learning/sessions/${sessionId}/stages/${stageId}`
-  )
-  return res.data.data!
-}
-
-/** 完成学习阶段 */
-export async function completeStage(sessionId: string, stageIndex: number) {
-  const res = await api.post<ApiResponse<{ current_stage_index: number, status: string, learning_path: unknown }>>(
-    `/learning/sessions/${sessionId}/stages/${stageIndex}/complete`,
-    { completed: true }
-  )
-  return res.data.data!
-}
-
-/** 获取资源详情 */
-export async function getResourceDetail(resourceId: string) {
-  const res = await api.get<ApiResponse<GeneratedResourceDetail>>(
-    `/learning/resources/${resourceId}`
-  )
-  return res.data.data!
-}
-
-// ==================== SSE 流式 API ====================
-
-/** SSE 学习会话进度事件回调 */
-export interface LearningStreamCallbacks {
-  onSessionInit: (data: SessionInitEvent) => void
-  onStageStart: (data: StageStartEvent) => void
-  onAgentStart: (data: AgentStartEvent) => void
-  onAgentProgress: (data: AgentProgressEvent) => void
-  onAgentDone: (data: AgentDoneEvent) => void
-  onResourceReady: (data: ResourceReadyEvent) => void
-  onPathUpdate: (data: PathUpdateEvent) => void
-  onStageComplete: (data: StageCompleteEvent) => void
-  onSessionComplete: (data: SessionCompleteEvent) => void
-  onError: (data: SSEErrorEvent | string) => void
-}
-
-/**
- * SSE 流式连接学习会话进度
- * 复用 streamChat 的 fetch + ReadableStream 模式
- */
-export function streamLearningSession(
-  sessionId: string,
-  callbacks: LearningStreamCallbacks,
-  signal?: AbortSignal,
-): AbortController {
-  return fetchSSEStream(
-    `${API_BASE}/api/v1/learning/sessions/${sessionId}/stream`,
-    { externalSignal: signal },
-    (event) => {
-      const handlers: Record<string, (d: any) => void> = {
-        session_init:      callbacks.onSessionInit,
-        stage_start:       callbacks.onStageStart,
-        agent_start:       callbacks.onAgentStart,
-        agent_progress:    callbacks.onAgentProgress,
-        agent_done:        callbacks.onAgentDone,
-        resource_ready:    callbacks.onResourceReady,
-        path_update:       callbacks.onPathUpdate,
-        stage_complete:    callbacks.onStageComplete,
-        session_complete:  callbacks.onSessionComplete,
-        error:             callbacks.onError,
-      }
-      const handler = handlers[event.type as string]
-      if (handler) handler(event)
-    },
-    (msg) => callbacks.onError(msg),
-  )
-}
-
-/**
- * SSE 流式完成阶段并生成下一阶段
- */
-export function streamCompleteStage(
-  sessionId: string,
-  stageIndex: number,
-  callbacks: LearningStreamCallbacks,
-): AbortController {
-  return fetchSSEStream(
-    `${API_BASE}/api/v1/learning/sessions/${sessionId}/stages/${stageIndex}/complete`,
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ completed: true }),
-    },
-    (event) => {
-      const handlers: Record<string, (d: any) => void> = {
-        stage_start:       callbacks.onStageStart,
-        agent_start:       callbacks.onAgentStart,
-        agent_progress:    callbacks.onAgentProgress,
-        agent_done:        callbacks.onAgentDone,
-        resource_ready:    callbacks.onResourceReady,
-        path_update:       callbacks.onPathUpdate,
-        stage_complete:    callbacks.onStageComplete,
-        session_complete:  callbacks.onSessionComplete,
-        error:             callbacks.onError,
-      }
-      const handler = handlers[event.type as string]
-      if (handler) handler(event)
-    },
-    (msg) => callbacks.onError(msg),
-  )
-}
-
-/**
- * SSE 流式重新生成资源
- */
-export function streamRegenerateResource(
-  resourceId: string,
-  callbacks: {
-    onAgentStart: (data: AgentStartEvent) => void
-    onResourceReady: (data: ResourceReadyEvent) => void
-    onError: (msg: string) => void
-  },
-): AbortController {
-  return fetchSSEStream(
-    `${API_BASE}/api/v1/learning/resources/${resourceId}`,
-    {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({}),
-    },
-    (event) => {
-      switch (event.type) {
-        case 'agent_start':    callbacks.onAgentStart(event as AgentStartEvent); break
-        case 'resource_ready': callbacks.onResourceReady(event as ResourceReadyEvent); break
-        case 'error':          callbacks.onError(event.message as string); break
-      }
-    },
-    callbacks.onError,
-  )
-}
-
-// ==================== 练习题进度 API ====================
-
-/**
- * 保存练习题作答进度
- * 将用户在某个练习资源中的作答进度持久化到后端
- *
- * @param resourceId - 练习题资源 ID
- * @param progress - 作答进度 { answers, submitted, current_index, scores? }
- */
-export async function saveExerciseProgress(
-  resourceId: string,
-  progress: {
-    answers: Record<string, number | number[] | string>
-    submitted: Record<string, boolean>
-    current_index: number
-    scores?: Record<string, { score: number; feedback: string }>
-  },
-) {
-  await api.put(`/learning/resources/${resourceId}/progress`, progress)
-}
-
-/**
- * AI 打分主观题答案 (填空 / 简答)
- * 调用后端 LLM 对学生答案进行智能评分, 满分 10 分
- *
- * @param resourceId - 练习题资源 ID
- * @param request - 打分请求
- * @returns 评分结果 { question_id, score, feedback }
- */
-export async function scoreExerciseAnswer(
-  resourceId: string,
-  request: {
-    question_id: string
-    question_type: string
-    question_text: string
-    user_answer: string
-    reference_answer: string
-    explanation?: string
-  },
-): Promise<{ question_id: string; score: number; feedback: string }> {
-  const res = await api.post<ApiResponse<{ question_id: string; score: number; feedback: string }>>(
-    `/learning/resources/${resourceId}/score`, request,
-  )
-  return res.data.data!
-}
-
 /** 获取学习行为雷达图 */
 export async function getRadarData() {
   const res = await api.get<ApiResponse<RadarResponse>>('/profile/radar')
@@ -1043,7 +814,7 @@ export async function reportAIExplanation(kpId: string) {
 // ============================================================================
 
 // Re-export URL utility functions from utils/urls.ts for backward compatibility
-export { getApiBaseUrl, getPageImageUrl, getAvatarUrl, getDownloadUrl }
+export { getApiBaseUrl, getPageImageUrl, getAvatarUrl }
 
 /**
  * 带认证的文件下载工具 (blob 方式)
@@ -1077,4 +848,163 @@ export async function downloadFile(url: string, defaultFilename: string = 'downl
   anchor.click()
   document.body.removeChild(anchor)
   URL.revokeObjectURL(objectUrl)
+}
+
+// ============================================================================
+// AI智学 (v2) API
+// ============================================================================
+
+/** AI智学 会话列表项 */
+export interface ZhiXueSessionItem {
+  id: string
+  course_id: string
+  course_name?: string
+  status: string
+  current_stage_index: number
+  total_stages?: number
+  is_favorited?: boolean
+  created_at: string
+  updated_at: string
+}
+
+// v2 API 使用独立 baseURL (不是 /api/v1)
+const apiV2 = axios.create({
+  baseURL: `${API_BASE}/api/v2`,
+  timeout: 120000,  // 会话创建 (LLM生成问卷) 可能需要 30-60s
+  headers: { 'Content-Type': 'application/json' },
+})
+
+// v2 请求拦截器 (复用 v1 的 token 注入逻辑)
+apiV2.interceptors.request.use((config) => {
+  const token = useAuthStore.getState().token
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`
+  }
+  return config
+})
+
+/** 获取智学会话列表 */
+export async function getZhiXueSessions(params?: {
+  skip?: number
+  limit?: number
+  course_id?: string
+  status?: string
+}) {
+  const res = await apiV2.get<PaginatedResponse<ZhiXueSessionItem>>('/zhixue/sessions', { params })
+  return res.data
+}
+
+/** 创建智学会话 */
+export async function createZhiXueSession(params: {
+  course_id: string
+  selected_materials: string[]
+  scouting_enabled?: boolean
+}) {
+  const res = await apiV2.post<{
+    session_id: string
+    status: string
+    next_action: string
+    payload?: Record<string, unknown>
+    error?: Record<string, unknown>
+  }>('/zhixue/sessions', params)
+  return res.data  // v2 API 直接返回 session 对象，无 {data: ...} 包裹
+}
+
+/** 删除智学会话 */
+export async function deleteZhiXueSession(sessionId: string) {
+  await apiV2.delete(`/zhixue/sessions/${sessionId}`)
+}
+
+/** 获取智学会话详情 */
+export async function getZhiXueSessionDetail(sessionId: string) {
+  const res = await apiV2.get<ZhiXueSessionItem>(`/zhixue/sessions/${sessionId}`)
+  return res.data  // v2 直接返回
+}
+
+/** 提交问卷答案 (或跳过) */
+export async function submitZhiXueQuestionnaire(
+  sessionId: string,
+  data: {
+    answers?: Array<{ question_id: string; selected_options: string[]; open_text?: string }>
+    skipped?: boolean
+    skip_reason?: string
+  },
+) {
+  const res = await apiV2.post<{ status: string; next_action: string; payload?: Record<string, unknown> }>(
+    `/zhixue/sessions/${sessionId}/questionnaire`, data,
+  )
+  return res.data
+}
+
+/** 提交阶段反馈 */
+export async function submitZhiXueFeedback(
+  sessionId: string,
+  data: { mastery: string; self_assessment?: string; remedial_selected?: string[] },
+) {
+  const res = await apiV2.post<{ status: string; next_action: string }>(
+    `/zhixue/sessions/${sessionId}/feedback`, data,
+  )
+  return res.data
+}
+
+/** 获取阶段资源列表 (不含 content) */
+export async function getZhiXueStageResources(sessionId: string, stageIndex: number) {
+  const res = await apiV2.get<{ stage_index: number; resources: GeneratedResource[] }>(
+    `/zhixue/sessions/${sessionId}/stages/${stageIndex}/resources`,
+  )
+  return res.data.resources
+}
+
+/** 获取资源详情 (含完整 content) */
+export async function getZhiXueResourceDetail(resourceId: string): Promise<GeneratedResourceDetail> {
+  const res = await apiV2.get<GeneratedResourceDetail>(`/zhixue/resources/${resourceId}`)
+  return res.data
+}
+
+/** 提交独立补救资源请求 (与阶段反馈解耦) */
+export async function submitZhiXueRemedial(
+  sessionId: string,
+  data: { confusion_text: string; resource_types: string[] },
+) {
+  const res = await apiV2.post<{ session_id: string; status: string; next_action: string; current_stage?: number; total_stages?: number }>(
+    `/zhixue/sessions/${sessionId}/remedial`, data,
+  )
+  return res.data
+}
+
+/** 取消/中断智学会话 */
+export async function cancelZhiXueSession(sessionId: string): Promise<void> {
+  await apiV2.post(`/zhixue/sessions/${sessionId}/cancel`)
+}
+
+/** v2 保存练习题作答进度 */
+export async function saveZhiXueExerciseProgress(
+  resourceId: string,
+  progress: {
+    answers: Record<string, number | number[] | string>
+    submitted: Record<string, boolean>
+    current_index: number
+    scores?: Record<string, { score: number; feedback: string }>
+  }
+): Promise<void> {
+  await apiV2.put(`/zhixue/resources/${resourceId}/progress`, progress)
+}
+
+/** v2 AI 评分主观题 */
+export async function scoreZhiXueExerciseAnswer(
+  resourceId: string,
+  request: {
+    question_id: string
+    question_type: string
+    question_text: string
+    user_answer: string
+    reference_answer: string
+    explanation?: string
+  }
+): Promise<{ question_id: string; score: number; feedback: string }> {
+  const res = await apiV2.post<{ question_id: string; score: number; feedback: string }>(
+    `/zhixue/resources/${resourceId}/score`,
+    request
+  )
+  return res.data
 }
