@@ -38,9 +38,9 @@ const Profile = lazy(() => import('./pages/Profile'))
 const UserManagement = lazy(() => import('./pages/admin/UserManagement'))
 const AuditLogs = lazy(() => import('./pages/admin/AuditLogs'))
 
-// Phase 3: AI 助学
-const LearningHub = lazy(() => import('./pages/LearningHub'))
-const LearningSessionPage = lazy(() => import('./pages/LearningSession'))
+// 受保护页面 (AI智学)
+const ZhiXueHub = lazy(() => import('./pages/ZhiXueHub'))
+const ZhiXueSession = lazy(() => import('./pages/ZhiXueSession'))
 
 /** 全局加载占位符: 页面级 Suspense fallback */
 const PageLoading = () => (
@@ -76,9 +76,9 @@ export default function App() {
             <Route path="/settings" element={<Settings />} />
             <Route path="/profile" element={<Profile />} />
 
-            {/* Phase 3: AI 助学 */}
-            <Route path="/learning" element={<LearningHub />} />
-            <Route path="/learning/:id" element={<LearningSessionPage />} />
+            {/* AI智学 */}
+            <Route path="/zhixue" element={<ZhiXueHub />} />
+            <Route path="/zhixue/:id" element={<ZhiXueSession />} />
 
             {/* 管理员专属路由: 需要管理员权限 */}
             <Route element={<AdminRoute />}>

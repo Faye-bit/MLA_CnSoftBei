@@ -66,9 +66,9 @@ export default function Sidebar({ collapsed }: { collapsed: boolean }) {
         label: 'AI 对话',
       },
       {
-        key: '/learning',
+        key: '/zhixue',
         icon: <ExperimentOutlined />,
-        label: 'AI 助学',
+        label: 'AI智学',
       },
       {
         key: '/student-profile',
