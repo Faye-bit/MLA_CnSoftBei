@@ -1882,11 +1882,20 @@ async def _persist_stage_resources(
             delete(ZhiXueResource).where(ZhiXueResource.stage_id == stage_obj.id)
         )
 
+    # 后端 → 前端 resource_type 规范化映射
+    # 后端内部使用 'code' / 'animation' 作为材料类型键名,
+    # 前端 ResourceType 使用 'coding_practice' / 'video_script',
+    # 持久化时统一转换为前端兼容名称, 避免 ResourceTree 过滤丢失。
+    _TYPE_NORMALIZE: dict[str, str] = {
+        "code": "coding_practice",
+        "animation": "video_script",
+    }
+
     for i, (mt, material) in enumerate(materials.items()):
         resource = ZhiXueResource(
             id=_uuid.uuid4(),
             stage_id=stage_obj.id,
-            resource_type=mt,
+            resource_type=_TYPE_NORMALIZE.get(mt, mt),
             title=material.get("title", ""),
             description=material.get("description", ""),
             content=material.get("content", ""),
