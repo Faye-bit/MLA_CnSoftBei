@@ -137,14 +137,11 @@ function parseReadingContent(content: string): ReadingEntry[] | null {
     // ── ## 级别标题 (入门级/进阶级/研究级) ──
     if (line.startsWith('## ') && !line.startsWith('### ')) {
       const heading = line.replace(/^##\s+/, '').trim()
-      // 识别难度级别
-      for (const level of ['入门级', '进阶级', '研究级']) {
-        if (heading.includes(level)) {
-          flushEntry()
-          currentLevel = level
-          break
-        }
-      }
+      // 识别难度级别 (含「入门级推荐」「进阶阅读」等变体)
+      if (/入门/.test(heading)) { flushEntry(); currentLevel = '入门级'; continue }
+      if (/进阶|中级|提高/.test(heading)) { flushEntry(); currentLevel = '进阶级'; continue }
+      if (/研究|高级|深入|专家/.test(heading)) { flushEntry(); currentLevel = '研究级'; continue }
+      // 非标准标题 — 可能是顶部标题 (# 拓展阅读推荐), 跳过
       continue
     }
 
@@ -202,6 +199,24 @@ function ResearchLinksSection({ links }: { links: ResearchLink[] }) {
 
   if (!links || links.length === 0) return null
 
+  /** 来源类型 → 中文标签 + 配色 */
+  function sourceBadge(type?: string) {
+    const map: Record<string, { label: string; color: string; bg: string }> = {
+      web: { label: '网页', color: '#2563EB', bg: '#EFF6FF' },
+      academic: { label: '学术', color: '#9333EA', bg: '#FAF5FF' },
+      doc: { label: '文档', color: '#16A34A', bg: '#F0FDF4' },
+      video: { label: '视频', color: '#DC2626', bg: '#FEF2F2' },
+      paper: { label: '论文', color: '#CA8A04', bg: '#FEFCE8' },
+    }
+    const t = (type || 'web').toLowerCase()
+    return map[t] || map['web']
+  }
+
+  /** 截断 URL 为可读域名 */
+  function displayUrl(url: string): string {
+    try { return new URL(url).hostname.replace(/^www\./, '') } catch { return url }
+  }
+
   return (
     <div style={{
       marginBottom: 24,
@@ -210,15 +225,16 @@ function ResearchLinksSection({ links }: { links: ResearchLink[] }) {
       borderRadius: 10,
       overflow: 'hidden',
     }}>
-      {/* 标题栏 */}
+      {/* 标题栏 — 可点击折叠 */}
       <div
         onClick={() => setCollapsed(v => !v)}
         style={{
-          padding: '10px 16px',
+          padding: '12px 16px',
           display: 'flex', alignItems: 'center', gap: 8,
           cursor: 'pointer', userSelect: 'none',
           background: collapsed ? undefined : '#FEF3C7',
           borderBottom: collapsed ? undefined : '1px solid #FDE68A',
+          transition: 'background 0.2s',
         }}
       >
         <SearchOutlined style={{ color: '#D97706', fontSize: 15 }} />
@@ -226,49 +242,78 @@ function ResearchLinksSection({ links }: { links: ResearchLink[] }) {
           网络调研发现 · {links.length} 条相关资源
         </Text>
         <Text type="secondary" style={{ fontSize: 11 }}>
-          {collapsed ? '展开' : '收起'}
+          {collapsed ? '展开查看' : '收起'}
         </Text>
         <CaretRightOutlined
           style={{
-            color: '#D97706', fontSize: 11, transition: 'transform 0.2s',
+            color: '#D97706', fontSize: 11,
+            transition: 'transform 0.25s ease',
             transform: collapsed ? 'rotate(0deg)' : 'rotate(90deg)',
           }}
         />
       </div>
 
-      {/* 链接列表 */}
-      {!collapsed && (
-        <div style={{ padding: '8px 16px 12px' }}>
-          {links.slice(0, 10).map((link, i) => (
-            <a
-              key={i}
-              href={link.url}
-              target="_blank"
-              rel="noopener noreferrer"
-              style={{
-                display: 'flex', alignItems: 'flex-start', gap: 8,
-                padding: '8px 0',
-                borderBottom: i < links.length - 1 ? `1px solid #FEF3C7` : undefined,
-                textDecoration: 'none', color: 'inherit',
-              }}
-            >
-              <LinkOutlined style={{ color: '#D97706', marginTop: 3, flexShrink: 0 }} />
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 13, fontWeight: 500, color: gray[800] }}>
-                  {link.title || '外部资源'}
-                </div>
-                {link.description && (
-                  <div style={{ fontSize: 12, color: gray[500], marginTop: 2, lineHeight: 1.5 }}>
-                    {link.description.length > 120
-                      ? link.description.slice(0, 120) + '...'
-                      : link.description}
+      {/* 链接列表 — 折叠过渡 */}
+      <div style={{
+        maxHeight: collapsed ? 0 : 2000,
+        overflow: 'hidden',
+        transition: 'max-height 0.4s ease',
+      }}>
+        <div style={{ padding: '4px 16px 12px' }}>
+          {links.slice(0, 10).map((link, i) => {
+            const badge = sourceBadge(link.source_type)
+            return (
+              <a
+                key={i}
+                href={link.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                title={link.url}
+                style={{
+                  display: 'flex', alignItems: 'flex-start', gap: 10,
+                  padding: '10px 0',
+                  borderBottom: i < Math.min(links.length, 10) - 1 ? `1px solid #FEF3C7` : undefined,
+                  textDecoration: 'none', color: 'inherit',
+                }}
+              >
+                <LinkOutlined style={{ color: '#D97706', marginTop: 3, flexShrink: 0, fontSize: 13 }} />
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: link.description ? 3 : 0 }}>
+                    <span style={{ fontSize: 13, fontWeight: 500, color: gray[800] }}>
+                      {link.title || '外部资源'}
+                    </span>
+                    {/* 来源类型标签 */}
+                    <span style={{
+                      fontSize: 10, lineHeight: '16px',
+                      padding: '0 6px', borderRadius: 3,
+                      color: badge.color, background: badge.bg,
+                      fontWeight: 500,
+                    }}>
+                      {badge.label}
+                    </span>
+                    {/* 相关度 */}
+                    {link.relevance_score != null && (
+                      <span style={{ fontSize: 10, color: gray[400] }}>
+                        {(link.relevance_score * 100).toFixed(0)}% 匹配
+                      </span>
+                    )}
                   </div>
-                )}
-              </div>
-            </a>
-          ))}
+                  {link.description && (
+                    <div style={{ fontSize: 12, color: gray[500], lineHeight: 1.6 }}>
+                      {link.description.length > 140
+                        ? link.description.slice(0, 140) + '...'
+                        : link.description}
+                    </div>
+                  )}
+                  <div style={{ fontSize: 11, color: gray[400], marginTop: 2, fontFamily: 'monospace' }}>
+                    {displayUrl(link.url)}
+                  </div>
+                </div>
+              </a>
+            )
+          })}
         </div>
-      )}
+      </div>
     </div>
   )
 }
@@ -457,8 +502,16 @@ export default function ReadingViewer({ content, researchLinks }: ReadingViewerP
         background: '#FFFFFF',
         border: `1px solid ${gray[200]}`,
         borderRadius: 10,
-        padding: '20px 24px',
+        padding: '24px 28px',
+        boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
       }}>
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16,
+          paddingBottom: 12, borderBottom: `1px solid ${gray[100]}`,
+        }}>
+          <ReadOutlined style={{ color: blue[500], fontSize: 16 }} />
+          <Text strong style={{ fontSize: 14, color: gray[800] }}>拓展阅读推荐</Text>
+        </div>
         <div className="markdown-body" style={{ fontSize: 14, lineHeight: 2.0, color: gray[700] }}>
           <MarkdownRenderer content={content} />
         </div>
