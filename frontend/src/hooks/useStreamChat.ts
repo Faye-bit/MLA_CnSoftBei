@@ -21,7 +21,7 @@
  */
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { streamChat } from '../services/api'
-import type { Message, ChatSource } from '../types'
+import type { Message, ChatSource, WebLink } from '../types'
 
 export interface UseStreamChatOptions {
   /** 初始消息列表 (可选) */
@@ -35,10 +35,12 @@ export function useStreamChat(options?: UseStreamChatOptions) {
   const [streaming, setStreaming] = useState(false)
   const [streamingContent, setStreamingContent] = useState('')
   const [streamingSources, setStreamingSources] = useState<ChatSource[]>([])
+  const [streamingWebLinks, setStreamingWebLinks] = useState<WebLink[]>([])
 
   /** ref 同步流式内容 — 避免 React 批处理下的竞态问题 */
   const streamingContentRef = useRef('')
   const streamingSourcesRef = useRef<ChatSource[]>([])
+  const streamingWebLinksRef = useRef<WebLink[]>([])
   /** 流式请求的 AbortController */
   const abortControllerRef = useRef<AbortController | null>(null)
   /** 最后一个发送请求的对话 ID — stopStreaming 时用于构造消息 */
@@ -64,6 +66,7 @@ export function useStreamChat(options?: UseStreamChatOptions) {
    * @param courseId - 关联课程 ID (可选)
    * @param systemPrompt - 自定义系统提示词 (可选)
    * @param quickAskMetadata - 快问AI 元数据 (可选)
+   * @param webSearchEnabled - 是否开启联网搜索 (可选)
    */
   const sendMessage = useCallback((
     conversationId: string,
@@ -71,6 +74,7 @@ export function useStreamChat(options?: UseStreamChatOptions) {
     courseId: string | null,
     systemPrompt?: string,
     quickAskMetadata?: Record<string, unknown>,
+    webSearchEnabled?: boolean,
   ) => {
     hasSentMessageRef.current = true
     conversationIdRef.current = conversationId
@@ -90,9 +94,11 @@ export function useStreamChat(options?: UseStreamChatOptions) {
     // 重置流式状态
     streamingContentRef.current = ''
     streamingSourcesRef.current = []
+    streamingWebLinksRef.current = []
     setStreaming(true)
     setStreamingContent('')
     setStreamingSources([])
+    setStreamingWebLinks([])
 
     abortControllerRef.current = streamChat(conversationId, content, courseId, {
       onContent: (chunk) => {
@@ -103,12 +109,17 @@ export function useStreamChat(options?: UseStreamChatOptions) {
         streamingSourcesRef.current = sources
         setStreamingSources(sources)
       },
+      onWebLinks: (links) => {
+        streamingWebLinksRef.current = links
+        setStreamingWebLinks(links)
+      },
       onDone: (messageId) => {
         // 必须先将 ref 内容保存到局部变量, 再调用 setMessages
         // React 19 自动批处理状态下, setMessages 的 updater 回调
         // 可能在 ref 被重置之后才执行
         const finalContent = streamingContentRef.current
         const finalSources = streamingSourcesRef.current
+        const finalWebLinks = streamingWebLinksRef.current
         setMessages((prev) => [
           ...prev,
           {
@@ -119,13 +130,16 @@ export function useStreamChat(options?: UseStreamChatOptions) {
             sources: finalSources.length > 0 ? finalSources : null,
             message_metadata: null,
             created_at: new Date().toISOString(),
+            web_links: finalWebLinks.length > 0 ? finalWebLinks : undefined,
           },
         ])
         setStreaming(false)
         setStreamingContent('')
         setStreamingSources([])
+        setStreamingWebLinks([])
         streamingContentRef.current = ''
         streamingSourcesRef.current = []
+        streamingWebLinksRef.current = []
         options?.onStreamDone?.()
       },
       onError: (error) => {
@@ -141,16 +155,19 @@ export function useStreamChat(options?: UseStreamChatOptions) {
               sources: streamingSourcesRef.current.length > 0 ? streamingSourcesRef.current : null,
               message_metadata: null,
               created_at: new Date().toISOString(),
+              web_links: streamingWebLinksRef.current.length > 0 ? streamingWebLinksRef.current : undefined,
             },
           ])
         }
         setStreaming(false)
         setStreamingContent('')
         setStreamingSources([])
+        setStreamingWebLinks([])
         streamingContentRef.current = ''
         streamingSourcesRef.current = []
+        streamingWebLinksRef.current = []
       },
-    }, systemPrompt, quickAskMetadata)
+    }, systemPrompt, quickAskMetadata, webSearchEnabled)
   }, [options?.onStreamDone])
 
   /**
@@ -170,14 +187,17 @@ export function useStreamChat(options?: UseStreamChatOptions) {
           sources: streamingSourcesRef.current.length > 0 ? streamingSourcesRef.current : null,
           message_metadata: null,
           created_at: new Date().toISOString(),
+          web_links: streamingWebLinksRef.current.length > 0 ? streamingWebLinksRef.current : undefined,
         },
       ])
     }
     setStreaming(false)
     setStreamingContent('')
     setStreamingSources([])
+    setStreamingWebLinks([])
     streamingContentRef.current = ''
-    streamingSourcesRef.current = ''
+    streamingSourcesRef.current = []
+    streamingWebLinksRef.current = []
   }, [])
 
   /**
@@ -188,8 +208,10 @@ export function useStreamChat(options?: UseStreamChatOptions) {
     setStreaming(false)
     setStreamingContent('')
     setStreamingSources([])
+    setStreamingWebLinks([])
     streamingContentRef.current = ''
     streamingSourcesRef.current = []
+    streamingWebLinksRef.current = []
   }, [])
 
   return {
@@ -198,6 +220,7 @@ export function useStreamChat(options?: UseStreamChatOptions) {
     streaming,
     streamingContent,
     streamingSources,
+    streamingWebLinks,
     sendMessage,
     stopStreaming,
     abortStreaming,

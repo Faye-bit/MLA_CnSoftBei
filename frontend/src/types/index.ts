@@ -372,6 +372,21 @@ export interface Message {
   sources: ChatSource[] | null
   message_metadata: Record<string, unknown> | null
   created_at: string | null
+  /** 联网搜索结果链接列表 (仅 web_search_enabled 时返回) */
+  web_links?: WebLink[]
+}
+
+/** 联网搜索结果链接 */
+export interface WebLink {
+  url: string
+  title: string
+  description: string
+  /** 来源平台中文名: 知乎/B站/小红书/CSDN/GitHub 等 */
+  source_platform: string
+  /** 网站 favicon URL (可选) */
+  favicon?: string
+  /** 封面图片 URL (可选) */
+  image?: string
 }
 
 /** 知识库引用来源 */

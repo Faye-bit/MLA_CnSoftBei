@@ -36,6 +36,7 @@ import type {
   ConversationDetail,
   Message,
   ChatSource,
+  WebLink,
   StudentProfile,
   ProfileUpdateRequest,
   ProfileVersion,
@@ -565,17 +566,20 @@ export function streamChat(
   callbacks: {
     onContent: (chunk: string) => void
     onSources: (sources: ChatSource[]) => void
+    onWebLinks?: (links: WebLink[]) => void
     onDone: (messageId: string) => void
     onError: (error: string) => void
   },
   systemPrompt?: string,
   quickAskMetadata?: Record<string, unknown>,
+  webSearchEnabled?: boolean,
 ): AbortController {
   const url = `${API_BASE}/api/v1/chat/conversations/${conversationId}/messages`
   const body: Record<string, unknown> = { content }
   if (courseId) body.course_id = courseId
   if (systemPrompt) body.system_prompt = systemPrompt
   if (quickAskMetadata) body.quick_ask_context = quickAskMetadata
+  if (webSearchEnabled) body.web_search_enabled = true
 
   return fetchSSEStream(
     url,
@@ -588,6 +592,7 @@ export function streamChat(
       switch (event.type) {
         case 'content':  callbacks.onContent(event.content as string); break
         case 'sources':  callbacks.onSources((event.sources || []) as ChatSource[]); break
+        case 'web_links': callbacks.onWebLinks?.((event.links || []) as WebLink[]); break
         case 'done':     callbacks.onDone(event.message_id as string); break
         case 'error':    callbacks.onError((event.message || '未知错误') as string); break
       }
