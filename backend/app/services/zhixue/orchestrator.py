@@ -281,6 +281,8 @@ class XiangNan:
         stages = (session.learning_path or {}).get("stages", [])
         if session.current_stage_index >= len(stages):
             session.status = "completed"
+            # 将索引钳制在最后一个阶段，避免前端显示 5/4 等越界值
+            session.current_stage_index = len(stages) - 1
             # 调用 LLM 生成学习评价
             evaluation = await _generate_session_evaluation(
                 session=session, exercise_stats=exercise_stats, db=db
