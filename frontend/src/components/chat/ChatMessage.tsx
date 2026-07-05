@@ -29,11 +29,12 @@ interface ChatMessageProps {
   webLinks?: WebLink[]
 }
 
-/** 去除 AI 回复中的内联参考来源 (下方有专门的 Tag 来源区) */
+/** 去除 AI 回复中的内联参考来源和联网搜索标记 */
 function stripInlineReferences(content: string): string {
   return content
     .replace(/\n*参考来源[:：].*$/s, '')
     .replace(/\n*\*参考来源\*[:：].*$/s, '')
+    .replace(/\[网\d+\]/g, '')   // 去除联网搜索引用标记 [网1] [网2] 等
     .trim()
 }
 
@@ -205,7 +206,19 @@ const PLATFORM_COLORS: Record<string, string> = {
   'Medium': '#000000',
 }
 
+/** 优先展示的知名平台链接 */
+const KNOWN_PLATFORMS = new Set([
+  '知乎', '知乎专栏', 'B站', '小红书', 'CSDN', '掘金',
+  'GitHub', '码云', 'Stack Overflow', '博客园', '简书',
+])
+
 function WebLinksSection({ links }: { links: WebLink[] }) {
+  /** 优先选取知名平台的链接，最多 3 条 */
+  const prioritized = links
+    .filter(l => KNOWN_PLATFORMS.has(l.source_platform))
+    .concat(links.filter(l => !KNOWN_PLATFORMS.has(l.source_platform)))
+    .slice(0, 3)
+
   return (
     <div style={{
       marginTop: 8, padding: '10px 12px',
@@ -216,7 +229,7 @@ function WebLinksSection({ links }: { links: WebLink[] }) {
         <GlobalOutlined /> 联网搜索发现:
       </Text>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-        {links.map((link, idx) => {
+        {prioritized.map((link, idx) => {
           const platformColor = PLATFORM_COLORS[link.source_platform] || gray[500]
           return (
             <a
