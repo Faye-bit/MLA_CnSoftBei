@@ -13,9 +13,9 @@ import {
 import {
   PlusOutlined, BookOutlined, DeleteOutlined,
   ExperimentOutlined, RocketOutlined,
-  StarOutlined, StarFilled,
+  StarOutlined, StarFilled, DownloadOutlined,
 } from '@ant-design/icons'
-import { getCourses, createZhiXueSession, getZhiXueSessions, deleteZhiXueSession, toggleZhiXueFavorite } from '../services/api'
+import { getCourses, createZhiXueSession, getZhiXueSessions, deleteZhiXueSession, toggleZhiXueFavorite, getZhiXueDownloadUrl } from '../services/api'
 import type { Course } from '../types'
 import type { ZhiXueSessionItem } from '../services/api'
 import { blue, gray } from '../styles/tokens'
@@ -218,6 +218,19 @@ export default function ZhiXueHub() {
 
             {/* 底部操作区 (不触发导航) */}
             <div style={{ padding: '0 16px 12px', display: 'flex', justifyContent: 'flex-end', gap: 4 }}>
+              {/* 下载按钮 (仅已完成会话) */}
+              {s.status === 'completed' && (
+                <Button
+                  type="text"
+                  size="small"
+                  icon={<DownloadOutlined />}
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    window.open(getZhiXueDownloadUrl(s.id), '_blank')
+                  }}
+                  title="下载全部资源 (zip)"
+                />
+              )}
               {/* 收藏按钮 */}
               <Button
                 type="text"

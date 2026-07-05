@@ -985,6 +985,12 @@ export async function toggleZhiXueFavorite(sessionId: string): Promise<{ is_favo
   return res.data
 }
 
+/** v2 获取智学会话下载 URL (直接链接, 用于浏览器下载) */
+export function getZhiXueDownloadUrl(sessionId: string): string {
+  const token = useAuthStore.getState().token
+  return `${API_BASE}/api/v2/zhixue/sessions/${sessionId}/download?token=${encodeURIComponent(token || '')}`
+}
+
 /** v2 保存练习题作答进度 */
 export async function saveZhiXueExerciseProgress(
   resourceId: string,
