@@ -1885,78 +1885,8 @@ async def _persist_stage_resources(
 
 
 # ============================================================================
-# SSE 事件辅助映射 (Legacy — 保留给 graph.astream_events 路径)
+# LangGraph 相关工具已迁移至 graph.py:
+#   AGENT_NODE_NAMES, AGENT_START_MSGS,
+#   get_current_stage_title, summarize_output,
+#   resume_graph
 # ============================================================================
-
-# 图节点名 → Agent 显示名称
-_AGENT_NODE_NAMES: dict[str, str] = {
-    "init_session": "学习导引师向南",
-    "analyze_profile": "学情诊断师俞知",
-    "process_profile": "学情诊断师俞知",
-    "plan_path": "教纲设计专家李纲",
-    "stage_entry": "学习导引师向南",
-    "scout_resources": "资源采集师蔡丰",
-    "craft_handout": "讲义编写师张义",
-    "craft_mindmap": "导图设计师屠思",
-    "craft_exercise": "习题设计师习真",
-    "craft_reading": "阅读推荐师岳读",
-    "craft_animation": "动画制作师董华",
-    "craft_code": "代码实操师戴码",
-    "review_materials": "质量审核师简真",
-    "fallback_materials": "质量审核师简真",
-    "deliver_stage": "教纲设计专家李纲",
-    "collect_feedback": "学情诊断师俞知",
-    "craft_remedial": "讲义编写师张义",
-    "finalize": "学习导引师向南",
-}
-
-_AGENT_START_MSGS: dict[str, str] = {
-    "analyze_profile": "正在分析学生画像...",
-    "plan_path": "正在规划学习路径...",
-    "scout_resources": "正在搜索外部资源...",
-    "craft_handout": "正在生成讲义...",
-    "craft_mindmap": "正在生成思维导图...",
-    "craft_exercise": "正在生成练习题...",
-    "craft_reading": "正在生成拓展阅读...",
-    "craft_animation": "正在生成交互动画...",
-    "craft_code": "正在生成编程实操...",
-    "review_materials": "正在进行质量审查...",
-    "deliver_stage": "正在汇总交付...",
-    "craft_remedial": "正在生成补救资源...",
-}
-
-
-def _get_current_stage_title(state: dict) -> str:
-    """从 state 中提取当前阶段标题"""
-    plan = state.get("learning_plan", {})
-    stages = plan.get("stages", [])
-    current = state.get("current_stage", 0)
-    if current < len(stages):
-        return stages[current].get("title", "")
-    return ""
-
-
-def _summarize_output(node_name: str, output: dict) -> str:
-    """根据节点名称和输出生成摘要"""
-    if not isinstance(output, dict):
-        return "完成"
-
-    summaries = {
-        "analyze_profile": lambda o: "画像分析完成",
-        "process_profile": lambda o: "画像融合完成",
-        "plan_path": lambda o: f"规划了 {o.get('total_stages', 0)} 个阶段",
-        "scout_resources": lambda o: (
-            "调研完成" if o.get("research_report")
-            else "跳过网络搜索"
-        ),
-        "review_materials": lambda o: (
-            "审查通过" if o.get("overall_verdict") == "ALL_PASS"
-            else "审查发现问题"
-        ),
-        "deliver_stage": lambda o: "阶段已交付",
-        "craft_remedial": lambda o: "补救资源已生成",
-        "finalize": lambda o: "全部完成",
-    }
-
-    fn = summaries.get(node_name, lambda o: "完成")
-    return fn(output)
