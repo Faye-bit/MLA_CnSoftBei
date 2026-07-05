@@ -10,16 +10,15 @@
  * @see branding/MLA_BRAND_GUIDELINES.md
  */
 
-import { useState, useEffect, useRef } from 'react'
-import { Select, Button, message } from 'antd'
+import { useState, useRef } from 'react'
+import { Button, message } from 'antd'
 import { SendOutlined, StopOutlined, GlobalOutlined, PictureOutlined, CloseCircleFilled } from '@ant-design/icons'
-import type { Course } from '../../types'
-import { getCourses, uploadChatImage } from '../../services/api'
+import { uploadChatImage } from '../../services/api'
 import { blue, gray } from '../../styles/tokens'
 
 /** 已知支持多模态的模型关键词 (前端拦截用) */
 const VISION_MODEL_KEYWORDS = [
-  'gpt-4o', 'gpt-4-turbo', 'gpt-4-vision',
+  'gpt-4o', 'gpt-4-turbo', 'gpt-4-vision', 'doubao',
   'claude-3', 'claude-4', 'claude-3.5', 'claude-3-5',
   'gemini', 'vision', 'vl', 'multimodal', 'qvq',
   'qwen-vl', 'doubao-vision', 'yi-vision', 'glm-4v',
@@ -31,11 +30,10 @@ function isVisionModel(modelName: string): boolean {
 }
 
 interface ChatInputProps {
-  onSend: (content: string, courseId: string | null, imageUrls?: string[]) => void
+  onSend: (content: string, imageUrls?: string[]) => void
   onStop?: () => void
   streaming?: boolean
   conversationType?: 'chat' | 'profile_collection'
-  selectedCourseId?: string | null
   /** 联网搜索开关状态 */
   webSearchEnabled?: boolean
   /** 联网搜索开关切换回调 */
@@ -44,13 +42,10 @@ interface ChatInputProps {
 
 export default function ChatInput({
   onSend, onStop, streaming = false,
-  conversationType = 'chat', selectedCourseId: initialCourseId,
+  conversationType = 'chat',
   webSearchEnabled = false, onWebSearchToggle,
 }: ChatInputProps) {
   const [inputValue, setInputValue] = useState('')
-  const [courses, setCourses] = useState<Course[]>([])
-  const [selectedCourseId, setSelectedCourseId] = useState<string | null>(initialCourseId || null)
-  const [coursesLoaded, setCoursesLoaded] = useState(false)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   /** 已上传的图片 URL 列表 */
   const [imageUrls, setImageUrls] = useState<string[]>([])
@@ -66,20 +61,6 @@ export default function ChatInput({
    *   - true  → Enter 由 IME 处理 (选词), 不发送
    *   - false → Enter 正常发送消息
    */
-  const isComposingRef = useRef(false)
-
-  useEffect(() => {
-    if (conversationType !== 'chat' || coursesLoaded) return
-    async function loadCourses() {
-      try {
-        const data = await getCourses(1, 100)
-        setCourses(data.items)
-      } catch { /* ignore */ }
-      setCoursesLoaded(true)
-    }
-    loadCourses()
-  }, [conversationType, coursesLoaded])
-
   /** 上传图片 */
   const handleUploadImage = async () => {
     fileInputRef.current?.click()
@@ -131,7 +112,7 @@ export default function ChatInput({
     const compatible = await checkModelCompatibility()
     if (!compatible) return
 
-    onSend(trimmed, selectedCourseId, imageUrls.length > 0 ? imageUrls : undefined)
+    onSend(trimmed, imageUrls.length > 0 ? imageUrls : undefined)
     setInputValue('')
     setImageUrls([])
     const el = textareaRef.current
@@ -153,7 +134,7 @@ export default function ChatInput({
   }
 
   return (
-    <div style={{ borderTop: `1px solid ${gray[200]}`, padding: '12px 16px', background: '#FFFFFF' }}>
+    <div style={{ padding: '12px 16px', background: '#FFFFFF' }}>
       {/* 已上传图片预览 — 在按钮组上方 */}
       {imageUrls.length > 0 && (
         <div style={{ display: 'flex', gap: 8, marginBottom: 8, flexWrap: 'wrap' }}>
@@ -170,17 +151,7 @@ export default function ChatInput({
       )}
 
       {conversationType === 'chat' && (
-        <div style={{ marginBottom: 8, display: 'flex', alignItems: 'center', gap: 10 }}>
-          <Select
-            placeholder="关联课程"
-            value={selectedCourseId}
-            onChange={setSelectedCourseId}
-            style={{ width: 180, flexShrink: 0 }}
-            allowClear showSearch
-            optionFilterProp="label"
-            options={courses.map((c) => ({ label: c.name, value: c.id }))}
-            size="small"
-          />
+        <div style={{ marginBottom: 8, display: 'flex', alignItems: 'center', gap: 8 }}>
           {/* 图片上传按钮 */}
           <input
             ref={fileInputRef}

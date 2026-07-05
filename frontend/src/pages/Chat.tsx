@@ -13,17 +13,17 @@
 
 import { useEffect, useState, useRef, useCallback } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { Typography, Spin, Empty, message } from 'antd'
+import { Typography, Spin, Empty, message, Select } from 'antd'
 import { ThunderboltOutlined } from '@ant-design/icons'
 import ConversationList from '../components/chat/ConversationList'
 import ChatMessage from '../components/chat/ChatMessage'
 import ChatInput from '../components/chat/ChatInput'
 import {
   getConversations, getConversationDetail, createConversation,
-  deleteConversation, updateConversation,
+  deleteConversation, updateConversation, getCourses,
 } from '../services/api'
 import { useStreamChat } from '../hooks/useStreamChat'
-import type { Conversation, Message } from '../types'
+import type { Conversation, Message, Course } from '../types'
 import { blue, gray } from '../styles/tokens'
 
 const { Text } = Typography
@@ -54,6 +54,18 @@ export default function Chat() {
   const [webSearchEnabled, setWebSearchEnabled] = useState(false)
   /** 对话列表折叠 (默认折叠, 给聊天区域更大空间) */
   const [convsCollapsed, setConvsCollapsed] = useState(true)
+  /** 关联课程 (RAG 知识库检索) — 初始值来自当前对话 */
+  const [chatCourseId, setChatCourseId] = useState<string | null>(null)
+  const [courses, setCourses] = useState<Course[]>([])
+  // 当切换对话时同步课程 ID
+  useEffect(() => {
+    setChatCourseId(activeConversation?.course_id || null)
+  }, [activeConversation?.course_id])
+
+  // 加载课程列表
+  useEffect(() => {
+    getCourses().then(data => setCourses(data.items || [])).catch(() => {})
+  }, [])
 
   // 使用 useStreamChat hook 管理 SSE 流式逻辑
   const {
@@ -166,11 +178,11 @@ export default function Chat() {
     setTimeout(() => messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }), 100)
   }, [])
 
-  const handleSendMessage = useCallback(async (content: string, courseId: string | null, imageUrls?: string[]) => {
+  const handleSendMessage = useCallback(async (content: string, imageUrls?: string[]) => {
     if (!activeConversation) return
     scrollAfterSend()
-    sendMessage(activeConversation.id, content, courseId, undefined, undefined, webSearchEnabled, imageUrls)
-  }, [activeConversation, scrollAfterSend, sendMessage, webSearchEnabled])
+    sendMessage(activeConversation.id, content, chatCourseId, undefined, undefined, webSearchEnabled, imageUrls)
+  }, [activeConversation, scrollAfterSend, sendMessage, webSearchEnabled, chatCourseId])
 
   const handleStopStreaming = useCallback(() => {
     stopStreaming()
@@ -316,9 +328,7 @@ export default function Chat() {
                       {SUGGESTIONS.map((text, idx) => (
                         <div
                           key={idx}
-                          onClick={() => {
-                            handleSendMessage(text, activeConversation.course_id || null)
-                          }}
+                          onClick={() => handleSendMessage(text)}
                           style={{
                             padding: '12px 16px',
                             border: `1px solid ${gray[200]}`,
@@ -388,14 +398,28 @@ export default function Chat() {
               </div>
             )}
 
-            {/* --- 输入栏: 始终固定于底部 --- */}
-            <div style={{ flexShrink: 0 }}>
+            {/* --- 课程选择 + 输入栏: 固定于底部 --- */}
+            <div style={{ flexShrink: 0, borderTop: `1px solid ${gray[200]}`, background: '#FFFFFF' }}>
+              {/* 课程关联选择器 */}
+              {activeConversation?.conversation_type === 'chat' && (
+                <div style={{ padding: '6px 16px 0', display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <Select
+                    placeholder="关联课程 (可选)"
+                    value={chatCourseId}
+                    onChange={setChatCourseId}
+                    style={{ width: 200 }}
+                    allowClear showSearch
+                    optionFilterProp="label"
+                    size="small"
+                    options={courses.map((c) => ({ label: c.name, value: c.id }))}
+                  />
+                </div>
+              )}
               <ChatInput
                 onSend={handleSendMessage}
                 onStop={handleStopStreaming}
                 streaming={streaming}
                 conversationType={activeConversation.conversation_type}
-                selectedCourseId={activeConversation.course_id}
                 webSearchEnabled={webSearchEnabled}
                 onWebSearchToggle={() => setWebSearchEnabled(p => !p)}
               />
