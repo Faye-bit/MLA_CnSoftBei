@@ -50,6 +50,8 @@ export default function Chat() {
   const [userScrolledUp, setUserScrolledUp] = useState(false)
   /** 新建对话后自动聚焦输入框 */
   const [shouldFocusInput, setShouldFocusInput] = useState(false)
+  /** 联网搜索开关 */
+  const [webSearchEnabled, setWebSearchEnabled] = useState(false)
 
   // 使用 useStreamChat hook 管理 SSE 流式逻辑
   const {
@@ -58,6 +60,7 @@ export default function Chat() {
     streaming,
     streamingContent,
     streamingSources,
+    streamingWebLinks,
     sendMessage,
     stopStreaming,
     abortStreaming,
@@ -164,8 +167,8 @@ export default function Chat() {
   const handleSendMessage = useCallback(async (content: string, courseId: string | null) => {
     if (!activeConversation) return
     scrollAfterSend()
-    sendMessage(activeConversation.id, content, courseId)
-  }, [activeConversation, scrollAfterSend, sendMessage])
+    sendMessage(activeConversation.id, content, courseId, undefined, undefined, webSearchEnabled)
+  }, [activeConversation, scrollAfterSend, sendMessage, webSearchEnabled])
 
   const handleStopStreaming = useCallback(() => {
     stopStreaming()
@@ -308,7 +311,9 @@ export default function Chat() {
                       {SUGGESTIONS.map((text, idx) => (
                         <div
                           key={idx}
-                          onClick={() => handleSendMessage(text, activeConversation.course_id || null)}
+                          onClick={() => {
+                            handleSendMessage(text, activeConversation.course_id || null)
+                          }}
                           style={{
                             padding: '12px 16px',
                             border: `1px solid ${gray[200]}`,
@@ -342,11 +347,11 @@ export default function Chat() {
                 <>
                   {messages.map((msg) => (
                     <ChatMessage key={msg.id} role={msg.role} content={msg.content}
-                      sources={msg.sources} createdAt={msg.created_at} />
+                      sources={msg.sources} createdAt={msg.created_at} webLinks={msg.web_links} />
                   ))}
 
                   {streaming && streamingContent && (
-                    <ChatMessage role="assistant" content={streamingContent} sources={streamingSources} streaming />
+                    <ChatMessage role="assistant" content={streamingContent} sources={streamingSources} streaming webLinks={streamingWebLinks} />
                   )}
 
                   {streaming && !streamingContent && (
@@ -386,6 +391,8 @@ export default function Chat() {
                 streaming={streaming}
                 conversationType={activeConversation.conversation_type}
                 selectedCourseId={activeConversation.course_id}
+                webSearchEnabled={webSearchEnabled}
+                onWebSearchToggle={() => setWebSearchEnabled(p => !p)}
               />
             </div>
           </>

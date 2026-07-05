@@ -8,12 +8,12 @@
  */
 
 import { Avatar, Tag, Space, Typography } from 'antd'
-import { FileTextOutlined, FileImageOutlined, LinkOutlined } from '@ant-design/icons'
+import { FileTextOutlined, FileImageOutlined, LinkOutlined, GlobalOutlined } from '@ant-design/icons'
 import MarkdownRenderer from '../common/MarkdownRenderer'
 import SpeakButton from '../common/SpeakButton'
 import { getAvatarUrl } from '../../services/api'
 import { useAuthStore } from '../../store'
-import type { ChatSource } from '../../types'
+import type { ChatSource, WebLink } from '../../types'
 import { blue, gray, semantic } from '../../styles/tokens'
 
 const { Text } = Typography
@@ -25,6 +25,8 @@ interface ChatMessageProps {
   createdAt?: string | null
   /** 是否正在流式输出 — 尾部追加闪烁光标 */
   streaming?: boolean
+  /** 联网搜索结果链接列表 */
+  webLinks?: WebLink[]
 }
 
 /** 去除 AI 回复中的内联参考来源 (下方有专门的 Tag 来源区) */
@@ -45,7 +47,7 @@ function UserAvatar() {
   return <Avatar style={{ backgroundColor: blue[500], flexShrink: 0 }} size={36}>{user?.nickname?.[0] || user?.username?.[0] || 'U'}</Avatar>
 }
 
-export default function ChatMessage({ role, content, sources, createdAt, streaming = false }: ChatMessageProps) {
+export default function ChatMessage({ role, content, sources, createdAt, streaming = false, webLinks }: ChatMessageProps) {
   if (role === 'system') return null
 
   const isUser = role === 'user'
@@ -146,6 +148,11 @@ export default function ChatMessage({ role, content, sources, createdAt, streami
           </div>
         )}
 
+        {/* 联网搜索结果链接卡片 */}
+        {!isUser && !streaming && webLinks && webLinks.length > 0 && (
+          <WebLinksSection links={webLinks} />
+        )}
+
         {/* 时间戳 */}
         {createdAt && (
           <div style={{ textAlign: isUser ? 'right' : 'left', marginTop: 4, padding: '0 4px' }}>
@@ -170,6 +177,114 @@ export default function ChatMessage({ role, content, sources, createdAt, streami
           animation: blinkCursor 0.8s ease-in-out infinite;
         }
       `}</style>
+    </div>
+  )
+}
+
+// ============================================================================
+// 联网搜索结果链接卡片组件
+// ============================================================================
+
+/** 平台名称对应的品牌色 (用于左侧色条) */
+const PLATFORM_COLORS: Record<string, string> = {
+  '知乎': '#0066FF',
+  '知乎专栏': '#0066FF',
+  'B站': '#FB7299',
+  '小红书': '#FF2442',
+  'CSDN': '#FC5531',
+  '掘金': '#1E80FF',
+  '思否': '#009A61',
+  '简书': '#EC7259',
+  '博客园': '#336699',
+  '微信公众号': '#07C160',
+  'GitHub': '#24292E',
+  '码云': '#C71D23',
+  'Stack Overflow': '#F48225',
+  'MDN': '#000000',
+  '维基百科': '#54595D',
+  'Medium': '#000000',
+}
+
+function WebLinksSection({ links }: { links: WebLink[] }) {
+  return (
+    <div style={{
+      marginTop: 8, padding: '10px 12px',
+      background: '#FFFDF5', borderRadius: 8,
+      border: `1px solid #FDE68A`,
+    }}>
+      <Text type="secondary" style={{ fontSize: 12, marginBottom: 8, display: 'block' }}>
+        <GlobalOutlined /> 联网搜索发现:
+      </Text>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        {links.map((link, idx) => {
+          const platformColor = PLATFORM_COLORS[link.source_platform] || gray[500]
+          return (
+            <a
+              key={idx}
+              href={link.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{
+                display: 'flex', gap: 10,
+                padding: '8px 10px',
+                background: '#FFFFFF',
+                borderRadius: 8,
+                border: `1px solid ${gray[200]}`,
+                textDecoration: 'none',
+                transition: 'border-color 0.2s, box-shadow 0.2s',
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.borderColor = blue[400]
+                e.currentTarget.style.boxShadow = '0 1px 6px rgba(59,130,246,0.1)'
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.borderColor = gray[200]
+                e.currentTarget.style.boxShadow = 'none'
+              }}
+            >
+              {/* 左侧平台色条 */}
+              <div style={{
+                width: 3, minWidth: 3,
+                borderRadius: 2,
+                background: platformColor,
+              }} />
+              {/* 链接内容 */}
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{
+                  fontSize: 13, fontWeight: 600,
+                  color: gray[800], lineHeight: 1.4,
+                  overflow: 'hidden', textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap',
+                }}>
+                  {link.title}
+                </div>
+                {link.description && (
+                  <div style={{
+                    fontSize: 12, color: gray[500],
+                    lineHeight: 1.5, marginTop: 2,
+                    display: '-webkit-box',
+                    WebkitLineClamp: 2,
+                    WebkitBoxOrient: 'vertical',
+                    overflow: 'hidden',
+                  }}>
+                    {link.description}
+                  </div>
+                )}
+              </div>
+              {/* 右侧平台标签 */}
+              <Tag
+                color={platformColor}
+                style={{
+                  margin: 0, fontSize: 11,
+                  flexShrink: 0, alignSelf: 'flex-start',
+                }}
+              >
+                {link.source_platform}
+              </Tag>
+            </a>
+          )
+        })}
+      </div>
     </div>
   )
 }

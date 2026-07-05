@@ -11,8 +11,8 @@
  */
 
 import { useState, useEffect, useRef } from 'react'
-import { Select, Button } from 'antd'
-import { SendOutlined, StopOutlined } from '@ant-design/icons'
+import { Select, Button, Tooltip } from 'antd'
+import { SendOutlined, StopOutlined, GlobalOutlined } from '@ant-design/icons'
 import type { Course } from '../../types'
 import { getCourses } from '../../services/api'
 import { blue, gray } from '../../styles/tokens'
@@ -23,11 +23,16 @@ interface ChatInputProps {
   streaming?: boolean
   conversationType?: 'chat' | 'profile_collection'
   selectedCourseId?: string | null
+  /** 联网搜索开关状态 */
+  webSearchEnabled?: boolean
+  /** 联网搜索开关切换回调 */
+  onWebSearchToggle?: () => void
 }
 
 export default function ChatInput({
   onSend, onStop, streaming = false,
   conversationType = 'chat', selectedCourseId: initialCourseId,
+  webSearchEnabled = false, onWebSearchToggle,
 }: ChatInputProps) {
   const [inputValue, setInputValue] = useState('')
   const [courses, setCourses] = useState<Course[]>([])
@@ -100,6 +105,27 @@ export default function ChatInput({
       )}
 
       <div style={{ display: 'flex', alignItems: 'flex-end', gap: 8 }}>
+        {/* 联网搜索开关 — 仅知识库对话模式显示 */}
+        {conversationType === 'chat' && onWebSearchToggle && (
+          <Tooltip title={webSearchEnabled ? '联网搜索已开启 — 将搜索知乎/B站/小红书等平台' : '开启联网搜索'}>
+            <Button
+              type="text"
+              size="small"
+              icon={<GlobalOutlined />}
+              onClick={onWebSearchToggle}
+              disabled={streaming}
+              style={{
+                color: webSearchEnabled ? blue[500] : gray[400],
+                fontSize: 18,
+                width: 32, height: 32,
+                borderRadius: 8,
+                border: webSearchEnabled ? `1px solid ${blue[300]}` : `1px solid transparent`,
+                background: webSearchEnabled ? '#f0f7ff' : 'transparent',
+                transition: 'all 0.2s',
+              }}
+            />
+          </Tooltip>
+        )}
         <textarea
           ref={textareaRef}
           value={inputValue}
