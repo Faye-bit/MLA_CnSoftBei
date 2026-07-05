@@ -296,6 +296,22 @@ async def _score_practice_intensity(
     ex_result = await db.execute(ex_stmt)
     exercise_count = ex_result.scalar() or 0
 
+    # 1b. AI智学 (v2) 习题生成量: 计数 ZhiXueResource 中的 exercise
+    from app.models.zhixue import ZhiXueSession, ZhiXueStage, ZhiXueResource
+    since_naive_pi = since.replace(tzinfo=None)  # v2 表使用 naive DateTime
+    zx_ex_stmt = (
+        select(func.count(ZhiXueResource.id))
+        .join(ZhiXueStage, ZhiXueResource.stage_id == ZhiXueStage.id)
+        .join(ZhiXueSession, ZhiXueStage.session_id == ZhiXueSession.id)
+        .where(
+            ZhiXueSession.user_id == user_id,
+            ZhiXueResource.resource_type.in_(("exercise", "coding_practice")),
+            ZhiXueResource.created_at >= since_naive_pi,
+        )
+    )
+    zx_ex_result = await db.execute(zx_ex_stmt)
+    exercise_count += (zx_ex_result.scalar() or 0)
+
     # 8 道题 → 满分
     exercise_score = min(10.0, (exercise_count / 8.0) * 10.0)
 
@@ -633,11 +649,14 @@ async def _query_practice_weekly_stats(
     """
     查询练习数据并按天统计已答/错题数, 生成近 7 天周统计
 
+    同时查询 v1 (GeneratedResource) 和 v2 (ZhiXueResource) 的习题数据
+
     :param user_id: 用户 ID
     :param db:      数据库会话
     :param since:   时间窗口起始
-    :return:        (ex_rows, weekly_stats)
+    :return:        (merged_rows, weekly_stats)
     """
+    # ── v1: GeneratedResource ──
     ex_stmt = (
         select(
             GeneratedResource.id, GeneratedResource.title, GeneratedResource.resource_type,
@@ -653,15 +672,36 @@ async def _query_practice_weekly_stats(
             GeneratedResource.resource_type.in_(("exercise", "code_practice", "assessment")),
             GeneratedResource.created_at >= since,
         )
-        .order_by(GeneratedResource.created_at.desc())
     )
     ex_result = await db.execute(ex_stmt)
-    ex_rows = ex_result.all()
+    all_rows = list(ex_result.all())
+
+    # ── v2: ZhiXueResource (模型使用 naive DateTime, 需将 since 转为 naive) ──
+    from app.models.zhixue import ZhiXueSession, ZhiXueStage, ZhiXueResource
+    since_naive = since.replace(tzinfo=None)  # v2 表的 DateTime 未带时区
+    zx_stmt = (
+        select(
+            ZhiXueResource.id, ZhiXueResource.title, ZhiXueResource.resource_type,
+            ZhiXueResource.content, ZhiXueResource.resource_metadata,
+            ZhiXueResource.created_at,
+            ZhiXueSession.course_id,
+            ZhiXueStage.id, ZhiXueStage.title, ZhiXueStage.order_index,
+        )
+        .join(ZhiXueStage, ZhiXueResource.stage_id == ZhiXueStage.id)
+        .join(ZhiXueSession, ZhiXueStage.session_id == ZhiXueSession.id)
+        .where(
+            ZhiXueSession.user_id == user_id,
+            ZhiXueResource.resource_type.in_(("exercise", "coding_practice")),
+            ZhiXueResource.created_at >= since_naive,
+        )
+    )
+    zx_result = await db.execute(zx_stmt)
+    all_rows.extend(zx_result.all())
 
     # 按天统计已答/错题
     ans_daily = Counter()
     wrong_daily = Counter()
-    for row in ex_rows:
+    for row in all_rows:
         metadata = row[4]
         day = row[5].strftime("%a") if row[5] else None
         if not day:
@@ -695,7 +735,7 @@ async def _query_practice_weekly_stats(
         wrong_weekly[k] = wrong_daily.get(k, 0)
     weekly_stats = [{"day": k, "count": weekly_map[k], "wrong": wrong_weekly[k]} for k in weekly_map]
 
-    return ex_rows, weekly_stats
+    return all_rows, weekly_stats
 
 
 async def _build_practice_course_hierarchy(
@@ -863,23 +903,38 @@ async def _detail_practice_intensity(user_id, db, since):
 
 
 async def _detail_review_habit(user_id, db, since):
-    """复习复盘习惯/知识留存度明细"""
+    """复习复盘习惯/知识留存度明细 (含 v1 LearningStage + v2 ZhiXueStage)"""
     from app.models.learning import LearningSession, LearningStage
+    from app.models.zhixue import ZhiXueSession, ZhiXueStage
 
+    # v1 stages
     stages_stmt = (
         select(LearningStage.title, LearningStage.status, LearningStage.created_at, LearningStage.knowledge_point_ids)
         .join(LearningSession, LearningStage.session_id == LearningSession.id)
         .where(LearningSession.user_id == user_id, LearningStage.created_at >= since)
-        .order_by(LearningStage.created_at.desc())
     )
     stages_result = await db.execute(stages_stmt)
-    stages = stages_result.all()
+    stages = list(stages_result.all())
+
+    # v2 ZhiXue stages (naive DateTime)
+    since_naive = since.replace(tzinfo=None)
+    zx_stages_stmt = (
+        select(ZhiXueStage.title, ZhiXueStage.status, ZhiXueStage.created_at)
+        .join(ZhiXueSession, ZhiXueStage.session_id == ZhiXueSession.id)
+        .where(ZhiXueSession.user_id == user_id, ZhiXueStage.created_at >= since_naive)
+    )
+    zx_stages_result = await db.execute(zx_stages_stmt)
+    for row in zx_stages_result.all():
+        stages.append((row[0], row[1], row[2], []))  # ZhiXueStage has no knowledge_point_ids
+
+    # Sort by created_at descending
+    stages.sort(key=lambda s: s[2] or datetime.min.replace(tzinfo=timezone.utc), reverse=True)
 
     items = []
     completed = sum(1 for s in stages if s[1] == "completed")
     total = len(stages)
     for s in stages[:8]:
-        kp_names = (s[3] or [])[:3] if isinstance(s[3], list) else []
+        kp_names = (s[3] or [])[:3] if len(s) > 3 and isinstance(s[3], list) else []
         items.append({
             "label": s[0],
             "date": s[2].strftime("%m/%d") if s[2] else "",
@@ -899,31 +954,51 @@ async def _detail_review_habit(user_id, db, since):
 
 
 async def _detail_focus_level(user_id, db, since):
-    """学习沉浸度明细: 学习会话分析"""
+    """学习沉浸度明细: 学习会话分析 (含 v1 + v2)"""
     from app.models.learning import LearningSession, LearningStage
+    from app.models.zhixue import ZhiXueSession, ZhiXueStage
     from app.models.conversation import Message
 
+    # v1 sessions
     sessions_stmt = (
         select(LearningSession.id, LearningSession.status, LearningSession.created_at)
         .where(LearningSession.user_id == user_id, LearningSession.created_at >= since)
         .order_by(LearningSession.created_at.desc())
     )
     sessions_result = await db.execute(sessions_stmt)
-    sessions = sessions_result.all()
+    sessions = list(sessions_result.all())
+
+    # v2 ZhiXue sessions (naive DateTime)
+    since_naive = since.replace(tzinfo=None)
+    zx_stmt = (
+        select(ZhiXueSession.id, ZhiXueSession.status, ZhiXueSession.created_at)
+        .where(ZhiXueSession.user_id == user_id, ZhiXueSession.created_at >= since_naive)
+        .order_by(ZhiXueSession.created_at.desc())
+    )
+    zx_result = await db.execute(zx_stmt)
+    sessions.extend(zx_result.all())
+
+    # Sort by created_at descending
+    sessions.sort(key=lambda s: s[2] or datetime.min.replace(tzinfo=timezone.utc), reverse=True)
 
     items = []
     total_stage_count = 0
     for sess in sessions:
-        stage_count = (await db.execute(
-            select(func.count(LearningStage.id)).where(LearningStage.session_id == sess[0])
-        )).scalar() or 0
-        total_stage_count += stage_count
-        items.append({
-            "label": f"学习会话",
-            "date": sess[2].strftime("%m/%d") if sess[2] else "",
-            "status": sess[1],
-            "stage_count": stage_count,
-        })
+        # Count stages from either v1 or v2
+        if len(sess) >= 3:
+            stage_count = (await db.execute(
+                select(func.count(LearningStage.id)).where(LearningStage.session_id == sess[0])
+            )).scalar() or 0
+            stage_count += (await db.execute(
+                select(func.count(ZhiXueStage.id)).where(ZhiXueStage.session_id == sess[0])
+            )).scalar() or 0
+            total_stage_count += stage_count
+            items.append({
+                "label": f"学习会话",
+                "date": sess[2].strftime("%m/%d") if sess[2] else "",
+                "status": sess[1],
+                "stage_count": stage_count,
+            })
 
     # 基于会话的阶段完成数评分
     score = min(10.0, (len(sessions) / 5.0) * 5.0 + (total_stage_count / 10.0) * 5.0)

@@ -19,7 +19,7 @@ import StageSwitcher from '../components/zhixue/StageSwitcher'
 import type { StageSummary } from '../components/zhixue/StageSwitcher'
 import ResourceTree from '../components/learning/ResourceTree'
 import ResourceViewer from '../components/learning/ResourceViewer'
-import { submitZhiXueQuestionnaire, getZhiXueSessionDetail, submitZhiXueFeedback, submitZhiXueRemedial, getZhiXueStageResources, getZhiXueResourceDetail, cancelZhiXueSession, saveZhiXueExerciseProgress, scoreZhiXueExerciseAnswer } from '../services/api'
+import { submitZhiXueQuestionnaire, getZhiXueSessionDetail, submitZhiXueFeedback, submitZhiXueRemedial, getZhiXueStageResources, getZhiXueResourceDetail, cancelZhiXueSession, saveZhiXueExerciseProgress, scoreZhiXueExerciseAnswer, recordLearning } from '../services/api'
 import type { ZhiXueQuestionnaire, ZhiXueQuestionAnswer } from '../types'
 import type { GeneratedResource, GeneratedResourceDetail } from '../types'
 import { blue, gray } from '../styles/tokens'
@@ -67,6 +67,8 @@ export default function ZhiXueSession() {
   const totalStagesRef = useRef(0)
   const sseStartedRef = useRef(false)
   const generationDoneRef = useRef(false)
+  /** 记录当前会话的 course_id, 用于 learn record 等统计 */
+  const sessionCourseIdRef = useRef<string | null>(null)
 
   // Resource viewer state
   const [resources, setResources] = useState<GeneratedResource[]>([])
@@ -146,6 +148,12 @@ export default function ZhiXueSession() {
     setSelectedResourceId(res.id)
     setResourceLoading(true)
     setSelectedResource(null)
+    // 记录学习行为 (艾宾浩斯复习计划)
+    recordLearning({
+      content_type: 'resource',
+      content_title: res.title,
+      course_id: sessionCourseIdRef.current || undefined,
+    }).catch(() => {})
     try {
       const detail = await getZhiXueResourceDetail(res.id)
       setSelectedResource(detail)
@@ -166,6 +174,7 @@ export default function ZhiXueSession() {
       try {
         // 检查当前阶段是否已有资源
         const session = await getZhiXueSessionDetail(id)
+        sessionCourseIdRef.current = session.course_id || null
         if (!session || session.status === 'completed') {
           setLoading(false); setAllDone(true); return
         }
@@ -234,6 +243,27 @@ export default function ZhiXueSession() {
 
   // ── Complete study → feedback ──
   const handleCompleteStudy = () => setShowFeedback(true)
+
+  // ── Exercise progress: save + record learning activity ──
+  const handleExerciseProgressSave = useCallback(async (
+    resourceId: string,
+    progress: {
+      answers: Record<string, number | number[] | string>
+      submitted: Record<string, boolean>
+      current_index: number
+      scores?: Record<string, { score: number; feedback: string }>
+    }
+  ) => {
+    // 保存进度
+    await saveZhiXueExerciseProgress(resourceId, progress)
+    // 记录学习行为 (触发艾宾浩斯复习计划)
+    const exerciseTitle = selectedResource?.title || `练习题 ${resourceId.slice(0, 8)}`
+    recordLearning({
+      content_type: 'exercise',
+      content_title: exerciseTitle,
+      course_id: sessionCourseIdRef.current || undefined,
+    }).catch(() => {})
+  }, [selectedResource])
 
   // ── Feedback ──
   const handleFeedback = useCallback(async (mastery: string, remedialSelected?: string[]) => {
@@ -412,7 +442,7 @@ export default function ZhiXueSession() {
         <Content style={{ overflow: 'auto', background: '#fff' }}>
           {hasResources ? (
             <ResourceViewer resource={selectedResource} loading={resourceLoading}
-              onSaveExerciseProgress={saveZhiXueExerciseProgress}
+              onSaveExerciseProgress={handleExerciseProgressSave}
               onScoreExerciseAnswer={scoreZhiXueExerciseAnswer} />
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', gap: 16 }}>
@@ -466,7 +496,7 @@ function AllDonePage({ evaluation, onBack }: AllDonePageProps) {
     confettiFired.current = true
 
     // 左下角 → 右上方, 右下角 → 左上方
-    const duration = 3000
+    const duration = 1000
     const end = Date.now() + duration
 
     const fire = () => {
