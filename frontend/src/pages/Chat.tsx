@@ -192,8 +192,8 @@ export default function Chat() {
 
   return (
     <div style={{
-      height: 'calc(100vh - 104px)',  // 精确填充可用空间, 防止外层滚动
-      overflow: 'hidden',
+      flex: 1,
+      minHeight: 0,
       display: 'flex',
     }}>
       {/* ================================================================ */}
@@ -224,7 +224,7 @@ export default function Chat() {
             {/* MLA Logo */}
             <img
               src="/brand/字母标Logo.svg"
-              alt="MLA 智学引擎"
+              alt="MLA 智小学"
               style={{ width: 144, height: 144 }}
             />
 
@@ -289,7 +289,7 @@ export default function Chat() {
                   {/* Logo */}
                   <img
                     src="/brand/字母标Logo.svg"
-                    alt="MLA 智学引擎"
+                    alt="MLA 智小学"
                     style={{ width: 128, height: 128 }}
                   />
 

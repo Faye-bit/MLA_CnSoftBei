@@ -1,5 +1,5 @@
 /**
- * MLA 智学引擎 - 全局类型定义
+ * MLA 智小学 - 全局类型定义
  * 与后端 API 响应结构对齐
  */
 
@@ -694,7 +694,7 @@ export interface AgentCard {
   id: string
   /** 显示名称, 如 "学习导引师向南" */
   name: string
-  /** emoji 图标 */
+  /** 头像文件名 (不含扩展名), 对应 /Agents/{icon}.png */
   icon: string
   /** 当前工作流状态 */
   state: AgentCardState

@@ -231,6 +231,8 @@ export default function AppLayout() {
               flex: 1,
               minHeight: 0,
               overflow: 'auto',
+              display: 'flex',
+              flexDirection: 'column',
             }}
           >
             {/* === 顶栏 — 毛玻璃 sticky === */}
@@ -266,7 +268,7 @@ export default function AppLayout() {
             </div>
 
             {/* === 页面内容区 === */}
-            <div style={{ padding: 24, background: gray[50] }}>
+            <div style={{ padding: 24, background: gray[50], flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
               <Outlet />
             </div>
           </div>
