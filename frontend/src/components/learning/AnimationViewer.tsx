@@ -61,7 +61,16 @@ export default function AnimationViewer({ content }: AnimationViewerProps) {
   }
 
   return (
-    <div style={{ position: 'relative', width: '100%', height: isFullscreen ? 'calc(100vh - 120px)' : '100%', transition: 'height 0.3s ease', background: gray[50], borderRadius: isFullscreen ? 0 : 8, overflow: 'hidden' }}>
+    <div style={{
+      position: 'relative',
+      width: '100%',
+      height: isFullscreen ? 'calc(100vh - 120px)' : '100%',
+      minHeight: isFullscreen ? undefined : 520,
+      transition: 'height 0.3s ease',
+      background: gray[50],
+      borderRadius: isFullscreen ? 0 : 8,
+      overflow: 'hidden',
+    }}>
       {!loading && !error && (
         <div style={{ position: 'absolute', top: 8, right: 8, zIndex: 10, display: 'flex', gap: 4, background: 'rgba(255,255,255,0.85)', borderRadius: 6, padding: '2px 4px' }}>
           <Button size="small" icon={isFullscreen ? <FullscreenExitOutlined /> : <ExpandOutlined />} onClick={() => setIsFullscreen(prev => !prev)} title={isFullscreen ? '退出最大化' : '页面内最大化'} />

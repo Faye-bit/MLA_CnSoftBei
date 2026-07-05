@@ -62,10 +62,27 @@ interface ResourceViewerProps {
    * 用于切换左侧资源目录和右侧查看器到目标动画资源
    */
   onNavigateToResource?: (resourceId: string) => void
+  /** v2 覆盖: 保存练习进度 */
+  onSaveExerciseProgress?: (resourceId: string, progress: {
+    answers: Record<string, number | number[] | string>
+    submitted: Record<string, boolean>
+    current_index: number
+    scores?: Record<string, { score: number; feedback: string }>
+  }) => Promise<void>
+  /** v2 覆盖: AI 评分主观题 */
+  onScoreExerciseAnswer?: (resourceId: string, request: {
+    question_id: string
+    question_type: string
+    question_text: string
+    user_answer: string
+    reference_answer: string
+    explanation?: string
+  }) => Promise<{ question_id: string; score: number; feedback: string }>
 }
 
 export default function ResourceViewer({
   resource, loading, onNavigateToResource,
+  onSaveExerciseProgress, onScoreExerciseAnswer,
 }: ResourceViewerProps) {
   if (loading) {
     return (
@@ -117,6 +134,8 @@ export default function ResourceViewer({
             content={content}
             resourceId={resource.id}
             resourceMetadata={resource.resource_metadata}
+            onSaveProgress={onSaveExerciseProgress}
+            onScoreAnswer={onScoreExerciseAnswer}
           />
         )
 
@@ -163,7 +182,11 @@ export default function ResourceViewer({
       </div>
 
       {/* 资源正文 — 阅读器类型居中展示，思维导图/动画全宽展示 */}
-      <div style={{ flex: 1, minHeight: 0, overflow: 'auto' }}>
+      <div style={{
+        flex: 1,
+        minHeight: isReaderType ? 0 : 520,
+        overflow: 'auto',
+      }}>
         {isReaderType ? (
           <div style={{
             maxWidth: 900,
