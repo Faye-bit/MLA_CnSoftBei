@@ -670,30 +670,37 @@ async def get_session_status(
 @router.get("/sessions/{session_id}/download")
 async def download_session(
     session_id: str,
-    user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    token: Optional[str] = Query(default=None, description="JWT Token (兼容 window.open)"),
 ):
     """
     下载整个会话的学习资源 (zip 压缩包)
 
+    通过 ?token=<jwt> 查询参数认证 (兼容 window.open / <a> 下载)。
     按阶段分目录, 每个资源一个独立文件。
-    包含:
-      session_{id}/
-        README.md         — 会话概览
-        阶段1_{标题}/
-          讲义.md
-          思维导图.md
-          练习题.json
-          拓展阅读.md
-          交互动画.html
-          编程实操.md
-        阶段2_{标题}/
-          ...
     """
     import io
     import zipfile
     from app.models.zhixue import ZhiXueSession, ZhiXueStage, ZhiXueResource
     from app.models.course import Course
+    from app.core.security import decode_access_token
+
+    # 验证 JWT Token (查询参数方式, 兼容浏览器直接下载)
+    if not token:
+        raise HTTPException(status_code=401, detail="请先登录")
+    try:
+        payload = decode_access_token(token)
+        user_id_str = payload.get("sub")
+        if not user_id_str:
+            raise HTTPException(status_code=401, detail="Token 无效")
+        user_id = uuid.UUID(user_id_str)
+    except Exception:
+        raise HTTPException(status_code=401, detail="Token 无效或已过期")
+
+    # 验证用户存在
+    user = await db.get(User, user_id)
+    if not user:
+        raise HTTPException(status_code=401, detail="用户不存在")
 
     # 获取会话并验证所有权
     from sqlalchemy import select as _sel
