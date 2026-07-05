@@ -109,16 +109,16 @@ export default function ChatInput({
   const checkModelCompatibility = async (): Promise<boolean> => {
     if (imageUrls.length === 0) return true
     try {
-      const { getApiConfig } = await import('../../pages/Settings')
+      const { getApiConfig } = await import('../../services/api')
       const configs = await getApiConfig()
-      const modelName = (configs as Record<string, string>).llm_model || ''
-      if (!isVisionModel(modelName)) {
+      const modelName = (configs.items || []).find(c => c.key === 'llm_model')?.value || ''
+      if (modelName && !isVisionModel(modelName)) {
         message.warning(`当前模型 "${modelName}" 可能不支持识别图片，请切换到支持视觉的多模态模型（如 gpt-4o-mini、qwen-vl-plus）`)
         return false
       }
       return true
     } catch {
-      // 无法获取模型名称时放行，后端会处理
+      // 无法获取模型名称时放行
       return true
     }
   }
