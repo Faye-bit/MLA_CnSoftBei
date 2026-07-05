@@ -236,6 +236,10 @@ async def generate_mindmap(
     """
     生成思维导图 (Markdown 标题层级, 前端用 markmap 渲染为交互式 SVG)
 
+    单次调用, 不做内层重试。结构验证 (根节点 + 深度 >= 3 + 节点 >= 10)
+    已统一移至 orchestrator._quick_validate_content(), 由外层 _generate_single()
+    的重试循环统一驱动。
+
     :param topic: 阶段主题
     :param knowledge_context: 知识上下文
     :param db: 数据库会话
@@ -261,109 +265,29 @@ async def generate_mindmap(
 5. 用 `**文本**` 标记重点概念 (Markdown 加粗)
 6. 直接输出 Markdown 标题, 不要用 ``` 代码块包裹"""
 
-    last_error = None
-    for attempt in range(3):
-        try:
-            response = await client.chat.completions.create(
-                model=model,
-                messages=[
-                    {"role": "system", "content": MINDMAP_SYSTEM_PROMPT},
-                    {"role": "user", "content": user_prompt},
-                ],
-                temperature=0.5 if attempt > 0 else 0.3,
-                max_tokens=4000,
-            )
-            content = response.choices[0].message.content or ""
-
-            # 后处理: 去掉可能的 markdown 代码块包裹
-            content = content.strip()
-            if content.startswith("```"):
-                lines = content.split("\n")
-                if lines[0].startswith("```"):
-                    lines = lines[1:]
-                if lines and lines[-1].startswith("```"):
-                    lines = lines[:-1]
-                content = "\n".join(lines).strip()
-
-            # ── 语法验证: 检查 Markdown 标题层级 ──
-            heading_lines = [
-                l.strip() for l in content.split("\n")
-                if l.strip().startswith("#")
-            ]
-            node_count = len(heading_lines)
-
-            # 检查 1: 根节点 — 至少有一个一级标题 (不以 ## 开头)
-            has_root = any(
-                l.startswith("# ") and not l.startswith("## ")
-                for l in heading_lines
-            )
-
-            # 检查 2: 至少 3 级深度 (# , ## , ### 或更深)
-            depths = set()
-            for line in heading_lines:
-                level = 0
-                for ch in line:
-                    if ch == '#':
-                        level += 1
-                    else:
-                        break
-                depths.add(level)
-            has_min_depth = len(depths) >= 3
-
-            # 检查 3: 至少 10 个标题节点
-            has_min_nodes = node_count >= 10
-
-            validation_failed = (
-                not has_root or not has_min_depth or not has_min_nodes
-            )
-
-            if validation_failed and attempt < 2:
-                reason = []
-                if not has_root:
-                    reason.append("缺少一级标题(根节点)")
-                if not has_min_depth:
-                    reason.append(f"标题深度不足(当前{depths or set()}级, 需要至少3级)")
-                if not has_min_nodes:
-                    reason.append(f"标题节点数不足({node_count}, 至少10个)")
-                logger.warning(
-                    f"思维导图验证失败 ({', '.join(reason)}), 重试第 {attempt + 1} 次 "
-                    f"(topic={topic})"
-                )
-                last_error = f"验证失败: {', '.join(reason)}"
-                user_prompt += (
-                    f"\n\n【上次输出被拒绝】原因: {'; '.join(reason)}。"
-                    f"请确保: 1) 以 # 标题作为根节点"
-                    f" 2) 至少包含 #, ##, ### 三级标题"
-                    f" 3) 至少 12 个标题行。"
-                )
-                continue
-
-            logger.info(
-                f"思维导图生成完成: {topic} "
-                f"({len(content)} 字符, {node_count} 个标题节点, {len(depths)} 层深度)"
-            )
-            return content
-
-        except Exception as e:
-            last_error = str(e)
-            logger.error(f"思维导图生成失败 (尝试 {attempt + 1}/3): {e}")
-            if attempt >= 2:
-                break
-
-    logger.error(f"思维导图生成最终失败: {topic}, last_error={last_error}")
-    return (
-        f"# {topic}\n\n"
-        f"## 核心概念\n"
-        f"### 基本定义\n"
-        f"### 关键特性\n"
-        f"## 关键机制\n"
-        f"### 工作原理\n"
-        f"### 重要算法\n"
-        f"## 应用实践\n"
-        f"### 典型场景\n"
-        f"### 常见误区\n"
-        f"\n生成失败: {last_error}"
+    response = await client.chat.completions.create(
+        model=model,
+        messages=[
+            {"role": "system", "content": MINDMAP_SYSTEM_PROMPT},
+            {"role": "user", "content": user_prompt},
+        ],
+        temperature=0.3,
+        max_tokens=4000,
     )
+    content = response.choices[0].message.content or ""
+
+    # 后处理: 去掉可能的 markdown 代码块包裹
+    content = content.strip()
+    if content.startswith("```"):
+        lines = content.split("\n")
+        if lines[0].startswith("```"):
+            lines = lines[1:]
+        if lines and lines[-1].startswith("```"):
+            lines = lines[:-1]
+        content = "\n".join(lines).strip()
+
+    logger.info(f"思维导图生成完成: {topic} ({len(content)} 字符)")
+    return content
 
 
 async def generate_exercise(
@@ -570,121 +494,28 @@ async def generate_video_script(
 
 请直接输出完整的 HTML 代码。"""
 
-    try:
-        response = await client.chat.completions.create(
-            model=model,
-            messages=[
-                {"role": "system", "content": VIDEO_SCRIPT_SYSTEM_PROMPT},
-                {"role": "user", "content": user_prompt},
-            ],
-            temperature=0.4,
-            max_tokens=8000,  # 单个知识点的交互动画，8000 tokens 足够 (CSS + JS + 文本)
-        )
-        content = response.choices[0].message.content or ""
-        # 清理可能残留的 markdown 代码块包裹
-        content = content.strip()
-        if content.startswith("```html"):
-            content = content[7:]
-        elif content.startswith("```"):
-            content = content[3:]
-        if content.endswith("```"):
-            content = content[:-3]
-        content = content.strip()
+    response = await client.chat.completions.create(
+        model=model,
+        messages=[
+            {"role": "system", "content": VIDEO_SCRIPT_SYSTEM_PROMPT},
+            {"role": "user", "content": user_prompt},
+        ],
+        temperature=0.4,
+        max_tokens=8000,  # 单个知识点的交互动画，8000 tokens 足够 (CSS + JS + 文本)
+    )
+    content = response.choices[0].message.content or ""
+    # 清理可能残留的 markdown 代码块包裹
+    content = content.strip()
+    if content.startswith("```html"):
+        content = content[7:]
+    elif content.startswith("```"):
+        content = content[3:]
+    if content.endswith("```"):
+        content = content[:-3]
+    content = content.strip()
 
-        # =====================================================================
-        # 完整性验证: 确保 HTML 不是被截断的半成品
-        # 被截断的 HTML 缺少 </script>, </body> 或 </html>, 在 iframe 中
-        # 会导致 JS 不执行, 页面不响应交互
-        # =====================================================================
-        has_closing_html = content.rstrip().endswith("</html>")
-        has_body = "</body>" in content
-        has_script = "<script" in content.lower()
-        has_closing_script = "</script>" in content if has_script else True
-
-        is_complete = (
-            content.startswith("<!DOCTYPE") and
-            has_closing_html and
-            has_body and
-            has_closing_script
-        )
-
-        if is_complete:
-            logger.info(f"HTML 动画页面生成完成: {topic} ({len(content)} 字符)")
-            return content
-
-        # 不完整: 记录详情并尝试重试 (温度调低以减少随机性)
-        missing = []
-        if not content.startswith("<!DOCTYPE"):
-            missing.append("DOCTYPE")
-        if not has_closing_html:
-            missing.append("</html>")
-        if not has_body:
-            missing.append("</body>")
-        if not has_closing_script:
-            missing.append("</script>")
-
-        logger.warning(
-            f"HTML 动画不完整 ({len(content)} 字符, 缺少: {missing}), "
-            f"正在重试..."
-        )
-
-        # 重试: 降低温度 + 更紧凑的要求
-        retry_prompt = (
-            f"{user_prompt}\n\n"
-            f"⚠️ 重要: 上次生成被截断了 (缺失 {', '.join(missing)})。\n"
-            f"请生成一个更紧凑但完整的页面。\n"
-            f"1. 确保 </style>, </script>, </body>, </html> 全部闭合\n"
-            f"2. JS 代码精简但功能完整\n"
-            f"3. 总长度控制在 8000-15000 字符以内"
-        )
-        response2 = await client.chat.completions.create(
-            model=model,
-            messages=[
-                {"role": "system", "content": VIDEO_SCRIPT_SYSTEM_PROMPT},
-                {"role": "user", "content": retry_prompt},
-            ],
-            temperature=0.25,
-            max_tokens=8000,
-        )
-        content2 = response2.choices[0].message.content or ""
-        content2 = content2.strip()
-        if content2.startswith("```html"):
-            content2 = content2[7:]
-        elif content2.startswith("```"):
-            content2 = content2[3:]
-        if content2.endswith("```"):
-            content2 = content2[:-3]
-        content2 = content2.strip()
-
-        has_closing_html_2 = content2.rstrip().endswith("</html>")
-        if content2.startswith("<!DOCTYPE") and has_closing_html_2:
-            logger.info(
-                f"HTML 动画重试成功: {topic} ({len(content2)} 字符)"
-            )
-            return content2
-
-        # 两次都不完整: 返回重试结果 (即使不完整也比原始截断的好)
-        logger.warning(
-            f"HTML 动画重试仍不完整: {topic} ({len(content2)} 字符, "
-            f"has_html={has_closing_html_2})"
-        )
-        return content2
-
-    except Exception as e:
-        logger.error(f"HTML 动画页面生成失败: {e}")
-        # 返回一个简单的错误提示 HTML 页面
-        return f"""<!DOCTYPE html>
-<html lang="zh-CN">
-<head><meta charset="UTF-8"><title>生成失败</title></head>
-<body style="display:flex;align-items:center;justify-content:center;height:100vh;font-family:sans-serif;">
-<div style="text-align:center;color:#666;">
-<h2>😞 动画生成失败</h2>
-<p>{topic}</p>
-<p style="font-size:12px;">错误: {str(e)}</p>
-<p style="font-size:12px;">请稍后重试或联系管理员</p>
-</div>
-</body>
-</html>"""
+    logger.info(f"HTML 动画页面生成完成: {topic} ({len(content)} 字符)")
+    return content
 
 
 # ============================================================================

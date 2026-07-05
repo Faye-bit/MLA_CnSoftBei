@@ -28,7 +28,7 @@ from app.services.zhixue.session_service import (
 from app.services.zhixue.state import ZhiXueState
 from app.services.zhixue.graph import build_zhixue_graph, resume_graph
 from app.services.zhixue.utils import build_profile_text
-from app.services.learning.resource_generators import (
+from app.services.zhixue.resource_generators import (
     generate_handout,
     generate_mindmap,
     generate_exercise,
@@ -394,7 +394,7 @@ class XiangNan:
         from app.services.zhixue.agents.caifeng import scout_resources
         from app.services.zhixue.agents.crafter_base import craft_material
         from app.services.zhixue.agents.jianzhen import review_materials, fallback_materials
-        from app.services.learning.resource_generators import (
+        from app.services.zhixue.resource_generators import (
             generate_handout, generate_mindmap, generate_exercise,
             generate_reading, generate_coding_practice, generate_video_script,
         )

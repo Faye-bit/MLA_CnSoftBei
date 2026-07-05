@@ -688,7 +688,7 @@ async def _generate_material(
     Phase 3 通过 config["configurable"]["db"] 获取 RAG 上下文。
     """
     import json as _json
-    from app.services.learning.resource_generators import (
+    from app.services.zhixue.resource_generators import (
         generate_handout,
         generate_mindmap,
         generate_exercise,
@@ -732,7 +732,7 @@ async def _gen_exercise_phase2(
     is_remedial: bool,
 ) -> dict:
     """Phase 2 习题生成 (适配 generate_exercise 签名)"""
-    from app.services.learning.resource_generators import generate_exercise
+    from app.services.zhixue.resource_generators import generate_exercise
 
     diff_label = "easy" if is_remedial or difficulty < 0.4 else (
         "hard" if difficulty > 0.7 else "medium"
