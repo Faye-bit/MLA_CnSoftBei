@@ -54,6 +54,15 @@ from loguru import logger
 
 # ============================================================================
 # 图节点函数
+#
+# 注意: 当前活跃的 SSE 流式路径 (orchestrator.stream_session) 直接调用
+# Agent 函数 (yuzhi.analyze_profile / ligang.plan_path 等), 不经过以下
+# LangGraph 节点。以下节点用于 Phase 3 完整 StateGraph 执行路径,
+# 届时将通过 graph.astream_events() 或 graph.ainvoke() 驱动。
+#
+# 节点签名遵循 LangGraph 约定:
+#   async def node(state: ZhiXueState) -> dict
+# 返回值仅包含该节点负责更新的 State 字段, LangGraph 自动合并。
 # ============================================================================
 
 async def _init_session_node(state: ZhiXueState) -> dict:
@@ -91,11 +100,17 @@ async def _init_session_node(state: ZhiXueState) -> dict:
 
 
 async def _analyze_profile_node(state: ZhiXueState) -> dict:
-    """俞知: 画像分析 → 生成问卷"""
+    """
+    俞知: 画像分析 → 生成课前问卷 (Phase 2 占位)
+
+    当前为简化占位实现, 返回空 dict。
+    完整实现在 Phase 3 中通过 config["configurable"]["db"] 获取
+    数据库会话, 调用 yuzhi.analyze_profile() 生成问卷并写入 state。
+
+    当前活跃 SSE 路径 (orchestrator.stream_session) 直接调用
+    yuzhi.analyze_profile(), 不经过此节点。
+    """
     logger.info(f"analyze_profile: session={state.get('session_id', '')}")
-    # 这里需要一个 db session — 但我们不在 LangGraph context 中
-    # Phase 2 简化: 直接使用 state 中已有的 questionnaire (由向南在 start_session 时设置)
-    # 完整的 LangGraph 节点实现在 Phase 3 通过 config["configurable"]["db"] 获取
     return {}
 
 
@@ -151,12 +166,20 @@ async def _plan_path_node(state: ZhiXueState) -> dict:
 
 
 async def _scout_resources_node(state: ZhiXueState) -> dict:
-    """蔡丰: 网络调研 → ResearchReport"""
+    """
+    蔡丰: 网络调研 → ResearchReport (Phase 2 占位)
+
+    当前为简化占位实现, 返回空调研报告。
+    完整实现在 Phase 3 中通过 config["configurable"]["db"] 传递
+    数据库会话, 调用 caifeng.scout_resources() 执行博查 API 搜索
+    并生成 ResearchReport (含 external_links、key_concepts 等)。
+
+    当前活跃 SSE 路径 (orchestrator.stream_session) 直接调用
+    caifeng.scout_resources(), 不经过此节点。
+    """
     logger.info(
         f"scout_resources: enabled={state.get('scouting_enabled', True)}"
     )
-    # Phase 2: 蔡丰需要 db + course_id, 此处使用 state 中的数据
-    # 完整实现在 Phase 3 通过 config 传递
     return {"research_report": None}
 
 
@@ -358,7 +381,17 @@ async def _finalize_node(state: ZhiXueState) -> dict:
 
 
 async def _stage_entry_node(state: ZhiXueState) -> dict:
-    """阶段入口节点 (透传, 实际路由由 stage_entry_router 条件边处理)"""
+    """
+    阶段入口节点 (透传节点)
+
+    作为条件边 stage_entry_router 的路由锚点, 自身不做任何状态修改。
+    stage_entry_router 读取 state 中的 current_stage / total_stages,
+    判定是进入下一个阶段的资源生成 ("scout") 还是所有阶段已完成 ("finalize")。
+
+    该节点存在的原因是 LangGraph 条件边需要挂载在一个节点上,
+    而不能直接从 plan_path 同时路由到 scout_resources 和 finalize
+    (两者语义不同, 需要统一的判定入口)。
+    """
     return {}
 
 
