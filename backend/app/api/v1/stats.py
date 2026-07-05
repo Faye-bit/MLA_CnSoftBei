@@ -235,10 +235,18 @@ async def _ensure_stage_row(
     :param knowledge_point_ids: 知识点 ID 列表
     :return: LearningStage 实例
     """
-    from app.services.learning.agent_orchestrator import _get_unique_stage_by_index
     from app.models.learning import LearningStage as LS
+    from sqlalchemy import select as _select
 
-    stage_obj = await _get_unique_stage_by_index(db, session_id, order_index)
+    # 查询是否有已存在的 LearningStage 行 (按 session_id + order_index)
+    stmt = (
+        _select(LS)
+        .where(LS.session_id == session_id, LS.order_index == order_index)
+        .order_by(LS.created_at.desc())
+        .limit(1)
+    )
+    result = await db.execute(stmt)
+    stage_obj = result.scalars().first()
 
     if not stage_obj:
         # 阶段尚未在 DB 中记录, 创建 pending 状态的占位行
