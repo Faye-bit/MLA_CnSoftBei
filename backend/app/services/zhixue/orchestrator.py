@@ -283,7 +283,7 @@ class XiangNan:
             session.status = "completed"
             # 调用 LLM 生成学习评价
             evaluation = await _generate_session_evaluation(
-                session=session, exercise_stats=exercise_stats
+                session=session, exercise_stats=exercise_stats, db=db
             )
             session.session_metadata = {
                 **(session.session_metadata or {}),
@@ -1928,6 +1928,7 @@ async def _persist_stage_resources(
 async def _generate_session_evaluation(
     session,
     exercise_stats: Optional[dict] = None,
+    db=None,
 ) -> Optional[dict]:
     """
     会话全部阶段完成后，调用 LLM 生成学习评价和百分制分数
@@ -1936,6 +1937,7 @@ async def _generate_session_evaluation(
 
     :param session: ZhiXueSession ORM 实例
     :param exercise_stats: 前端提交的做题统计 (可选)
+    :param db: AsyncSession (由调用方 handle_feedback 传入)
     :return: 评价 dict {score, title, summary, strengths, suggestions} 或 None
     """
     try:
@@ -1967,12 +1969,7 @@ async def _generate_session_evaluation(
         stage_details_list = stats.get("stage_details", [])
 
         # 如果前端未传评测数据，尝试从 DB 中聚合
-        if not total_questions and not stage_details_list:
-            db = None
-            # 尝试从 session 的 AsyncSession 获取 (如果存在)
-            from sqlalchemy.orm import object_session
-            db = object_session(session)
-            if db:
+        if not total_questions and not stage_details_list and db:
                 # 查询所有阶段
                 stage_query = await db.execute(
                     select(ZhiXueStage).where(

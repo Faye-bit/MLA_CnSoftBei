@@ -465,21 +465,25 @@ function AllDonePage({ evaluation, onBack }: AllDonePageProps) {
     if (confettiFired.current) return
     confettiFired.current = true
 
-    // 分三波礼炮
+    // 左下角 → 右上方, 右下角 → 左上方
     const duration = 3000
     const end = Date.now() + duration
 
     const fire = () => {
+      // 左下角向右上发射
       confetti({
-        particleCount: 50,
-        spread: 60,
-        origin: { x: 0.25, y: 0.6 },
+        particleCount: 40,
+        spread: 50,
+        angle: 55,
+        origin: { x: 0, y: 1 },
         colors: ['#3B82F6', '#F59E0B', '#10B981', '#EF4444', '#8B5CF6'],
       })
+      // 右下角向左上发射
       confetti({
-        particleCount: 50,
-        spread: 60,
-        origin: { x: 0.75, y: 0.6 },
+        particleCount: 40,
+        spread: 50,
+        angle: 125,
+        origin: { x: 1, y: 1 },
         colors: ['#3B82F6', '#F59E0B', '#10B981', '#EF4444', '#8B5CF6'],
       })
 
