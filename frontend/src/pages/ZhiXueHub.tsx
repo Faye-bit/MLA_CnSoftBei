@@ -218,8 +218,8 @@ export default function ZhiXueHub() {
 
             {/* 底部操作区 (不触发导航) */}
             <div style={{ padding: '0 16px 12px', display: 'flex', justifyContent: 'flex-end', gap: 4 }}>
-              {/* 下载按钮 (仅已完成会话) */}
-              {s.status === 'completed' && (
+              {/* 下载按钮 (已生成资源的会话即可下载) */}
+              {['delivering', 'completed'].includes(s.status) && (
                 <Button
                   type="text"
                   size="small"
