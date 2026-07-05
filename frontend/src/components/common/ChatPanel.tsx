@@ -4,13 +4,14 @@
  * 通过 forwardRef 暴露根 div, 供父组件的 useDraggable 使用
  */
 import { useState, useRef, useEffect, forwardRef } from 'react'
-import { Button, Spin, Typography } from 'antd'
+import { Button, Spin, Typography, Tooltip } from 'antd'
 import {
   CloseOutlined, SendOutlined, StopOutlined,
   PlusOutlined, MinusOutlined, SaveOutlined, BulbOutlined,
+  GlobalOutlined,
 } from '@ant-design/icons'
 import ChatMessage from '../chat/ChatMessage'
-import type { Conversation, Message, ChatSource } from '../../types'
+import type { Conversation, Message, ChatSource, WebLink } from '../../types'
 import { blue, gray } from '../../styles/tokens'
 
 const { Text } = Typography
@@ -43,6 +44,12 @@ interface ChatPanelProps {
   onSaveToKb: (messageId: string, kpId: string, fullResponse: string, userQuestion: string) => void
   saveableMessages: Map<string, { kpId: string; saved: boolean }>
   findUserQuestion: (assistantIndex: number) => string
+  /** 联网搜索开关状态 */
+  webSearchEnabled?: boolean
+  /** 联网搜索开关切换回调 */
+  onWebSearchToggle?: () => void
+  /** 流式中的联网搜索结果链接 */
+  streamingWebLinks?: WebLink[]
 }
 
 export const ChatPanel = forwardRef<HTMLDivElement, ChatPanelProps>(
@@ -51,6 +58,7 @@ export const ChatPanel = forwardRef<HTMLDivElement, ChatPanelProps>(
     messagesLoading, inputValue, position, dragging, panelWidth, panelHeight,
     onDragStart, onClose, onSend, onStop, onInputChange,
     onNewConversation, onResize, onSaveToKb, saveableMessages, findUserQuestion,
+    webSearchEnabled = false, onWebSearchToggle, streamingWebLinks,
   }, ref) {
     const messagesEndRef = useRef<HTMLDivElement>(null)
     const textareaRef = useRef<HTMLTextAreaElement>(null)
@@ -143,6 +151,7 @@ export const ChatPanel = forwardRef<HTMLDivElement, ChatPanelProps>(
                       content={msg.content}
                       sources={msg.sources}
                       createdAt={msg.created_at}
+                      webLinks={msg.web_links}
                     />
                     {msg.role === 'assistant' && saveEntry && !saveEntry.saved && (
                       <div style={{ padding: '0 0 8px', textAlign: 'right' }}>
@@ -166,7 +175,7 @@ export const ChatPanel = forwardRef<HTMLDivElement, ChatPanelProps>(
                   </div>
                 )
               })}
-              {streaming && streamingContent && <ChatMessage role="assistant" content={streamingContent} sources={streamingSources} streaming />}
+              {streaming && streamingContent && <ChatMessage role="assistant" content={streamingContent} sources={streamingSources} streaming webLinks={streamingWebLinks} />}
               {streaming && !streamingContent && <div style={{ textAlign: 'center', padding: 16 }}><Spin size="small" /> <Text type="secondary" style={{ fontSize: 12 }}>思考中...</Text></div>}
               <div ref={messagesEndRef} />
             </>
@@ -176,6 +185,28 @@ export const ChatPanel = forwardRef<HTMLDivElement, ChatPanelProps>(
         {/* 输入区域 */}
         <div style={{ borderTop: `1px solid ${gray[200]}`, padding: '8px 10px', background: '#FFFFFF', flexShrink: 0 }}>
           <div style={{ display: 'flex', gap: 6, alignItems: 'flex-end' }}>
+            {/* 联网搜索开关 */}
+            {onWebSearchToggle && (
+              <Tooltip title={webSearchEnabled ? '联网搜索已开启' : '开启联网搜索'}>
+                <Button
+                  type="text"
+                  size="small"
+                  icon={<GlobalOutlined />}
+                  onClick={onWebSearchToggle}
+                  disabled={streaming || messagesLoading}
+                  style={{
+                    color: webSearchEnabled ? blue[500] : gray[400],
+                    fontSize: 18,
+                    width: 32, height: 34,
+                    borderRadius: 8,
+                    border: webSearchEnabled ? `1px solid ${blue[300]}` : `1px solid transparent`,
+                    background: webSearchEnabled ? '#f0f7ff' : 'transparent',
+                    transition: 'all 0.2s',
+                    flexShrink: 0,
+                  }}
+                />
+              </Tooltip>
+            )}
             <textarea
               ref={textareaRef}
               value={inputValue}

@@ -39,6 +39,8 @@ export default function FloatingChat() {
   const [conversation, setConversation] = useState<Conversation | null>(null)
   const [messagesLoading, setMessagesLoading] = useState(false)
   const [inputValue, setInputValue] = useState('')
+  /** 联网搜索开关 */
+  const [webSearchEnabled, setWebSearchEnabled] = useState(false)
 
   // SSE 流式对话管理
   const {
@@ -47,6 +49,7 @@ export default function FloatingChat() {
     streaming,
     streamingContent,
     streamingSources,
+    streamingWebLinks,
     sendMessage,
     stopStreaming,
     abortStreaming,
@@ -139,7 +142,7 @@ export default function FloatingChat() {
       document_id: ctx.metadata.documentId,
     }
     kpIdForPendingMessageRef.current = ctx.metadata.kpId || null
-    sendMessage(conv.id, question, ctx.metadata.courseId || conv.course_id, undefined, quickAskMetadata)
+    sendMessage(conv.id, question, ctx.metadata.courseId || conv.course_id, undefined, quickAskMetadata, webSearchEnabled)
   }
 
   async function handleSaveToKnowledgeBase(messageId: string, kpId: string, fullResponse: string, userQuestion: string) {
@@ -213,7 +216,7 @@ export default function FloatingChat() {
     const content = inputValue.trim()
     if (!content || streaming || !conversation) return
     setInputValue('')
-    sendMessage(conversation.id, content, conversation.course_id)
+    sendMessage(conversation.id, content, conversation.course_id, undefined, undefined, webSearchEnabled)
   }
 
   function handleStop() {
@@ -297,6 +300,9 @@ export default function FloatingChat() {
           onSaveToKb={handleSaveToKnowledgeBase}
           saveableMessages={saveableCopy}
           findUserQuestion={findUserQuestion}
+          webSearchEnabled={webSearchEnabled}
+          onWebSearchToggle={() => setWebSearchEnabled(p => !p)}
+          streamingWebLinks={streamingWebLinks}
         />
       )}
     </>
