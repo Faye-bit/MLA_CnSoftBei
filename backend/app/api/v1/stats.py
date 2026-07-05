@@ -408,12 +408,8 @@ async def get_favorites(
     for zx_session, course_name in zx_rows:
         plan = zx_session.learning_path or {}
         total_stages = len(plan.get("stages", []))
+        # current_stage_index 是 0-based: 0=未完成任何阶段, N=已完成N个阶段
         current_stage = zx_session.current_stage_index or 0
-        # 进度计算: 已完成阶段 / 总阶段数
-        progress_percent = (
-            int(current_stage / total_stages * 100) if total_stages > 0
-            else (100 if zx_session.status == "completed" else 0)
-        )
 
         # 状态映射: ZhiXue status -> FavoriteItem status
         zx_status_map = {
@@ -422,6 +418,18 @@ async def get_favorites(
             "interrupted": "paused",
         }
         status = zx_status_map.get(zx_session.status or "", "active")
+        is_completed = status == "completed"
+
+        # 已完成阶段数: v2 没有 LearningStage 表, 用 current_stage_index 近似
+        # 0-based 索引等于已完成数 (完成阶段0后 current_stage_index=1, 即完成1个)
+        completed_stages = (
+            total_stages if is_completed
+            else min(current_stage, total_stages)
+        )
+        progress_percent = (
+            100 if is_completed
+            else (int(completed_stages / total_stages * 100) if total_stages > 0 else 0)
+        )
 
         favorites.append(FavoriteItem(
             session_id=str(zx_session.id),
@@ -430,7 +438,7 @@ async def get_favorites(
             status=status,
             current_stage_index=zx_session.current_stage_index,
             total_stages=total_stages,
-            completed_stages=current_stage if status == "completed" else 0,
+            completed_stages=completed_stages,
             progress_percent=progress_percent,
             updated_at=zx_session.updated_at.isoformat() if zx_session.updated_at else None,
         ))
