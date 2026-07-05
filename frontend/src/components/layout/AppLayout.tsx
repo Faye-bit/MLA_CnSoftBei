@@ -267,8 +267,8 @@ export default function AppLayout() {
               <HeaderUserMenu />
             </div>
 
-            {/* === 页面内容区 (不给 padding, 由各页面自行控制间距) === */}
-            <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
+            {/* === 页面内容区 === */}
+            <div style={{ padding: 24, flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
               <Outlet />
             </div>
           </div>

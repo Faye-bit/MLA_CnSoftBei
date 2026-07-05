@@ -195,6 +195,7 @@ export default function Chat() {
       flex: 1,
       minHeight: 0,
       display: 'flex',
+      margin: -24,  // 抵消 AppLayout 的 padding:24, 实现贴边布局
     }}>
       {/* ================================================================ */}
       {/* 左侧: 对话列表 (独立 overflow, 不受右侧消息区影响) */}

@@ -148,17 +148,17 @@ export default function ZhiXueHub() {
   }
 
   return (
-    <div style={{ padding: '32px', height: '100%', overflow: 'auto' }}>
+    <div style={{ padding: '32px', height: '100%', overflow: 'auto', margin: -24 }}>
       {/* 页面标题 */}
       <div style={{ marginBottom: 28 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
           <ExperimentOutlined style={{ fontSize: 28, color: blue[500] }} />
           <Title level={4} style={{ margin: 0 }}>
-            AI 智学 <Text type="secondary" style={{ fontSize: 14, fontWeight: 400 }}>Beta</Text>
+            AI 智学中心
           </Title>
         </div>
         <Text type="secondary" style={{ marginTop: 4, display: 'block' }}>
-          12 个智能体协同工作, 为你量身定制学习方案
+          名师团队协同工作, 为你量身定制学习方案
         </Text>
       </div>
 
@@ -362,22 +362,22 @@ export default function ZhiXueHub() {
 
 /** 第一行非匠 Agent */
 const ROW_A: { key: string; name: string; role: string }[] = [
-  { key: 'XiangNan', name: '向南', role: '学习导引' },
-  { key: 'YuZhi', name: '俞知', role: '学情诊断' },
-  { key: 'LiGang', name: '李纲', role: '教纲设计' },
-  { key: 'CaiFeng', name: '蔡丰', role: '网络调研' },
-  { key: 'JianZheng', name: '简真', role: '质量审核' },
-  { key: 'HuoRan', name: '霍然', role: '解惑辅导' },
+  { key: 'XiangNan', name: '向南', role: '学习引导师' },
+  { key: 'YuZhi', name: '俞知', role: '学情诊断师' },
+  { key: 'LiGang', name: '李纲', role: '教纲设计师' },
+  { key: 'CaiFeng', name: '蔡丰', role: '网络调研师' },
+  { key: 'JianZheng', name: '简真', role: '质量审核师' },
+  { key: 'HuoRan', name: '霍然', role: '解惑辅导师' },
 ]
 
 /** 第二行六匠 */
 const ROW_B: { key: string; name: string; role: string }[] = [
-  { key: 'ZhangYi', name: '张义', role: '讲义编写' },
-  { key: 'TuSi', name: '屠思', role: '导图设计' },
-  { key: 'XiZheng', name: '习真', role: '习题设计' },
-  { key: 'YueDu', name: '岳读', role: '阅读推荐' },
-  { key: 'DongHua', name: '董华', role: '动画制作' },
-  { key: 'DaiMa', name: '戴码', role: '代码实操' },
+  { key: 'ZhangYi', name: '张义', role: '讲义编写专家' },
+  { key: 'TuSi', name: '屠思', role: '导图设计专家' },
+  { key: 'XiZheng', name: '习真', role: '习题设计专家' },
+  { key: 'YueDu', name: '岳读', role: '阅读推荐专家' },
+  { key: 'DongHua', name: '董华', role: '动画制作专家' },
+  { key: 'DaiMa', name: '戴码', role: '代码实操专家' },
 ]
 
 function AgentWorkflow() {
@@ -400,15 +400,15 @@ function AgentWorkflow() {
             display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, width: 72,
           }}>
             <div style={{
-              width: 48, height: 48, borderRadius: '50%',
+              width: 64, height: 64, borderRadius: '50%',
               border: `2px solid ${blue[200]}`, background: '#fff',
               display: 'flex', alignItems: 'center', justifyContent: 'center',
-              overflow: 'hidden', boxShadow: '0 1px 4px rgba(0,0,0,0.05)',
+              overflow: 'hidden', boxShadow: '0 1px 6px rgba(0,0,0,0.06)',
             }}>
               <img
                 src={`/Agents/${a.key}.svg`}
                 alt={a.name}
-                style={{ width: 42, height: 42, borderRadius: '50%', objectFit: 'cover' }}
+                style={{ width: 56, height: 56, borderRadius: '50%', objectFit: 'cover' }}
                 onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }}
               />
             </div>
@@ -428,15 +428,15 @@ function AgentWorkflow() {
             display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, width: 72,
           }}>
             <div style={{
-              width: 48, height: 48, borderRadius: '50%',
+              width: 64, height: 64, borderRadius: '50%',
               border: `2px solid #C4B5FD`, background: '#F5F3FF',
               display: 'flex', alignItems: 'center', justifyContent: 'center',
-              overflow: 'hidden', boxShadow: '0 1px 4px rgba(0,0,0,0.05)',
+              overflow: 'hidden', boxShadow: '0 1px 6px rgba(0,0,0,0.06)',
             }}>
               <img
                 src={`/Agents/${a.key}.svg`}
                 alt={a.name}
-                style={{ width: 42, height: 42, borderRadius: '50%', objectFit: 'cover' }}
+                style={{ width: 56, height: 56, borderRadius: '50%', objectFit: 'cover' }}
                 onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }}
               />
             </div>

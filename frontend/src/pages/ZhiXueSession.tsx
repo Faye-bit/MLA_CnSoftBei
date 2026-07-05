@@ -354,7 +354,7 @@ export default function ZhiXueSession() {
   const hasResources = resources.length > 0
 
   return (
-    <Layout style={{ height: '100%', background: '#fff' }}>
+    <Layout style={{ height: '100%', background: '#fff', margin: -24 }}>
       {/* Header */}
       <div style={{ height: 48, display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 16px', borderBottom: `1px solid ${gray[200]}`, flexShrink: 0, background: '#fff' }}>
         <Space>
