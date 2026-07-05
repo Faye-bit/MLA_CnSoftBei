@@ -5,7 +5,6 @@
  * Row 1: 四个统计概览卡片 (课程/文档/切片/今日消息)
  * Row 2: 本周学习活动图表 (宽) + 今日待办 (窄)
  * Row 3: 学习进度概览 + 学习画像雷达图 + 我的收藏
- * Row 4: 快捷操作入口
  *
  * Phase 4 提升:
  * - 卡片 hover 时上浮 translateY(-2px) + 阴影 + 边框色过渡
@@ -20,7 +19,6 @@ import { Row, Col, Skeleton } from 'antd'
 import {
   BarChartOutlined,
   StarOutlined,
-  ThunderboltOutlined,
   BellOutlined,
 } from '@ant-design/icons'
 import StatsOverview from '../components/dashboard/StatsOverview'
@@ -28,7 +26,6 @@ import ReviewDashboardCard from '../components/dashboard/ReviewDashboardCard'
 import FavoritesList from '../components/dashboard/FavoritesList'
 import LearningProgress from '../components/dashboard/LearningProgress'
 import RadarOverview from '../components/dashboard/RadarOverview'
-import QuickActions from '../components/dashboard/QuickActions'
 import { gray, radius, typography, blue, semantic } from '../styles/tokens'
 
 const WeeklyChart = lazy(() => import('../components/dashboard/WeeklyChart'))
@@ -59,13 +56,13 @@ const CARD_TITLE_STYLE: React.CSSProperties = {
 
 export default function Dashboard() {
   return (
-    <div style={{ maxWidth: 1200, margin: '0 auto' }}>
+    <div style={{ padding: '16px 24px 24px' }}>
       {/* Row 1: 统计概览 — hover 效果由 StatsOverview 内部处理 */}
       <StatsOverview />
 
       {/* Row 2: 图表 + 待办 */}
       <Row gutter={[16, 16]} style={{ marginTop: 16 }}>
-        <Col xs={24} lg={14}>
+        <Col xs={24} lg={16}>
           <div
             style={CARD_STYLE}
             onMouseEnter={hoverIn}
@@ -85,7 +82,7 @@ export default function Dashboard() {
           </div>
         </Col>
 
-        <Col xs={24} lg={10}>
+        <Col xs={24} lg={8}>
           <div
             style={{ ...CARD_STYLE, display: 'flex', flexDirection: 'column', height: '100%' }}
             onMouseEnter={hoverIn}
@@ -104,7 +101,7 @@ export default function Dashboard() {
 
       {/* Row 3: 进度 + 雷达 + 收藏 */}
       <Row gutter={[16, 16]} style={{ marginTop: 16 }}>
-        <Col xs={24} md={8}>
+        <Col xs={24} lg={8}>
           <div
             style={CARD_STYLE}
             onMouseEnter={hoverIn}
@@ -114,7 +111,7 @@ export default function Dashboard() {
           </div>
         </Col>
 
-        <Col xs={24} md={8}>
+        <Col xs={24} lg={8}>
           <div
             style={CARD_STYLE}
             onMouseEnter={hoverIn}
@@ -124,7 +121,7 @@ export default function Dashboard() {
           </div>
         </Col>
 
-        <Col xs={24} md={8}>
+        <Col xs={24} lg={8}>
           <div
             style={CARD_STYLE}
             onMouseEnter={hoverIn}
@@ -141,22 +138,6 @@ export default function Dashboard() {
         </Col>
       </Row>
 
-      {/* Row 4: 快捷操作 */}
-      <div style={{ marginTop: 16, marginBottom: 24 }}>
-        <div
-          style={CARD_STYLE}
-          onMouseEnter={hoverIn}
-          onMouseLeave={hoverOut}
-        >
-          <div style={{ ...CARD_TITLE_STYLE, paddingBottom: 0 }}>
-            <ThunderboltOutlined style={{ color: '#7C3AED', fontSize: 16 }} />
-            <span>快捷操作</span>
-          </div>
-          <div style={{ padding: '8px 16px 12px' }}>
-            <QuickActions />
-          </div>
-        </div>
-      </div>
     </div>
   )
 }
