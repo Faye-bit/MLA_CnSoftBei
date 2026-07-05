@@ -60,8 +60,42 @@ class MessageResponse(BaseModel):
     sources: Optional[list[dict]] = None
     message_metadata: Optional[dict] = None
     created_at: Optional[datetime] = None
+    web_links: Optional[list[dict]] = Field(default=None, description="联网搜索结果链接列表")
 
     model_config = {"from_attributes": True}
+
+    @classmethod
+    def model_validate_message(cls, msg) -> "MessageResponse":
+        """
+        从 ORM Message 对象构建响应，自动从 message_metadata 中提取 web_links 到顶层。
+
+        这样前端 msg.web_links 可直接使用，无需手动解析 message_metadata。
+        """
+        import json
+
+        # 处理 message_metadata: 可能是 dict 或 JSON 字符串
+        metadata = msg.message_metadata
+        if isinstance(metadata, str):
+            try:
+                metadata = json.loads(metadata)
+            except (json.JSONDecodeError, TypeError):
+                metadata = None
+
+        # 从 metadata 中提取 web_links（若存在则提升至顶层）
+        web_links = None
+        if isinstance(metadata, dict):
+            web_links = metadata.get("web_links")
+
+        return cls(
+            id=msg.id,
+            conversation_id=msg.conversation_id,
+            role=msg.role,
+            content=msg.content,
+            sources=msg.sources,
+            message_metadata=metadata,
+            created_at=msg.created_at,
+            web_links=web_links,
+        )
 
 
 class SendMessageRequest(BaseModel):

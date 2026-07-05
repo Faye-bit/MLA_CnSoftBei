@@ -163,15 +163,7 @@ async def get_conversation_detail(
             conversation_type=conversation.conversation_type,
             profile_collection_stage=conversation.profile_collection_stage,
             messages=[
-                MessageResponse(
-                    id=m.id,
-                    conversation_id=m.conversation_id,
-                    role=m.role,
-                    content=m.content,
-                    sources=m.sources,
-                    message_metadata=m.message_metadata,
-                    created_at=m.created_at,
-                )
+                MessageResponse.model_validate_message(m)
                 for m in messages
             ],
             created_at=conversation.created_at,
@@ -303,15 +295,7 @@ async def get_conversation_messages(
 
     return ApiResponse(
         data=[
-            MessageResponse(
-                id=m.id,
-                conversation_id=m.conversation_id,
-                role=m.role,
-                content=m.content,
-                sources=m.sources,
-                message_metadata=m.message_metadata,
-                created_at=m.created_at,
-            )
+            MessageResponse.model_validate_message(m)
             for m in messages
         ],
         message="获取成功",
