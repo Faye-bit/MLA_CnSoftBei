@@ -70,3 +70,4 @@ class SendMessageRequest(BaseModel):
     course_id: Optional[uuid.UUID] = Field(default=None, description="关联课程 ID (知识库对话), 优先使用对话级课程")
     system_prompt: Optional[str] = Field(default=None, description="自定义 System Prompt (如 Live2D 伙伴聊天), 传入则覆盖默认")
     quick_ask_context: Optional[dict] = Field(default=None, description="快问AI上下文: {source_type, kp_id, course_id, chapter_id, document_id, context_text}")
+    web_search_enabled: bool = Field(default=False, description="是否开启联网搜索, 搜索知乎/B站/小红书等中文知识平台")

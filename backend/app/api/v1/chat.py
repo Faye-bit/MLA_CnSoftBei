@@ -269,6 +269,7 @@ async def send_message_stream(
             db=db,
             system_prompt=body.system_prompt,
             quick_ask_context=body.quick_ask_context,
+            web_search_enabled=body.web_search_enabled,
         ),
         media_type="text/event-stream",
         headers={

@@ -33,11 +33,13 @@ from loguru import logger
 from app.services.chat_prompts import (
     RAG_CHAT_SYSTEM_PROMPT,
     QUICK_ASK_SYSTEM_PROMPT,
+    WEB_SEARCH_CONTEXT_TEMPLATE,
     build_quick_ask_context,
     _format_memories,
     TITLE_GENERATION_PROMPT,
     CONDENSE_EXPLANATION_PROMPT,
 )
+from app.services.web_search import search_web, build_chat_search_query
 
 
 async def generate_conversation_title(
@@ -206,18 +208,21 @@ async def chat_stream(
     db: AsyncSession,
     system_prompt: Optional[str] = None,
     quick_ask_context: Optional[dict] = None,
+    web_search_enabled: bool = False,
 ) -> AsyncGenerator[str, None]:
     """
     SSE 流式对话生成器
-    处理完整对话流程: 保存用户消息 → RAG 检索 → LLM 生成 → SSE 流式输出 → 保存 AI 回复 → 后台提取记忆
+    处理完整对话流程: 保存用户消息 → RAG 检索 → (可选) 联网搜索 → LLM 生成 → SSE 流式输出 → 保存 AI 回复 → 后台提取记忆
 
     SSE 事件类型:
     - content: AI 回复的文本片段 (逐 token)
     - sources: 知识库引用来源列表
+    - web_links: 联网搜索结果链接列表 (仅在 web_search_enabled=True 时发送)
     - done: 生成完成, 附带 message_id
     - error: 错误信息
 
     :param quick_ask_context: 快问AI上下文 (source_type, kp_id, context_text 等)
+    :param web_search_enabled: 是否开启联网搜索
     """
     # 1. 获取对话信息
     conversation = await db.get(Conversation, conversation_id)
@@ -261,6 +266,46 @@ async def chat_stream(
     elif conversation.conversation_type == "chat" and not effective_course_id:
         logger.info(f"知识库对话 {conversation_id} 未关联课程, 使用通用知识回答")
 
+    # 3.5. 联网搜索 (仅在知识库对话模式下, 用户主动开启时执行)
+    web_links: list[dict] = []
+    web_search_section: str = ""
+    if web_search_enabled and conversation.conversation_type == "chat":
+        try:
+            search_query = build_chat_search_query(user_message)
+            search_results = await search_web(search_query, count=8)
+            if search_results:
+                # 构建搜索结果文本注入 System Prompt
+                search_parts = []
+                for i, r in enumerate(search_results):
+                    platform_tag = f"[{r.get('source_platform', '网页')}]"
+                    search_parts.append(
+                        f"[网{i + 1}] {platform_tag} {r.get('title', '')}\n"
+                        f"    URL: {r.get('url', '')}\n"
+                        f"    摘要: {r.get('content', '')[:200]}"
+                    )
+                formatted_results = "\n\n".join(search_parts)
+                web_search_section = WEB_SEARCH_CONTEXT_TEMPLATE.format(
+                    search_results=formatted_results
+                )
+                # 构建前端展示用的链接列表 (保留原始搜索结果的所有字段)
+                web_links = [
+                    {
+                        "url": r.get("url", ""),
+                        "title": r.get("title", ""),
+                        "description": r.get("content", "")[:200],
+                        "source_platform": r.get("source_platform", "网页"),
+                        "favicon": r.get("favicon", ""),
+                        "image": r.get("image", ""),
+                    }
+                    for r in search_results
+                    if r.get("url") and r.get("title")
+                ]
+                logger.info(f"联网搜索: 获取 {len(web_links)} 条结果, 已注入 System Prompt")
+            else:
+                logger.info("联网搜索: 无结果, 使用常规回答")
+        except Exception as e:
+            logger.warning(f"联网搜索失败 (已忽略, 降级为常规回答): {e}")
+
     # 4. 读取用户记忆 (用于个性化) — 失败不影响对话
     memories: list[str] = []
     memories_section: str = ""
@@ -283,21 +328,25 @@ async def chat_stream(
             system_prompt_text = QUICK_ASK_SYSTEM_PROMPT.format(
                 context_section=context_section,
                 memories_section=memories_section,
+                web_search_section=web_search_section,
             ) + f"\n\n知识库参考资料:\n{rag_context}"
         else:
             system_prompt_text = QUICK_ASK_SYSTEM_PROMPT.format(
                 context_section=context_section,
                 memories_section=memories_section,
+                web_search_section=web_search_section,
             )
         system_prompt = system_prompt_text  # 保持一致性
     else:
         if rag_context:
             system_prompt = RAG_CHAT_SYSTEM_PROMPT.format(
-                memories_section=memories_section
+                memories_section=memories_section,
+                web_search_section=web_search_section,
             ) + f"\n\n知识库参考资料:\n{rag_context}"
         else:
             system_prompt = RAG_CHAT_SYSTEM_PROMPT.format(
-                memories_section=memories_section
+                memories_section=memories_section,
+                web_search_section=web_search_section,
             ) + "\n\n注意: 本次查询未在课程知识库中找到直接相关的资料，请基于通用知识回答并告知学生。"
 
     llm_messages.append({"role": "system", "content": system_prompt})
@@ -329,6 +378,10 @@ async def chat_stream(
         if sources:
             yield sse_event("sources", {"sources": sources})
 
+        # 发送联网搜索结果链接 (在 content 之前发送, 前端可提前渲染卡片)
+        if web_links:
+            yield sse_event("web_links", {"links": web_links})
+
         async for chunk in stream:
             delta = chunk.choices[0].delta if chunk.choices else None
             if delta and delta.content:
@@ -336,15 +389,18 @@ async def chat_stream(
                 yield sse_event("content", {"content": delta.content})
 
         # 7. 保存 AI 回复到数据库
+        assistant_msg_metadata = {
+            "model": model,
+            "token_count": len(full_content),
+        }
+        if web_links:
+            assistant_msg_metadata["web_links"] = web_links
         assistant_msg = Message(
             conversation_id=conversation_id,
             role="assistant",
             content=full_content,
             sources=sources if sources else None,
-            message_metadata={
-                "model": model,
-                "token_count": len(full_content),
-            },
+            message_metadata=assistant_msg_metadata,
         )
         db.add(assistant_msg)
         await db.commit()
