@@ -220,6 +220,14 @@ export async function deleteDocument(courseId: string, documentId: string) {
   await api.delete(`/courses/${courseId}/documents/${documentId}`)
 }
 
+/** 重新向量化文档 (对 chunked/failed 状态的文档重试 embedding) */
+export async function reprocessDocument(courseId: string, documentId: string) {
+  const res = await api.post<ApiResponse<{ parse_status: string; chunk_count: number }>>(
+    `/courses/${courseId}/documents/${documentId}/reprocess`
+  )
+  return res.data.data!
+}
+
 /** 关联文档到章节并自动分类 */
 export async function linkDocumentToChapter(courseId: string, documentId: string, chapterId: string) {
   const res = await api.put<ApiResponse<{ document_id: string; chapter_id: string; category_count: number; item_count: number }>>(

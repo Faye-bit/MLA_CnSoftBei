@@ -2,12 +2,12 @@
  * 页面预览弹窗
  * 展示页面大图、摘要、AI 提取知识点、关联已有知识点
  */
-import { Modal, Typography, Tag, Image, Select, Text } from 'antd'
+import { Modal, Typography, Tag, Image, Select } from 'antd'
 import { getPageImageUrl } from '../../services/api'
 import type { DocumentPage } from '../../types'
 import type { KpOption } from './types'
 
-const { Title, Paragraph } = Typography  // FIXME: use antd Typography
+const { Title, Text, Paragraph } = Typography
 
 interface PagePreviewModalProps {
   open: boolean

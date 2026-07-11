@@ -15,6 +15,7 @@ import AppLayout from './components/layout/AppLayout'
 import ProtectedRoute from './components/auth/ProtectedRoute'
 import AdminRoute from './components/auth/AdminRoute'
 import GuestRoute from './components/auth/GuestRoute'
+import ErrorBoundary from './components/common/ErrorBoundary'
 
 // ==================== 路由级代码分割 (React.lazy) ====================
 // 公开页面 (无需登录)
@@ -51,8 +52,9 @@ const PageLoading = () => (
 
 export default function App() {
   return (
-    <Suspense fallback={<PageLoading />}>
-      <Routes>
+    <ErrorBoundary>
+      <Suspense fallback={<PageLoading />}>
+        <Routes>
         {/* 访客路由: 已登录用户自动跳转首页 */}
         <Route element={<GuestRoute />}>
           <Route path="/login" element={<Login />} />
@@ -88,6 +90,7 @@ export default function App() {
           </Route>
         </Route>
       </Routes>
-    </Suspense>
+        </Suspense>
+    </ErrorBoundary>
   )
 }

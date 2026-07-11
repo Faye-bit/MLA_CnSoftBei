@@ -393,6 +393,7 @@ async def _process_chunk_based(
     logger.info(f"文档解析+切片完成: {doc.id}, 切片数={len(chunks)}")
 
     # 生成嵌入向量并写入 Chroma
+    embedding_success = False
     try:
         embeddings = await embedder.embed_texts(chunks)
         vector_store.add_chunks(
@@ -402,8 +403,8 @@ async def _process_chunk_based(
             contents=chunks,
             metadatas=chunk_metadatas,
         )
-        doc.parse_status = "done"
-        logger.info(f"文档处理流水线全部完成: {doc.id}")
+        embedding_success = True
+        logger.info(f"文档 {doc.id}: 嵌入向量写入完成")
     except Exception as embed_err:
         error_msg = str(embed_err)
         if "api" in error_msg.lower() or "key" in error_msg.lower() or "auth" in error_msg.lower() or "connection" in error_msg.lower():
@@ -420,5 +421,89 @@ async def _process_chunk_based(
             )
         logger.warning(f"向量化失败但切片已保存: {doc.id}, 原因={error_msg}")
 
+    # ================================================================
+    # 嵌入成功后 → 自动提取知识点并关联到章节 (与页面级管线对齐)
+    # ================================================================
+    kp_count = 0
+    if embedding_success:
+        try:
+            from app.services.config_service import get_config_value
+            from app.models.course import Chapter
+
+            llm_api_key = get_config_value("llm_api_key")
+            if llm_api_key:
+                # 确定目标章节 (优先使用文档指定的章节, 否则回退到「自动提取」)
+                target_chapter_id = doc.chapter_id
+                if not target_chapter_id:
+                    ch_stmt = select(Chapter).where(
+                        Chapter.course_id == course_id, Chapter.title == "自动提取"
+                    )
+                    ch_result = await db.execute(ch_stmt)
+                    default_ch = ch_result.scalar_one_or_none()
+                    if default_ch:
+                        target_chapter_id = default_ch.id
+
+                if target_chapter_id:
+                    from app.services.kp_extractor import (
+                        extract_knowledge_points, batch_create_knowledge_points,
+                        classify_knowledge_points, batch_create_tree_knowledge_points,
+                    )
+
+                    # 1. LLM 从切片文本提取知识点
+                    kp_list = await extract_knowledge_points(doc.id, target_chapter_id, db)
+                    logger.info(f"文档 {doc.id}: LLM 提取到 {len(kp_list)} 个知识点")
+
+                    if kp_list:
+                        # 2. 创建 KnowledgePoint 记录 + 关联切片
+                        created_kps = await batch_create_knowledge_points(
+                            target_chapter_id, kp_list, db
+                        )
+                        kp_count = len(created_kps)
+                        logger.info(f"文档 {doc.id}: 创建 {kp_count} 个知识点并关联切片")
+
+                        # 3. 树形分类 (知识点 > 1 时触发)
+                        if kp_count > 1:
+                            try:
+                                from app.models.course import KnowledgePoint as KPModel
+                                # 收集该章节所有扁平知识点 (含本次创建和其他文档的)
+                                kp_stmt = select(KPModel).where(
+                                    KPModel.chapter_id == target_chapter_id
+                                )
+                                kp_result = await db.execute(kp_stmt)
+                                flat_kps = list(kp_result.scalars().all())
+
+                                if len(flat_kps) >= 2:
+                                    kp_dicts = [
+                                        {"title": k.title, "description": k.description or "",
+                                         "difficulty": k.difficulty}
+                                        for k in flat_kps
+                                    ]
+                                    classified = await classify_knowledge_points(kp_dicts)
+                                    if classified:
+                                        result_tree = await batch_create_tree_knowledge_points(
+                                            target_chapter_id, classified, db
+                                        )
+                                        logger.info(
+                                            f"文档 {doc.id}: 知识树整理完成, "
+                                            f"{result_tree['category_count']} 个分类, "
+                                            f"{result_tree['item_count']} 个知识点"
+                                        )
+                            except Exception as tree_err:
+                                logger.warning(
+                                    f"文档 {doc.id}: 知识树构建失败, 保留扁平结构: {tree_err}"
+                                )
+                    else:
+                        logger.info(f"文档 {doc.id}: LLM 未识别到知识点 (可能为纯目录/索引)")
+                else:
+                    logger.warning(f"文档 {doc.id}: 无有效目标章节, 跳过知识点提取")
+            else:
+                logger.info(f"文档 {doc.id}: 未配置 LLM API Key, 跳过知识点提取")
+        except Exception as kp_err:
+            logger.warning(f"文档 {doc.id}: 知识点提取失败 (切片和向量已保存): {kp_err}")
+            # 不阻塞流程, 切片和向量已保留
+
+        doc.parse_status = "done"
+        doc.kp_count = kp_count
+
     await db.commit()
-    logger.info(f"文档 {doc.id}: 传统切片处理完成")
+    logger.info(f"文档 {doc.id}: 传统切片处理完成 (chunks={len(chunks)}, kps={kp_count})")

@@ -4,8 +4,8 @@
  * Props-only, 不发起 API 请求
  */
 import { useMemo } from 'react'
-import { Table, Tag, Popconfirm, Space, Button } from 'antd'
-import { EyeOutlined, DeleteOutlined } from '@ant-design/icons'
+import { Table, Tag, Popconfirm, Space, Button, Tooltip } from 'antd'
+import { EyeOutlined, DeleteOutlined, ReloadOutlined, ExclamationCircleOutlined } from '@ant-design/icons'
 import { typeColorMap, statusMap, formatFileSize } from './types'
 import type { Document } from '../../types'
 
@@ -17,11 +17,12 @@ interface DocumentTableProps {
   onPageChange: (page: number) => void
   onViewDetail: (docId: string) => void
   onDelete: (docId: string) => void
+  onReprocess: (docId: string) => void
 }
 
 export function DocumentTable({
   documents, loading, page, total,
-  onPageChange, onViewDetail, onDelete,
+  onPageChange, onViewDetail, onDelete, onReprocess,
 }: DocumentTableProps) {
   const columns = useMemo(() => [
     { title: '文件名', dataIndex: 'filename', key: 'filename', ellipsis: true },
@@ -34,10 +35,20 @@ export function DocumentTable({
       render: (size: number) => formatFileSize(size),
     },
     {
-      title: '状态', dataIndex: 'parse_status', key: 'parse_status', width: 75,
-      render: (status: string) => {
+      title: '状态', dataIndex: 'parse_status', key: 'parse_status', width: 100,
+      render: (status: string, record: Document) => {
         const info = statusMap[status] || { label: status, color: 'default' }
-        return <Tag color={info.color}>{info.label}</Tag>
+        const hasError = (status === 'chunked' || status === 'failed') && record.error_message
+        return (
+          <span>
+            <Tag color={info.color}>{info.label}</Tag>
+            {hasError && (
+              <Tooltip title={record.error_message}>
+                <ExclamationCircleOutlined style={{ color: '#faad14', cursor: 'help' }} />
+              </Tooltip>
+            )}
+          </span>
+        )
       },
     },
     {
@@ -54,12 +65,22 @@ export function DocumentTable({
       render: (t: string) => new Date(t).toLocaleString('zh-CN'),
     },
     {
-      title: '操作', key: 'actions', width: 230, fixed: 'right' as const,
+      title: '操作', key: 'actions', width: 280, fixed: 'right' as const,
       render: (_: unknown, record: Document) => (
         <Space size="small">
           <Button type="link" size="small" icon={<EyeOutlined />} onClick={() => onViewDetail(record.id)}>
             详情与关联
           </Button>
+          {record.parse_status === 'chunked' && (
+            <Popconfirm
+              title="重新向量化?"
+              description="将对此文档的已有切片重新执行 Embedding 并写入向量数据库"
+              onConfirm={() => onReprocess(record.id)}
+              okText="确定" cancelText="取消"
+            >
+              <Button type="link" size="small" icon={<ReloadOutlined />}>重试向量化</Button>
+            </Popconfirm>
+          )}
           <Popconfirm
             title="确定删除此文档?"
             description="关联的切片和向量数据将被一并清理"
@@ -71,7 +92,7 @@ export function DocumentTable({
         </Space>
       ),
     },
-  ], [onViewDetail, onDelete])
+  ], [onViewDetail, onDelete, onReprocess])
 
   return (
     <Table

@@ -10,7 +10,7 @@ import {
   getDocuments, deleteDocument, getDocumentDetail,
   getCourseKnowledgePoints, linkChunkToKp, linkPageToKp,
   extractKP, createExtractedKP, getChapters,
-  linkDocumentToChapter,
+  linkDocumentToChapter, reprocessDocument,
 } from '../../services/api'
 import { useQuickAskStore } from '../../store/quickAsk'
 import { DocumentTable } from './DocumentTable'
@@ -107,6 +107,16 @@ export default function DocumentListPage() {
     if (!id) return
     try { await deleteDocument(id, docId); message.success('文档已删除'); loadDocuments(page) }
     catch (err) { message.error('删除失败: ' + (err as Error).message) }
+  }
+
+  /** 重新向量化: 对 chunked 状态的文档重试 embedding 步骤 */
+  async function handleReprocess(docId: string) {
+    if (!id) return
+    try {
+      const result = await reprocessDocument(id, docId)
+      message.success(`向量化成功，${result.chunk_count} 个切片已写入向量数据库`)
+      loadDocuments(page)
+    } catch (err) { message.error('重新向量化失败: ' + (err as Error).message) }
   }
 
   async function handleLinkChunk(chunkId: string, kpId: string) {
@@ -231,15 +241,6 @@ export default function DocumentListPage() {
     <div>
       <Title level={3} style={{ marginBottom: 24 }}>文档管理</Title>
 
-      {documents.length > 0 && (
-        <Alert
-          message="下一步：关联切片到知识点"
-          description="点击每份文档的「详情与关联」，在抽屉中将文本切片绑定到对应知识点。关联后检索结果会展示结构化的来源信息（章节名 + 知识点名）。"
-          type="info" showIcon
-          style={{ marginBottom: 16 }}
-        />
-      )}
-
       <DocumentTable
         documents={documents}
         loading={loading}
@@ -248,6 +249,7 @@ export default function DocumentListPage() {
         onPageChange={(p) => { setPage(p); loadDocuments(p) }}
         onViewDetail={handleViewDetail}
         onDelete={handleDelete}
+        onReprocess={handleReprocess}
       />
 
       <DocumentDetailDrawer
