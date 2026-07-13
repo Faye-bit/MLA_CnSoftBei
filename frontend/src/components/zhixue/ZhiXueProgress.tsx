@@ -299,13 +299,15 @@ export default function ZhiXueProgress({
                   />
                 )}
 
-                {/* Agent 圆形专属头像 (SVG 格式) */}
+                {/* Agent 圆形专属头像 */}
                 <img
-                  src={`/Agents/${card.icon}.svg`}
+                  src={`/avatars/${card.icon.toLowerCase()}.png`}
                   alt={card.name}
+                  width={36}
+                  height={36}
+                  loading="lazy"
+                  decoding="async"
                   style={{
-                    width: 36,
-                    height: 36,
                     borderRadius: '50%',
                     flexShrink: 0,
                     objectFit: 'cover',

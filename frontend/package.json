@@ -7,7 +7,8 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "optimize-avatars": "node scripts/optimize-avatars.mjs"
   },
   "dependencies": {
     "@ant-design/icons": "^6.2.5",

@@ -696,7 +696,7 @@ export interface AgentCard {
   id: string
   /** 显示名称, 如 "学习导引师向南" */
   name: string
-  /** 头像文件名 (不含扩展名), 对应 /Agents/{icon}.png */
+  /** 头像文件名 (不含扩展名), 对应 /avatars/{icon}.png */
   icon: string
   /** 当前工作流状态 */
   state: AgentCardState

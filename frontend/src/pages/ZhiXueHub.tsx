@@ -406,9 +406,13 @@ function AgentWorkflow() {
               overflow: 'hidden', boxShadow: '0 1px 6px rgba(0,0,0,0.06)',
             }}>
               <img
-                src={`/Agents/${a.key}.svg`}
+                src={`/avatars/${a.key.toLowerCase()}.png`}
                 alt={a.name}
-                style={{ width: 56, height: 56, borderRadius: '50%', objectFit: 'cover' }}
+                width={56}
+                height={56}
+                loading="lazy"
+                decoding="async"
+                style={{ borderRadius: '50%', objectFit: 'cover' }}
                 onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }}
               />
             </div>
@@ -434,9 +438,13 @@ function AgentWorkflow() {
               overflow: 'hidden', boxShadow: '0 1px 6px rgba(0,0,0,0.06)',
             }}>
               <img
-                src={`/Agents/${a.key}.svg`}
+                src={`/avatars/${a.key.toLowerCase()}.png`}
                 alt={a.name}
-                style={{ width: 56, height: 56, borderRadius: '50%', objectFit: 'cover' }}
+                width={56}
+                height={56}
+                loading="lazy"
+                decoding="async"
+                style={{ borderRadius: '50%', objectFit: 'cover' }}
                 onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }}
               />
             </div>
