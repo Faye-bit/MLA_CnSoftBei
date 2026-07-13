@@ -54,6 +54,9 @@ const CARD_TITLE_STYLE: React.CSSProperties = {
   gap: 8,
 }
 
+/** Row 2 卡片统一固定高度 — 确保 WeeklyChart 全部内容可见，ReviewDashboardCard 同高滚动 */
+const ROW2_CARD_HEIGHT = 420
+
 export default function Dashboard() {
   return (
     <div style={{ padding: '16px 24px 24px' }}>
@@ -64,17 +67,19 @@ export default function Dashboard() {
       <Row gutter={[16, 16]} style={{ marginTop: 16 }}>
         <Col xs={24} lg={16}>
           <div
-            style={CARD_STYLE}
+            style={{ ...CARD_STYLE, display: 'flex', flexDirection: 'column', height: ROW2_CARD_HEIGHT }}
             onMouseEnter={hoverIn}
             onMouseLeave={hoverOut}
           >
-            <div style={CARD_TITLE_STYLE}>
+            <div style={{ ...CARD_TITLE_STYLE, flexShrink: 0 }}>
               <BarChartOutlined style={{ color: blue[500], fontSize: 16 }} />
               <span>本周学习活动</span>
             </div>
             <Suspense fallback={
-              <div style={{ padding: '16px 24px 24px' }}>
-                <Skeleton active paragraph={{ rows: 6 }} title={false} />
+              <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 0 }}>
+                <div style={{ width: '100%', padding: '16px 24px 24px' }}>
+                  <Skeleton active paragraph={{ rows: 6 }} title={false} />
+                </div>
               </div>
             }>
               <WeeklyChart />
@@ -84,12 +89,12 @@ export default function Dashboard() {
 
         <Col xs={24} lg={8}>
           <div
-            style={{ ...CARD_STYLE, display: 'flex', flexDirection: 'column', height: '100%' }}
+            style={{ ...CARD_STYLE, display: 'flex', flexDirection: 'column', height: ROW2_CARD_HEIGHT }}
             onMouseEnter={hoverIn}
             onMouseLeave={hoverOut}
           >
             <div style={{ ...CARD_TITLE_STYLE, flexShrink: 0, paddingBottom: 12 }}>
-              <BellOutlined style={{ color: '#faad14', fontSize: 16 }} />
+              <BellOutlined style={{ color: semantic.warning, fontSize: 16 }} />
               <span>艾宾浩斯复习提醒</span>
             </div>
             <div style={{ flex: 1, overflow: 'auto', minHeight: 0 }}>

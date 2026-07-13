@@ -8,7 +8,7 @@ import { Tag, Button, Typography, Skeleton, Empty, Space, Tooltip, Modal, Spin, 
 import { BellOutlined, ClockCircleOutlined, CheckCircleOutlined, BulbOutlined } from '@ant-design/icons'
 import { getPendingReviews, markReviewComplete, getKPExplanation } from '../../services/api'
 import type { ReviewItem } from '../../services/api'
-import { gray, blue } from '../../styles/tokens'
+import { gray, blue, semantic } from '../../styles/tokens'
 
 const { Text } = Typography
 
@@ -97,13 +97,13 @@ export default function ReviewDashboardCard() {
         style={{
           display: 'flex', alignItems: 'center', justifyContent: 'space-between',
           padding: '6px 10px', marginBottom: 6, borderRadius: 8,
-          background: isPending ? '#fff7e6' : '#f6ffed',
-          border: isPending ? '1px solid #ffd591' : '1px solid #d9f7be',
+          background: isPending ? semantic.warningBg : semantic.successBg,
+          border: isPending ? '1px solid #FCD34D' : '1px solid #BBF7D0',
           cursor: isKp ? 'pointer' : 'default',
           transition: 'box-shadow 0.15s',
         }}
         onClick={() => handleItemClick(item)}
-        onMouseEnter={e => { if (isKp) e.currentTarget.style.boxShadow = '0 2px 6px rgba(250,173,20,0.2)' }}
+        onMouseEnter={e => { if (isKp) e.currentTarget.style.boxShadow = '0 2px 6px rgba(217,119,6,0.15)' }}
         onMouseLeave={e => { e.currentTarget.style.boxShadow = 'none' }}
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
@@ -111,7 +111,7 @@ export default function ReviewDashboardCard() {
           <div style={{ minWidth: 0 }}>
             <Text style={{ fontSize: 13, display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
               {item.content_title}
-              {isKp && <BulbOutlined style={{ marginLeft: 6, color: '#1677ff', fontSize: 11 }} />}
+              {isKp && <BulbOutlined style={{ marginLeft: 6, color: blue[500], fontSize: 11 }} />}
             </Text>
             {isPending && (
               <Text type="secondary" style={{ fontSize: 11 }}>
@@ -147,8 +147,8 @@ export default function ReviewDashboardCard() {
       {/* 统计摘要 */}
       <div style={{ display: 'flex', gap: 16, marginBottom: 12, padding: '8px 12px', background: gray[50], borderRadius: 8, fontSize: 13, color: gray[600] }}>
         <Space size={4}>
-          <BellOutlined style={{ color: '#faad14' }} />
-          <span>到期复习 <b style={{ color: '#faad14' }}>{pending.length}</b> 项</span>
+          <BellOutlined style={{ color: semantic.warning }} />
+          <span>到期复习 <b style={{ color: semantic.warning }}>{pending.length}</b> 项</span>
         </Space>
         {upcoming.length > 0 && (
           <Space size={4}>
@@ -168,7 +168,7 @@ export default function ReviewDashboardCard() {
 
       {/* 知识卡片弹窗 */}
       <Modal
-        title={<Space><BulbOutlined style={{ color: '#1677ff' }} /><span>知识卡片</span><Tag color="blue">{cardItem?.content_title}</Tag></Space>}
+        title={<Space><BulbOutlined style={{ color: blue[500] }} /><span>知识卡片</span><Tag color="blue">{cardItem?.content_title}</Tag></Space>}
         open={!!cardItem}
         onCancel={() => { setCardItem(null); setCardContent(null); setCardError('') }}
         footer={null}
@@ -181,7 +181,7 @@ export default function ReviewDashboardCard() {
             <Text type="secondary">{cardError}</Text>
           </div>
         ) : cardContent ? (
-          <div style={{ padding: '16px 20px', background: '#f0f5ff', borderRadius: 8, border: '1px solid #d6e4ff', lineHeight: 1.8, fontSize: 14, whiteSpace: 'pre-wrap' }}>
+          <div style={{ padding: '16px 20px', background: blue[50], borderRadius: 8, border: `1px solid ${blue[100]}`, lineHeight: 1.8, fontSize: 14, whiteSpace: 'pre-wrap' }}>
             {cardContent}
           </div>
         ) : null}

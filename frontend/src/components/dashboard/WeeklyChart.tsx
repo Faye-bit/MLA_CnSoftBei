@@ -89,8 +89,10 @@ export default function WeeklyChart() {
   // ---- 加载态 ----
   if (loading) {
     return (
-      <div style={{ padding: '16px 24px 24px' }}>
-        <Skeleton active paragraph={{ rows: 6 }} title={false} />
+      <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 0 }}>
+        <div style={{ width: '100%', padding: '16px 24px 24px' }}>
+          <Skeleton active paragraph={{ rows: 6 }} title={false} />
+        </div>
       </div>
     )
   }
@@ -99,7 +101,7 @@ export default function WeeklyChart() {
   const hasData = totalMessages > 0 || totalStages > 0
   if (!hasData) {
     return (
-      <div style={{ padding: '24px 0', textAlign: 'center' }}>
+      <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 0 }}>
         <Empty description="本周暂无学习记录" image={Empty.PRESENTED_IMAGE_SIMPLE} />
       </div>
     )
