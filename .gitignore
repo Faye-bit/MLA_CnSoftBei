@@ -17,6 +17,10 @@ backend/uploads/*
 backend/chroma_data/*
 !backend/uploads/.gitkeep
 !backend/chroma_data/.gitkeep
+improvement/
+course_resources/
+PPT/
+DB_PDF/
 
 # Live2D 模型和 SDK (二进制资源)
 frontend/public/models/*
@@ -37,13 +41,14 @@ frontend/dist/
 
 # Docker
 pgdata/
-.playwright-mcp/
 OS_PDF/
 backend/.vite/
 Sessions/
 
 # vibeCoding
 .claude
+.workbuddy/
+.playwright-mcp/
 CLAUDE.md
 
 # script
