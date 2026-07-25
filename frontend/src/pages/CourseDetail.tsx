@@ -217,35 +217,35 @@ export default function CourseDetailPage() {
         </Space>
       </div>
 
-      {/* 工作流步骤引导 */}
-      <Card size="small" style={{ marginBottom: 16 }}>
-        <Steps
-          size="small"
-          current={
-            course.chapter_count === 0 ? 0
-            : course.document_count === 0 ? 1
-            : 2
-          }
-          items={[
-            {
-              title: '创建章节',
-              description: '构建课程知识结构',
-              icon: course.chapter_count > 0 ? <CheckCircleOutlined style={{ color: semantic.success }} /> : undefined,
-              status: course.chapter_count > 0 ? 'finish' : 'process',
-            },
-            {
-              title: '在章节中上传文档',
-              description: '在对应章节中上传讲义/课件, AI 自动提取知识点',
-              status: course.chapter_count > 0 ? (course.document_count > 0 ? 'finish' : 'process') : 'wait',
-            },
-            {
-              title: '开始知识检索',
-              description: '基于知识库的智能问答',
-              status: course.document_count > 0 ? 'process' : 'wait',
-            },
-          ]}
-        />
-      </Card>
+      {/*/!* 工作流步骤引导 *!/*/}
+      {/*<Card size="small" style={{ marginBottom: 16 }}>*/}
+      {/*  <Steps*/}
+      {/*    size="small"*/}
+      {/*    current={*/}
+      {/*      course.chapter_count === 0 ? 0*/}
+      {/*      : course.document_count === 0 ? 1*/}
+      {/*      : 2*/}
+      {/*    }*/}
+      {/*    items={[*/}
+      {/*      {*/}
+      {/*        title: '创建章节',*/}
+      {/*        description: '构建课程知识结构',*/}
+      {/*        icon: course.chapter_count > 0 ? <CheckCircleOutlined style={{ color: semantic.success }} /> : undefined,*/}
+      {/*        status: course.chapter_count > 0 ? 'finish' : 'process',*/}
+      {/*      },*/}
+      {/*      {*/}
+      {/*        title: '在章节中上传文档',*/}
+      {/*        description: '在对应章节中上传讲义/课件, AI 自动提取知识点',*/}
+      {/*        status: course.chapter_count > 0 ? (course.document_count > 0 ? 'finish' : 'process') : 'wait',*/}
+      {/*      },*/}
+      {/*      {*/}
+      {/*        title: '开始知识检索',*/}
+      {/*        description: '基于知识库的智能问答',*/}
+      {/*        status: course.document_count > 0 ? 'process' : 'wait',*/}
+      {/*      },*/}
+      {/*    ]}*/}
+      {/*  />*/}
+      {/*</Card>*/}
 
       {/* 课程统计 */}
       <Card size="small" style={{ marginBottom: 24 }}>
@@ -430,12 +430,12 @@ function KnowledgePointList({ chapterId, courseId, onDelete }: { chapterId: stri
                               e.stopPropagation()
                               try {
                                 await reportAIExplanation(item.id)
-                                message.success('已报告，感谢反馈')
+                                message.success('感谢反馈')
                                 load() // 刷新以更新计数
                               } catch { message.error('报告失败') }
                             }}
                           >
-                            报告不准确
+                            反馈
                           </Button>
                         </div>
                       </div>

@@ -92,7 +92,7 @@ export default function RadarChart({ dimensions, overallScore, loading = false, 
         <ResponsiveContainer>
           <ReRadarChart data={chartData} cx="50%" cy="50%" outerRadius="75%">
             <PolarGrid stroke={gray[200]} />
-            <PolarAngleAxis dataKey="subject" tick={{ fontSize: 13, fill: gray[800] }} />
+            <PolarAngleAxis dataKey="subject" tick={{ fontSize: 12, fill: gray[800] }} />
             <PolarRadiusAxis angle={90} domain={[0, 10]} tick={{ fontSize: 11, fill: gray[400] }} tickCount={6} />
             <Tooltip content={({ active, payload }) => {
               if (active && payload && payload.length > 0) {

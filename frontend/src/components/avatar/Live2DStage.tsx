@@ -34,7 +34,7 @@ const MODELS = [
 const CANVAS_SIZE = { width: 300, height: 380 }
 
 /** 下半身裁剪比例 (裁掉底部 35%, 只保留上半身) */
-const CLIP_BOTTOM_RATIO = 0.35
+const CLIP_BOTTOM_RATIO = 0
 
 /** 组件 props */
 interface Live2DStageProps {

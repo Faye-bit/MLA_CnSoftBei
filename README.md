@@ -10,7 +10,6 @@
 
 - [项目简介](#项目简介)
 - [核心功能](#核心功能)
-- [开发进度](#开发进度)
 - [技术栈](#技术栈)
 - [系统架构](#系统架构)
 - [环境要求](#环境要求)
@@ -82,7 +81,7 @@ MLA 智小学旨在解决高等教育中学生学习资源繁杂无序、难以�
 2. 李纲规划学习路径（3-8 个阶段，按知识点递进）
 3. 进入阶段循环：
    - 蔡丰网络调研（可选）→ 六匠并行生成资源 → 简真质量审查 → 交付学生
-4. 学生完成练习 + 霍然解惑辅助 → 向南推进至下一阶段
+4. 学生完成练习 → 霍然解惑辅助生成补充资源/向南推进至下一阶段
 5. 全部阶段完成 → LLM 生成学习评价 + 百分制分数
 
 ### 5. AI 对话（RAG + 联网搜索 + 多模态）
@@ -105,7 +104,7 @@ MLA 智小学旨在解决高等教育中学生学习资源繁杂无序、难以�
 ### 7. 艾宾浩斯复习系统
 - 基于遗忘曲线的智能复习调度（第 1/3/7/15/30 天）
 - 做题、查看资源、快问AI 等行为自动触发学习记录
-- 弹窗 + 邮件双通道提醒
+- 进入系统复习弹窗提醒
 
 ### 8. 仪表盘与分析
 - 今日待办看板
@@ -134,7 +133,7 @@ MLA 智小学旨在解决高等教育中学生学习资源繁杂无序、难以�
 | Redis 7+ | 缓存服务 |
 | Celery | 异步任务队列 |
 | LangGraph | 多智能体编排，定义 Agent 协作的有向图 |
-| OpenAI / DeepSeek API | 大语言模型（对话、资源生成、画像抽取） |
+| OpenAI 兼容API | 大语言模型（对话、资源生成、画像抽取） |
 | text-embedding-3-small | 文本 Embedding 模型（文档向量化） |
 | PyMuPDF / python-docx / python-pptx | 多格式文档解析 |
 | Pydantic + Pydantic Settings | 数据校验与配置管理 |
@@ -221,7 +220,7 @@ MLA 智小学旨在解决高等教育中学生学习资源繁杂无序、难以�
 
 | 用途 | 推荐方案 | 说明 |
 |------|---------|------|
-| **LLM**（对话、资源生成、画像） | DeepSeek / 智谱 GLM / 通义千问 / OpenAI | 支持 OpenAI 兼容接口即可 |
+| **LLM**（对话、资源生成、画像） | 科大讯飞Spark / 智谱 GLM / 通义千问 / OpenAI | 支持 OpenAI 兼容接口即可 |
 | **Embedding**（文档向量化、语义检索） | text-embedding-3-small / 智谱 Embedding | 支持 OpenAI 兼容接口即可 |
 | **文档解析**（可选，PDF/PPTX 视觉理解） | gpt-4o-mini / qwen-vl-plus | 多模态模型，未配置时降级为传统解析 |
 
@@ -290,8 +289,8 @@ pip install -r requirements.txt
 cd backend
 # 编辑 .env 文件，配置以下关键项：
 # LLM_API_KEY=your-llm-api-key
-# LLM_API_BASE=https://api.deepseek.com
-# LLM_MODEL=deepseek-chat
+# LLM_API_BASE=https://your-api-base.com
+# LLM_MODEL=your-llm-model
 # EMBEDDING_API_KEY=your-embedding-api-key
 # EMBEDDING_API_BASE=https://api.openai.com/v1
 # EMBEDDING_MODEL=text-embedding-3-small
@@ -615,5 +614,5 @@ CnSoftBei/
 | python-docx | MIT | DOCX 文档解析 |
 | python-pptx | MIT | PPTX 文档解析 |
 
-> 本项目使用的大模型服务：DeepSeek（对话生成 / 画像抽取）、OpenAI（Embedding 向量化）、火山引擎（TTS 语音合成）。
+> 本项目使用的大模型服务：Spark X2（对话生成 / 画像抽取）、OpenAI（Embedding 向量化）、火山引擎（TTS 语音合成）。
 
